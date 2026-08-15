@@ -61,6 +61,7 @@ function RootNavigator() {
         <Stack.Screen name="add-account" options={{ presentation: 'modal' }} />
         <Stack.Screen name="add-budget" options={{ presentation: 'modal' }} />
         <Stack.Screen name="manage-categories" options={{ presentation: 'modal' }} />
+        <Stack.Screen name="quick-presets" options={{ presentation: 'modal' }} />
         <Stack.Screen name="settings" options={{ presentation: 'modal' }} />
       </Stack>
       <StatusBar style="dark" />

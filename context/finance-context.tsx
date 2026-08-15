@@ -1,9 +1,18 @@
 import React, { createContext, useContext, useEffect, useReducer, useRef } from 'react';
 
-import { Account, AppSettings, Budget, Category, FinanceState, Transaction } from '@/types/finance';
+import {
+  Account,
+  AppSettings,
+  Budget,
+  Category,
+  FinanceState,
+  QuickPreset,
+  Transaction,
+} from '@/types/finance';
 import { DEFAULT_EXPENSE_CATEGORIES, DEFAULT_INCOME_CATEGORIES, ACCOUNT_TYPE_META } from '@/constants/categories';
 import { generateId } from '@/utils/id';
 import { loadFinanceState, saveFinanceState, PersistedFinanceState } from '@/storage/storage';
+import { refreshWidgets } from '@/utils/widget-bridge';
 
 type Action =
   | { type: 'HYDRATE'; payload: PersistedFinanceState }
@@ -19,6 +28,9 @@ type Action =
   | { type: 'ADD_BUDGET'; payload: Budget }
   | { type: 'UPDATE_BUDGET'; payload: Budget }
   | { type: 'DELETE_BUDGET'; payload: { id: string } }
+  | { type: 'ADD_PRESET'; payload: QuickPreset }
+  | { type: 'UPDATE_PRESET'; payload: QuickPreset }
+  | { type: 'DELETE_PRESET'; payload: { id: string } }
   | { type: 'UPDATE_SETTINGS'; payload: Partial<AppSettings> }
   | { type: 'RESET_ALL_DATA' }
   | { type: 'SEED_DEMO_DATA' };
@@ -27,6 +39,29 @@ const defaultSettings: AppSettings = {
   currency: 'USD',
   hasOnboarded: true,
 };
+
+/** Starting points for the home screen widget, all editable in Settings. */
+const PRESET_SEEDS: { label: string; emoji: string; amount: number; category: string }[] = [
+  { label: 'Coffee', emoji: '☕', amount: 50, category: 'Food & Dining' },
+  { label: 'Commute', emoji: '🚌', amount: 30, category: 'Transport' },
+  { label: 'Groceries', emoji: '🛒', amount: 500, category: 'Groceries' },
+  { label: 'Snacks', emoji: '🍫', amount: 100, category: 'Food & Dining' },
+];
+
+/**
+ * Seeds presets against whichever default categories the user actually has, so
+ * a fresh install and an upgrade both land on a usable widget.
+ */
+function buildDefaultPresets(categories: Category[]): QuickPreset[] {
+  return PRESET_SEEDS.map(seed => ({
+    id: generateId(),
+    label: seed.label,
+    emoji: seed.emoji,
+    amount: seed.amount,
+    type: 'expense' as const,
+    categoryId: categories.find(c => c.kind === 'expense' && c.name === seed.category)?.id,
+  }));
+}
 
 function buildDefaultCategories(): Category[] {
   return [...DEFAULT_EXPENSE_CATEGORIES, ...DEFAULT_INCOME_CATEGORIES].map(c => ({
@@ -294,6 +329,7 @@ function buildDefaultState(): FinanceState {
   return {
     accounts: [bankAccount, cashAccount, cardAccount, savingsAccount],
     categories,
+    quickPresets: buildDefaultPresets(categories),
     transactions,
     budgets: dummyBudgets,
     settings: defaultSettings,
@@ -304,6 +340,7 @@ function buildDefaultState(): FinanceState {
 const initialState: FinanceState = {
   accounts: [],
   categories: [],
+  quickPresets: [],
   transactions: [],
   budgets: [],
   settings: defaultSettings,
@@ -316,6 +353,9 @@ function reducer(state: FinanceState, action: Action): FinanceState {
       return {
         ...action.payload,
         settings: { ...defaultSettings, ...action.payload.settings },
+        // Saved before quick presets existed; seed them from the categories
+        // this user already has rather than leaving the widget empty.
+        quickPresets: action.payload.quickPresets ?? buildDefaultPresets(action.payload.categories),
         isLoaded: true,
       };
 
@@ -366,18 +406,34 @@ function reducer(state: FinanceState, action: Action): FinanceState {
     case 'DELETE_BUDGET':
       return { ...state, budgets: state.budgets.filter(b => b.id !== action.payload.id) };
 
+    case 'ADD_PRESET':
+      return { ...state, quickPresets: [...state.quickPresets, action.payload] };
+    case 'UPDATE_PRESET':
+      return {
+        ...state,
+        quickPresets: state.quickPresets.map(p => (p.id === action.payload.id ? action.payload : p)),
+      };
+    case 'DELETE_PRESET':
+      return {
+        ...state,
+        quickPresets: state.quickPresets.filter(p => p.id !== action.payload.id),
+      };
+
     case 'UPDATE_SETTINGS':
       return { ...state, settings: { ...state.settings, ...action.payload } };
 
-    case 'RESET_ALL_DATA':
+    case 'RESET_ALL_DATA': {
+      const categories = buildDefaultCategories();
       return {
         accounts: [],
-        categories: buildDefaultCategories(),
+        categories,
         transactions: [],
         budgets: [],
+        quickPresets: buildDefaultPresets(categories),
         settings: defaultSettings,
         isLoaded: true,
       };
+    }
 
     case 'SEED_DEMO_DATA':
       return buildDefaultState();
@@ -401,6 +457,9 @@ interface FinanceContextValue {
   addBudget: (input: Omit<Budget, 'id' | 'createdAt'>) => Budget;
   updateBudget: (budget: Budget) => void;
   deleteBudget: (id: string) => void;
+  addPreset: (input: Omit<QuickPreset, 'id'>) => QuickPreset;
+  updatePreset: (preset: QuickPreset) => void;
+  deletePreset: (id: string) => void;
   updateSettings: (settings: Partial<AppSettings>) => void;
   completeOnboarding: () => void;
   resetAllData: () => void;
@@ -430,6 +489,8 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
     if (!state.isLoaded || !hasHydrated.current) return;
     const { isLoaded, ...persistable } = state;
     saveFinanceState(persistable);
+    // Home screen widgets read the same store, so keep them in step with it.
+    refreshWidgets();
   }, [state]);
 
   const value: FinanceContextValue = {
@@ -465,6 +526,14 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
     },
     updateBudget: budget => dispatch({ type: 'UPDATE_BUDGET', payload: budget }),
     deleteBudget: id => dispatch({ type: 'DELETE_BUDGET', payload: { id } }),
+
+    addPreset: input => {
+      const preset: QuickPreset = { ...input, id: generateId() };
+      dispatch({ type: 'ADD_PRESET', payload: preset });
+      return preset;
+    },
+    updatePreset: preset => dispatch({ type: 'UPDATE_PRESET', payload: preset }),
+    deletePreset: id => dispatch({ type: 'DELETE_PRESET', payload: { id } }),
 
     updateSettings: settings => dispatch({ type: 'UPDATE_SETTINGS', payload: settings }),
     completeOnboarding: () => dispatch({ type: 'UPDATE_SETTINGS', payload: { hasOnboarded: true } }),

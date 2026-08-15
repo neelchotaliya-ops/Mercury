@@ -63,6 +63,35 @@
             "image/*"
           ]
         }
+      ],
+      [
+        "react-native-android-widget",
+        {
+          "widgets": [
+            {
+              "name": "QuickLog",
+              "label": "Mercury Quick Log",
+              "description": "Log a preset expense in one tap",
+              "minWidth": "250dp",
+              "minHeight": "110dp",
+              "targetCellWidth": 4,
+              "targetCellHeight": 2,
+              "resizeMode": "horizontal",
+              "updatePeriodMillis": 1800000
+            },
+            {
+              "name": "QuickActions",
+              "label": "Mercury Balance & Actions",
+              "description": "Balance at a glance with add shortcuts",
+              "minWidth": "250dp",
+              "minHeight": "140dp",
+              "targetCellWidth": 4,
+              "targetCellHeight": 2,
+              "resizeMode": "horizontal|vertical",
+              "updatePeriodMillis": 1800000
+            }
+          ]
+        }
       ]
     ],
     "experiments": {

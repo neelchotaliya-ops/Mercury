@@ -1,5 +1,9 @@
 # Screenshot scanning
 
+> Home screen widgets are documented separately in
+> [`docs/home-screen-widgets.md`](./home-screen-widgets.md).
+
+
 Mercury can read a payment screenshot (Google Pay, PhonePe, Paytm, or any UPI
 receipt) and prefill a transaction from it.
 

@@ -37,7 +37,12 @@ const TYPE_COLOR: Record<TransactionType, string> = {
 
 export default function AddTransactionScreen() {
   const router = useRouter();
-  const params = useLocalSearchParams<{ id?: string; type?: string; imageUri?: string }>();
+  const params = useLocalSearchParams<{
+    id?: string;
+    type?: string;
+    imageUri?: string;
+    scan?: string;
+  }>();
   const { state, addTransaction, updateTransaction, deleteTransaction } = useFinance();
 
   const editing = useMemo(
@@ -127,6 +132,14 @@ export default function AddTransactionScreen() {
     handledImageRef.current = uri;
     runScan(() => scanImage(uri));
   }, [params.imageUri, runScan]);
+
+  // The home screen widget's Scan shortcut opens the picker straight away.
+  const autoPickedRef = useRef(false);
+  useEffect(() => {
+    if (params.scan !== '1' || autoPickedRef.current || !isScanSupported()) return;
+    autoPickedRef.current = true;
+    runScan(pickAndScan);
+  }, [params.scan, runScan]);
   const numericAmount = parseFloat(amount || '0');
 
   const canSave =

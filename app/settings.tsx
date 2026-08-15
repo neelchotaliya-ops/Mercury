@@ -108,7 +108,17 @@ export default function SettingsScreen() {
               onPress={() => router.push('/manage-categories')}
               divider
             />
-            <Row icon="wallet-outline" label="Manage accounts" onPress={() => router.push('/accounts')} />
+            <Row
+              icon="wallet-outline"
+              label="Manage accounts"
+              onPress={() => router.push('/accounts')}
+              divider
+            />
+            <Row
+              icon="flash-outline"
+              label="Widget quick presets"
+              onPress={() => router.push('/quick-presets')}
+            />
           </GlassCard>
         </View>
 

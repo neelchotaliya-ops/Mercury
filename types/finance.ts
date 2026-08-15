@@ -52,11 +52,27 @@ export interface AppSettings {
   hasOnboarded: boolean;
 }
 
+/**
+ * A one-tap entry shown on the home screen widget. Tapping it writes the
+ * transaction immediately, so every field needed to save one lives here.
+ */
+export interface QuickPreset {
+  id: string;
+  label: string;
+  emoji: string;
+  amount: number;
+  type: Exclude<TransactionType, 'transfer'>;
+  categoryId?: string;
+  /** Falls back to the first non-archived account when unset. */
+  accountId?: string;
+}
+
 export interface FinanceState {
   accounts: Account[];
   categories: Category[];
   transactions: Transaction[];
   budgets: Budget[];
+  quickPresets: QuickPreset[];
   settings: AppSettings;
   isLoaded: boolean;
 }
