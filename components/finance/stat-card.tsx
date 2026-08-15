@@ -24,7 +24,7 @@ export const StatCard: React.FC<StatCardProps> = ({ label, value, icon, tint, an
         {label}
       </AppText>
     </View>
-    <AppText variant="h3" numberOfLines={1} adjustsFontSizeToFit>
+    <AppText variant="h3" numberOfLines={1} adjustsFontSizeToFit style={styles.value}>
       {value}
     </AppText>
   </GlassCard>
@@ -33,7 +33,8 @@ export const StatCard: React.FC<StatCardProps> = ({ label, value, icon, tint, an
 const styles = StyleSheet.create({
   card: {
     flex: 1,
-    gap: 10,
+    height: 100,
+    justifyContent: 'space-between',
   },
   row: {
     flexDirection: 'row',
@@ -41,13 +42,16 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   iconWrap: {
-    width: 26,
-    height: 26,
-    borderRadius: 9,
+    width: 28,
+    height: 28,
+    borderRadius: 10,
     alignItems: 'center',
     justifyContent: 'center',
   },
   label: {
     flex: 1,
+  },
+  value: {
+    marginTop: 2,
   },
 });

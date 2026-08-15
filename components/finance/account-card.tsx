@@ -53,6 +53,7 @@ const styles = StyleSheet.create({
   card: {
     flexDirection: 'row',
     alignItems: 'center',
+    minHeight: 76,
     gap: 14,
   },
   textCol: {

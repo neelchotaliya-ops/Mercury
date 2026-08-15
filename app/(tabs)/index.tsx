@@ -89,23 +89,38 @@ export default function HomeScreen() {
           <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.accountRow}>
             {accounts.map((account, index) => (
               <Pressable key={account.id} onPress={() => router.push('/accounts')}>
-                <GlassCard style={styles.accountChip} padding={14} radius={BorderRadius.md} animateIndex={index}>
-                  <View style={[styles.accountDot, { backgroundColor: account.color }]} />
-                  <AppText variant="micro" numberOfLines={1}>
-                    {account.name}
-                  </AppText>
-                  <AppText variant="bodyStrong" numberOfLines={1}>
+                <GlassCard style={styles.accountChip} padding={16} radius={BorderRadius.md} animateIndex={index}>
+                  <View style={styles.accountChipHeader}>
+                    <View style={[styles.accountBadge, { backgroundColor: `${account.color}22` }]}>
+                      <Ionicons name={account.icon as any} size={14} color={account.color} />
+                    </View>
+                    <AppText variant="micro" numberOfLines={1} style={styles.accountName}>
+                      {account.name}
+                    </AppText>
+                  </View>
+                  <AppText
+                    variant="h3"
+                    numberOfLines={1}
+                    adjustsFontSizeToFit
+                    color={getAccountBalance(state, account.id) < 0 ? Colors.expense : Colors.textPrimary}
+                    style={styles.accountValue}
+                  >
                     {formatCurrency(getAccountBalance(state, account.id), currency)}
                   </AppText>
                 </GlassCard>
               </Pressable>
             ))}
 
-            <Pressable onPress={() => router.push('/add-account')}>
-              <View style={styles.addAccountChip}>
-                <Ionicons name="add" size={20} color={Colors.textSecondary} />
-                <AppText variant="micro">Add</AppText>
-              </View>
+            <Pressable
+              onPress={() => router.push('/add-account')}
+              style={({ pressed }) => [{ opacity: pressed ? 0.75 : 1 }]}
+            >
+              <GlassCard style={styles.addAccountChip} padding={16} radius={BorderRadius.md}>
+                <Ionicons name="add" size={22} color={Colors.textSecondary} />
+                <AppText variant="micro" color={Colors.textSecondary}>
+                  Add
+                </AppText>
+              </GlassCard>
             </Pressable>
           </ScrollView>
         </View>
@@ -179,27 +194,36 @@ const styles = StyleSheet.create({
     paddingRight: 8,
   },
   accountChip: {
-    width: 138,
-    height: 96,
-    justifyContent: 'center',
-    gap: 5,
+    width: 148,
+    height: 100,
+    justifyContent: 'space-between',
   },
-  accountDot: {
-    width: 9,
-    height: 9,
-    borderRadius: 5,
-    marginBottom: 2,
+  accountChipHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  accountBadge: {
+    width: 28,
+    height: 28,
+    borderRadius: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  accountName: {
+    flex: 1,
+  },
+  accountValue: {
+    marginTop: 2,
   },
   addAccountChip: {
     width: 92,
-    height: 96,
-    borderRadius: BorderRadius.md,
-    borderWidth: 1.5,
-    borderStyle: 'dashed',
-    borderColor: Colors.textMuted,
+    height: 100,
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 5,
+    gap: 4,
+    borderStyle: 'dashed',
+    borderColor: Colors.textMuted,
   },
   listCard: {
     paddingVertical: 4,

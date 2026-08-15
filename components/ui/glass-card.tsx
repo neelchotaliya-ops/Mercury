@@ -117,7 +117,7 @@ export const GlassCard: React.FC<GlassCardProps> = ({
 
 const styles = StyleSheet.create({
   content: {
-    flexGrow: 1,
+    flex: 1,
     width: '100%',
   },
 });
