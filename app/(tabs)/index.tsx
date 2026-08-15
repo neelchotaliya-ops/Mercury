@@ -43,8 +43,12 @@ export default function HomeScreen() {
       <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
         <View style={styles.header}>
           <View style={styles.headerText}>
-            <AppText variant="caption">{greeting()}</AppText>
-            <AppText variant="h2">Your money</AppText>
+            <AppText variant="h2" style={styles.brandTitle}>
+              Mercury
+            </AppText>
+            <AppText variant="caption">
+              {new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' })}
+            </AppText>
           </View>
           <IconButton iconName="settings-outline" onPress={() => router.push('/settings')} />
         </View>
@@ -170,9 +174,15 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     gap: 12,
+    marginTop: 4,
+    marginBottom: 6,
   },
   headerText: {
     gap: 2,
+  },
+  brandTitle: {
+    fontSize: 25,
+    letterSpacing: -0.6,
   },
   statsRow: {
     flexDirection: 'row',
