@@ -162,8 +162,8 @@ export default function HomeScreen() {
 const styles = StyleSheet.create({
   content: {
     paddingHorizontal: 20,
-    paddingTop: 8,
-    paddingBottom: 130,
+    paddingTop: 4,
+    paddingBottom: 110,
   },
   header: {
     flexDirection: 'row',
@@ -172,16 +172,16 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   headerText: {
-    gap: 3,
+    gap: 2,
   },
   statsRow: {
     flexDirection: 'row',
     gap: 12,
-    marginTop: Spacing.xs,
+    marginTop: 26,
   },
   section: {
-    marginTop: Spacing['2xl'],
-    gap: 12,
+    marginTop: 18,
+    gap: 8,
   },
   sectionHeader: {
     flexDirection: 'row',
@@ -194,8 +194,8 @@ const styles = StyleSheet.create({
     paddingRight: 8,
   },
   accountChip: {
-    width: 148,
-    height: 100,
+    width: 144,
+    height: 94,
     justifyContent: 'space-between',
   },
   accountChipHeader: {
@@ -217,8 +217,8 @@ const styles = StyleSheet.create({
     marginTop: 2,
   },
   addAccountChip: {
-    width: 92,
-    height: 100,
+    width: 90,
+    height: 94,
     alignItems: 'center',
     justifyContent: 'center',
     gap: 4,

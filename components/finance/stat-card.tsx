@@ -33,7 +33,7 @@ export const StatCard: React.FC<StatCardProps> = ({ label, value, icon, tint, an
 const styles = StyleSheet.create({
   card: {
     flex: 1,
-    height: 100,
+    height: 94,
     justifyContent: 'space-between',
   },
   row: {

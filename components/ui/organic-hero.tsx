@@ -196,7 +196,7 @@ export const OrganicHero: React.FC<OrganicHeroProps> = ({
   value,
   sub,
   badges = [],
-  size = 250,
+  size = 225,
   children,
 }) => {
   const morphProgress = useSharedValue(0);
@@ -269,7 +269,7 @@ export const OrganicHero: React.FC<OrganicHeroProps> = ({
   });
 
   return (
-    <View style={[styles.container, { width: size + 80, height: size + 40 }]}>
+    <View style={[styles.container, { width: size + 60, height: size + 30 }]}>
       <Animated.View style={[styles.blobWrap, { width: size, height: size }, blobContainerStyle]}>
         <Svg width={size} height={size} viewBox={`0 0 ${BLOB_VIEWBOX} ${BLOB_VIEWBOX}`}>
           <Defs>
