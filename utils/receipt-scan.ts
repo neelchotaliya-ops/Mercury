@@ -7,39 +7,42 @@
  */
 
 import { Platform } from 'react-native';
+import { requireOptionalNativeModule } from 'expo-modules-core';
 import * as ImagePicker from 'expo-image-picker';
 
 import { ParsedReceipt, parseReceipt } from '@/utils/receipt-parser';
 
-interface TextExtractor {
+interface NativeTextExtractor {
   isSupported: boolean;
   extractTextFromImage: (uri: string) => Promise<string[]>;
 }
 
-let cachedExtractor: TextExtractor | null | undefined;
-
 /**
- * `expo-text-extractor` resolves a native module at import time and throws when
- * it is missing — which is exactly what happens in Expo Go or in a development
- * build made before this dependency was added. Requiring it lazily keeps that
- * failure contained to the scan feature instead of taking down app startup.
+ * Bind the native module directly instead of importing `expo-text-extractor`.
+ *
+ * That package calls `requireNativeModule` at module scope, which throws the
+ * moment it is imported without a matching native build — Expo Go, or a dev
+ * build made before this dependency was added. Metro surfaces that as a render
+ * error, so wrapping the import in try/catch does not contain it. The optional
+ * variant returns null instead of throwing, so the app keeps working and only
+ * the scan feature switches itself off.
+ *
+ * `expo-text-extractor` must stay in package.json even though nothing imports
+ * it: autolinking is what ships the native code this looks up. Removing it as
+ * an "unused dependency" silently disables scanning in every build.
  */
-function getExtractor(): TextExtractor | null {
-  if (cachedExtractor !== undefined) return cachedExtractor;
-  try {
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
-    cachedExtractor = require('expo-text-extractor') as TextExtractor;
-  } catch {
-    cachedExtractor = null;
-  }
-  return cachedExtractor;
-}
+const TextExtractor = requireOptionalNativeModule<NativeTextExtractor>('ExpoTextExtractor');
 
 /** True when this build can actually run text recognition. */
 export function isScanSupported(): boolean {
   if (Platform.OS === 'web') return false;
-  const extractor = getExtractor();
-  return Boolean(extractor?.isSupported);
+  return Boolean(TextExtractor?.isSupported);
+}
+
+/** Mirrors the wrapper `expo-text-extractor` applies before its native call. */
+async function extractText(uri: string): Promise<string[]> {
+  if (!TextExtractor) return [];
+  return TextExtractor.extractTextFromImage(uri.replace('file://', ''));
 }
 
 export type ScanResult =
@@ -52,11 +55,10 @@ export type ScanResult =
 
 /** Runs OCR on an image already on disk and parses whatever comes back. */
 export async function scanImage(uri: string): Promise<ScanResult> {
-  const extractor = getExtractor();
-  if (!extractor?.isSupported) return { status: 'unsupported' };
+  if (!isScanSupported()) return { status: 'unsupported' };
 
   try {
-    const blocks = await extractor.extractTextFromImage(uri);
+    const blocks = await extractText(uri);
     if (!blocks || blocks.length === 0) return { status: 'no-text', uri };
 
     const receipt = parseReceipt(blocks);
