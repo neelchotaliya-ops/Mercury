@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { View, StyleSheet, Pressable } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useRouter } from 'expo-router';
+import { Redirect, useRouter } from 'expo-router';
 
 import { BackgroundGradient } from '@/components/onboarding/background-gradient';
 import { OnboardingGraphic } from '@/components/onboarding/onboarding-graphic';
@@ -9,7 +9,7 @@ import { IconButton } from '@/components/ui/icon-button';
 import { AppText } from '@/components/ui/app-text';
 import { AppButton } from '@/components/ui/app-button';
 import { PageIndicator } from '@/components/ui/page-indicator';
-import { useAppTheme } from '@/context/theme-context';
+import { useFinance } from '@/context/finance-context';
 
 interface OnboardingSlide {
   id: number;
@@ -41,16 +41,25 @@ const SLIDES: OnboardingSlide[] = [
 
 export default function OnboardingScreen() {
   const router = useRouter();
-  const { colors } = useAppTheme();
+  const { state, completeOnboarding } = useFinance();
   const [activeIndex, setActiveIndex] = useState<number>(0); // Start at Step 1
 
+  if (state.settings.hasOnboarded) {
+    return <Redirect href="/(tabs)" />;
+  }
+
   const currentSlide = SLIDES[activeIndex];
+
+  const finishOnboarding = () => {
+    completeOnboarding();
+    router.replace('/(tabs)');
+  };
 
   const handleNext = () => {
     if (activeIndex < SLIDES.length - 1) {
       setActiveIndex(prev => prev + 1);
     } else {
-      router.replace('/(tabs)');
+      finishOnboarding();
     }
   };
 
@@ -61,11 +70,7 @@ export default function OnboardingScreen() {
   };
 
   const handleSkip = () => {
-    router.replace('/(tabs)');
-  };
-
-  const handleSignIn = () => {
-    router.push('/modal');
+    finishOnboarding();
   };
 
   return (
@@ -121,17 +126,6 @@ export default function OnboardingScreen() {
             variant="primary"
             size="lg"
           />
-
-          <View style={styles.signInRow}>
-            <AppText variant="body" style={{ color: '#52525B', fontSize: 14 }}>
-              Already a member?{' '}
-            </AppText>
-            <Pressable onPress={handleSignIn} style={({ pressed }) => [{ opacity: pressed ? 0.6 : 1 }]}>
-              <AppText variant="link" weight="semibold" style={{ color: '#8B5CF6', fontSize: 14 }}>
-                Sign In
-              </AppText>
-            </Pressable>
-          </View>
         </View>
       </SafeAreaView>
     </BackgroundGradient>
@@ -186,11 +180,5 @@ const styles = StyleSheet.create({
     paddingBottom: 24,
     gap: 16,
     alignItems: 'center',
-  },
-  signInRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginTop: 2,
   },
 });

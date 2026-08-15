@@ -1,98 +1,149 @@
-import { Image } from 'expo-image';
-import { Platform, StyleSheet } from 'react-native';
+import React from 'react';
+import { View, StyleSheet, ScrollView, Pressable } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import { useRouter } from 'expo-router';
+import { Ionicons } from '@expo/vector-icons';
 
-import { HelloWave } from '@/components/hello-wave';
-import ParallaxScrollView from '@/components/parallax-scroll-view';
-import { ThemedText } from '@/components/themed-text';
-import { ThemedView } from '@/components/themed-view';
-import { Link } from 'expo-router';
+import { AppText } from '@/components/ui/app-text';
+import { IconButton } from '@/components/ui/icon-button';
+import { StatCard } from '@/components/finance/stat-card';
+import { TransactionListItem } from '@/components/finance/transaction-list-item';
+import { EmptyState } from '@/components/finance/empty-state';
+import { useAppTheme } from '@/context/theme-context';
+import { useFinance } from '@/context/finance-context';
+import { getMonthlyTotals, getTotalBalance } from '@/utils/selectors';
+import { formatCurrency } from '@/utils/currency';
+import { toMonthKey } from '@/utils/date';
 
 export default function HomeScreen() {
-  return (
-    <ParallaxScrollView
-      headerBackgroundColor={{ light: '#A1CEDC', dark: '#1D3D47' }}
-      headerImage={
-        <Image
-          source={require('@/assets/images/partial-react-logo.png')}
-          style={styles.reactLogo}
-        />
-      }>
-      <ThemedView style={styles.titleContainer}>
-        <ThemedText type="title">Welcome!</ThemedText>
-        <HelloWave />
-      </ThemedView>
-      <ThemedView style={styles.stepContainer}>
-        <ThemedText type="subtitle">Step 1: Try it</ThemedText>
-        <ThemedText>
-          Edit <ThemedText type="defaultSemiBold">app/(tabs)/index.tsx</ThemedText> to see changes.
-          Press{' '}
-          <ThemedText type="defaultSemiBold">
-            {Platform.select({
-              ios: 'cmd + d',
-              android: 'cmd + m',
-              web: 'F12',
-            })}
-          </ThemedText>{' '}
-          to open developer tools.
-        </ThemedText>
-      </ThemedView>
-      <ThemedView style={styles.stepContainer}>
-        <Link href="/modal">
-          <Link.Trigger>
-            <ThemedText type="subtitle">Step 2: Explore</ThemedText>
-          </Link.Trigger>
-          <Link.Preview />
-          <Link.Menu>
-            <Link.MenuAction title="Action" icon="cube" onPress={() => alert('Action pressed')} />
-            <Link.MenuAction
-              title="Share"
-              icon="square.and.arrow.up"
-              onPress={() => alert('Share pressed')}
-            />
-            <Link.Menu title="More" icon="ellipsis">
-              <Link.MenuAction
-                title="Delete"
-                icon="trash"
-                destructive
-                onPress={() => alert('Delete pressed')}
-              />
-            </Link.Menu>
-          </Link.Menu>
-        </Link>
+  const router = useRouter();
+  const { colors, spacing } = useAppTheme();
+  const { state } = useFinance();
 
-        <ThemedText>
-          {`Tap the Explore tab to learn more about what's included in this starter app.`}
-        </ThemedText>
-      </ThemedView>
-      <ThemedView style={styles.stepContainer}>
-        <ThemedText type="subtitle">Step 3: Get a fresh start</ThemedText>
-        <ThemedText>
-          {`When you're ready, run `}
-          <ThemedText type="defaultSemiBold">npm run reset-project</ThemedText> to get a fresh{' '}
-          <ThemedText type="defaultSemiBold">app</ThemedText> directory. This will move the current{' '}
-          <ThemedText type="defaultSemiBold">app</ThemedText> to{' '}
-          <ThemedText type="defaultSemiBold">app-example</ThemedText>.
-        </ThemedText>
-      </ThemedView>
-    </ParallaxScrollView>
+  const monthKey = toMonthKey(new Date());
+  const totalBalance = getTotalBalance(state);
+  const { income, expense } = getMonthlyTotals(state, monthKey);
+
+  const recentTransactions = [...state.transactions]
+    .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
+    .slice(0, 5);
+
+  return (
+    <SafeAreaView style={[styles.safeArea, { backgroundColor: colors.background }]} edges={['top']}>
+      <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
+        <View style={styles.header}>
+          <View>
+            <AppText variant="caption">Total balance</AppText>
+            <AppText variant="h1" style={{ color: colors.textPrimary }}>
+              {formatCurrency(totalBalance, state.settings.currency)}
+            </AppText>
+          </View>
+          <IconButton
+            iconName="settings-outline"
+            onPress={() => router.push('/settings')}
+            size={44}
+            iconSize={20}
+            color={colors.textPrimary}
+            backgroundColor={colors.cardBackground}
+          />
+        </View>
+
+        <View style={[styles.statsRow, { marginTop: spacing.xl }]}>
+          <StatCard label="Income this month" value={formatCurrency(income, state.settings.currency)} icon="arrow-down-circle" tint="#16A34A" />
+          <StatCard label="Expense this month" value={formatCurrency(expense, state.settings.currency)} icon="arrow-up-circle" tint="#DC2626" />
+        </View>
+
+        <View style={[styles.section, { marginTop: spacing['2xl'] }]}>
+          <View style={styles.sectionHeader}>
+            <AppText variant="h3" style={{ color: colors.textPrimary }}>
+              Recent transactions
+            </AppText>
+            <Pressable onPress={() => router.push('/(tabs)/transactions')}>
+              <AppText variant="link">See all</AppText>
+            </Pressable>
+          </View>
+
+          {recentTransactions.length === 0 ? (
+            <EmptyState
+              icon="receipt-outline"
+              title="No transactions yet"
+              subtitle="Add your first transaction to start tracking your spending."
+              actionLabel="Add transaction"
+              onAction={() => router.push('/add-transaction')}
+            />
+          ) : (
+            <View
+              style={[
+                styles.card,
+                { backgroundColor: colors.cardBackground, borderColor: colors.cardBorder },
+              ]}
+            >
+              {recentTransactions.map(t => (
+                <TransactionListItem key={t.id} transaction={t} onPress={() => router.push(`/add-transaction?id=${t.id}`)} />
+              ))}
+            </View>
+          )}
+        </View>
+      </ScrollView>
+
+      <Pressable
+        onPress={() => router.push('/add-transaction')}
+        style={({ pressed }) => [
+          styles.fab,
+          { backgroundColor: colors.buttonPrimaryBg, opacity: pressed ? 0.85 : 1 },
+        ]}
+      >
+        <Ionicons name="add" size={28} color="#FFFFFF" />
+      </Pressable>
+    </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  titleContainer: {
+  safeArea: {
+    flex: 1,
+  },
+  content: {
+    paddingHorizontal: 20,
+    paddingTop: 12,
+    paddingBottom: 120,
+  },
+  header: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
+  },
+  statsRow: {
+    flexDirection: 'row',
+    gap: 12,
+  },
+  section: {
+    gap: 12,
+  },
+  sectionHeader: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
+    justifyContent: 'space-between',
   },
-  stepContainer: {
-    gap: 8,
-    marginBottom: 8,
+  card: {
+    borderWidth: 1,
+    borderRadius: 16,
+    paddingHorizontal: 14,
+    paddingVertical: 4,
   },
-  reactLogo: {
-    height: 178,
-    width: 290,
-    bottom: 0,
-    left: 0,
+  fab: {
     position: 'absolute',
+    right: 20,
+    bottom: 28,
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.25,
+    shadowRadius: 12,
+    elevation: 6,
   },
 });
