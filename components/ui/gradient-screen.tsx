@@ -30,14 +30,7 @@ export const GradientScreen: React.FC<GradientScreenProps> = ({
         style={StyleSheet.absoluteFill}
       />
 
-      {contours !== 'none' && (
-        <>
-          <TopographicField size={520} rings={8} rotate={-12} style={styles.contourTop} />
-          {contours === 'full' && (
-            <TopographicField size={420} rings={6} rotate={24} warm style={styles.contourBottom} />
-          )}
-        </>
-      )}
+      {contours !== 'none' && <TopographicField warm={contours === 'full'} />}
 
       <SafeAreaView style={[styles.content, contentStyle]} edges={edges}>
         {children}
@@ -53,13 +46,5 @@ const styles = StyleSheet.create({
   },
   content: {
     flex: 1,
-  },
-  contourTop: {
-    top: -170,
-    left: -110,
-  },
-  contourBottom: {
-    bottom: -150,
-    right: -140,
   },
 });
