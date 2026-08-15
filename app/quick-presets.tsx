@@ -13,7 +13,7 @@ import { CategoryPicker } from '@/components/finance/category-picker';
 import { AccountPicker } from '@/components/finance/account-picker';
 import { EmptyState } from '@/components/finance/empty-state';
 import { useFinance } from '@/context/finance-context';
-import { QuickPreset } from '@/types/finance';
+import { Account, QuickPreset } from '@/types/finance';
 import { formatCurrency, getCurrencySymbol } from '@/utils/currency';
 import { refreshWidgets } from '@/utils/widget-bridge';
 import { Colors, BorderRadius, Spacing } from '@/constants/theme';
@@ -24,6 +24,13 @@ const EMOJI_CHOICES = [
 ];
 
 type Draft = Omit<QuickPreset, 'id'> & { id?: string };
+
+/** Mirrors the fallback in utils/widget-data.ts's buildPresetTransaction, so
+ * what this list shows always matches what a tap actually records. */
+function resolveFundingAccount(accounts: Account[], accountId: string | undefined): Account | undefined {
+  const live = accounts.filter(a => !a.archived);
+  return live.find(a => a.id === accountId) ?? live[0];
+}
 
 const BLANK_DRAFT: Draft = {
   label: '',
@@ -127,10 +134,12 @@ export default function QuickPresetsScreen() {
                   <AppText variant="bodyStrong" numberOfLines={1}>
                     {preset.label}
                   </AppText>
-                  <AppText variant="micro">
+                  <AppText variant="micro" numberOfLines={1}>
                     {preset.type === 'income' ? 'Income' : 'Expense'}
                     {' · '}
                     {state.categories.find(c => c.id === preset.categoryId)?.name ?? 'No category'}
+                    {' · '}
+                    {resolveFundingAccount(state.accounts, preset.accountId)?.name ?? 'No account'}
                   </AppText>
                 </View>
 

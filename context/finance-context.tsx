@@ -1,4 +1,5 @@
 import React, { createContext, useContext, useEffect, useReducer, useRef } from 'react';
+import { AppState, AppStateStatus } from 'react-native';
 
 import {
   Account,
@@ -16,6 +17,7 @@ import { refreshWidgets } from '@/utils/widget-bridge';
 
 type Action =
   | { type: 'HYDRATE'; payload: PersistedFinanceState }
+  | { type: 'REFRESH_FROM_STORAGE'; payload: PersistedFinanceState }
   | { type: 'ADD_ACCOUNT'; payload: Account }
   | { type: 'UPDATE_ACCOUNT'; payload: Account }
   | { type: 'DELETE_ACCOUNT'; payload: { id: string } }
@@ -350,6 +352,7 @@ const initialState: FinanceState = {
 function reducer(state: FinanceState, action: Action): FinanceState {
   switch (action.type) {
     case 'HYDRATE':
+    case 'REFRESH_FROM_STORAGE':
       return {
         ...action.payload,
         settings: { ...defaultSettings, ...action.payload.settings },
@@ -471,6 +474,9 @@ const FinanceContext = createContext<FinanceContextValue | undefined>(undefined)
 export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [state, dispatch] = useReducer(reducer, initialState);
   const hasHydrated = useRef(false);
+  // Set right before a REFRESH_FROM_STORAGE dispatch so the persist effect
+  // below doesn't write straight back out the bytes it just read in.
+  const skipNextPersist = useRef(false);
 
   useEffect(() => {
     (async () => {
@@ -485,8 +491,30 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
     })();
   }, []);
 
+  // The widget's headless task writes transactions straight to AsyncStorage,
+  // bypassing this reducer entirely, so returning to the app after using it
+  // must re-read storage — otherwise the in-memory state stays stale until a
+  // full app restart. minimize-and-reopen (not a kill) is exactly the "active"
+  // transition below; without this the amount silently disagrees with the
+  // widget until the process is killed and relaunched.
+  useEffect(() => {
+    const onChange = async (next: AppStateStatus) => {
+      if (next !== 'active' || !hasHydrated.current) return;
+      const fresh = await loadFinanceState();
+      if (!fresh) return;
+      skipNextPersist.current = true;
+      dispatch({ type: 'REFRESH_FROM_STORAGE', payload: fresh });
+    };
+    const subscription = AppState.addEventListener('change', onChange);
+    return () => subscription.remove();
+  }, []);
+
   useEffect(() => {
     if (!state.isLoaded || !hasHydrated.current) return;
+    if (skipNextPersist.current) {
+      skipNextPersist.current = false;
+      return;
+    }
     const { isLoaded, ...persistable } = state;
     saveFinanceState(persistable);
     // Home screen widgets read the same store, so keep them in step with it.

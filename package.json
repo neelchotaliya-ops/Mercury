@@ -11,7 +11,8 @@
     "lint": "expo lint",
     "test:parser": "tsx scripts/test-receipt-parser.ts",
     "test:widget": "tsx scripts/test-widget-presets.ts",
-    "test": "npm run test:parser && npm run test:widget"
+    "test": "npm run test:parser && npm run test:widget && npm run test:layout",
+    "test:layout": "tsx scripts/test-widget-layout.ts"
   },
   "dependencies": {
     "@expo-google-fonts/manrope": "^0.4.2",

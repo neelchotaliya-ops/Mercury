@@ -67,6 +67,9 @@
       [
         "react-native-android-widget",
         {
+          "fonts": [
+            "./node_modules/@expo/vector-icons/build/vendor/react-native-vector-icons/Fonts/Ionicons.ttf"
+          ],
           "widgets": [
             {
               "name": "QuickLog",
@@ -74,19 +77,23 @@
               "description": "Log a preset expense in one tap",
               "minWidth": "250dp",
               "minHeight": "110dp",
+              "maxResizeWidth": "500dp",
+              "maxResizeHeight": "220dp",
               "targetCellWidth": 4,
               "targetCellHeight": 2,
-              "resizeMode": "horizontal",
+              "resizeMode": "horizontal|vertical",
               "updatePeriodMillis": 1800000
             },
             {
               "name": "QuickActions",
               "label": "Mercury Balance & Actions",
-              "description": "Balance at a glance with add shortcuts",
+              "description": "Balance at a glance with add shortcuts and an account breakdown",
               "minWidth": "250dp",
               "minHeight": "140dp",
+              "maxResizeWidth": "500dp",
+              "maxResizeHeight": "320dp",
               "targetCellWidth": 4,
-              "targetCellHeight": 2,
+              "targetCellHeight": 3,
               "resizeMode": "horizontal|vertical",
               "updatePeriodMillis": 1800000
             }

@@ -9,6 +9,9 @@ import React from 'react';
 import { FlexWidget, TextWidget, type HexColor } from 'react-native-android-widget';
 
 import { formatCurrency } from '@/utils/currency';
+import { WidgetAccountBalance } from '@/utils/widget-data';
+import { WidgetGlyph, type WidgetGlyphProps } from '@/widgets/widget-icon';
+import { accountRowCapacity } from '@/widgets/widget-format';
 
 const WIDGET_COLORS = {
   gradientFrom: '#EDE3FB',
@@ -21,25 +24,30 @@ const WIDGET_COLORS = {
   textMuted: '#A29BB4',
   income: '#2EA97C',
   expense: '#E05C7E',
+  divider: 'rgba(25, 21, 39, 0.08)',
 } as const;
 
 export interface QuickActionsWidgetProps {
   currency: string;
   balance: number;
   spentThisMonth: number;
+  accounts: WidgetAccountBalance[];
   ready: boolean;
+  /** Current widget size in dp; taller widgets reveal an account breakdown. */
+  width: number;
+  height: number;
 }
 
 interface ActionProps {
   label: string;
-  emoji: string;
+  glyph: WidgetGlyphProps['name'];
   uri: string;
   tint: HexColor;
   filled?: boolean;
 }
 
 /** Each action deep-links into the app, landing on the right screen directly. */
-function Action({ label, emoji, uri, tint, filled = false }: ActionProps) {
+function Action({ label, glyph, uri, tint, filled = false }: ActionProps) {
   'use no memo';
   return (
     <FlexWidget
@@ -52,12 +60,11 @@ function Action({ label, emoji, uri, tint, filled = false }: ActionProps) {
         alignItems: 'center',
         justifyContent: 'center',
         height: 38,
-        marginHorizontal: 3,
         borderRadius: 19,
         backgroundColor: filled ? WIDGET_COLORS.cta : WIDGET_COLORS.surface,
       }}
     >
-      <TextWidget text={emoji} style={{ fontSize: 13 }} />
+      <WidgetGlyph name={glyph} size={14} color={filled ? WIDGET_COLORS.ctaText : tint} />
       <TextWidget
         text={label}
         maxLines={1}
@@ -72,24 +79,67 @@ function Action({ label, emoji, uri, tint, filled = false }: ActionProps) {
   );
 }
 
+/** One row of the account breakdown. Taps open the Accounts screen. */
+function AccountRow({ account, currency }: { account: WidgetAccountBalance; currency: string }) {
+  'use no memo';
+  return (
+    <FlexWidget
+      clickAction="OPEN_URI"
+      clickActionData={{ uri: 'mercury://accounts' }}
+      accessibilityLabel={`${account.name}, ${formatCurrency(account.balance, currency)}`}
+      style={{
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        width: 'match_parent',
+        paddingVertical: 3,
+      }}
+    >
+      <FlexWidget style={{ flexDirection: 'row', alignItems: 'center', flex: 1 }}>
+        <FlexWidget
+          style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: account.color as HexColor }}
+        />
+        <TextWidget
+          text={account.name}
+          maxLines={1}
+          style={{ fontSize: 11, color: WIDGET_COLORS.textPrimary, marginLeft: 6 }}
+        />
+      </FlexWidget>
+      <TextWidget
+        text={formatCurrency(account.balance, currency)}
+        maxLines={1}
+        style={{ fontSize: 11, fontWeight: '700', color: WIDGET_COLORS.textPrimary }}
+      />
+    </FlexWidget>
+  );
+}
+
 /**
- * Balance at a glance plus shortcuts into the add flows. Unlike the quick-log
- * widget these open the app, because each one needs input to finish.
+ * Balance at a glance plus shortcuts into the add flows. The action buttons
+ * deep-link into the app, because each needs input to finish — unlike the
+ * quick-log widget, they cannot complete silently. Resizing taller reveals
+ * which accounts the balance is actually made up of.
  */
 export function QuickActionsWidget({
   currency,
   balance,
   spentThisMonth,
+  accounts,
   ready,
+  height,
 }: QuickActionsWidgetProps) {
   'use no memo';
+  const accountRows = ready ? accounts.slice(0, accountRowCapacity(height)) : [];
+  const hasAccountRows = accountRows.length > 0;
+
   return (
     <FlexWidget
       style={{
         height: 'match_parent',
         width: 'match_parent',
         flexDirection: 'column',
-        justifyContent: 'space-between',
+        justifyContent: hasAccountRows ? 'flex-start' : 'space-between',
+        flexGap: hasAccountRows ? 8 : 0,
         paddingHorizontal: 14,
         paddingVertical: 12,
         borderRadius: 24,
@@ -100,10 +150,7 @@ export function QuickActionsWidget({
         },
       }}
     >
-      <FlexWidget
-        clickAction="OPEN_APP"
-        style={{ width: 'match_parent', flexDirection: 'column' }}
-      >
+      <FlexWidget clickAction="OPEN_APP" style={{ width: 'match_parent', flexDirection: 'column' }}>
         <TextWidget
           text="Total balance"
           style={{ fontSize: 10, color: WIDGET_COLORS.textSecondary }}
@@ -126,33 +173,45 @@ export function QuickActionsWidget({
       </FlexWidget>
 
       <FlexWidget
-        style={{
-          width: 'match_parent',
-          flexDirection: 'row',
-          alignItems: 'center',
-          marginTop: 10,
-        }}
+        style={{ width: 'match_parent', flexDirection: 'row', alignItems: 'center', flexGap: 6 }}
       >
         <Action
           label="Expense"
-          emoji="➖"
+          glyph="remove-circle"
           uri="mercury://add-transaction?type=expense"
           tint={WIDGET_COLORS.expense}
           filled
         />
         <Action
           label="Income"
-          emoji="➕"
+          glyph="add-circle"
           uri="mercury://add-transaction?type=income"
           tint={WIDGET_COLORS.income}
         />
         <Action
           label="Scan"
-          emoji="✨"
+          glyph="sparkles"
           uri="mercury://add-transaction?scan=1"
           tint={WIDGET_COLORS.textPrimary}
         />
       </FlexWidget>
+
+      {hasAccountRows ? (
+        <FlexWidget
+          style={{
+            width: 'match_parent',
+            flexDirection: 'column',
+            borderTopWidth: 1,
+            borderTopColor: WIDGET_COLORS.divider,
+            paddingTop: 6,
+            flexGap: 2,
+          }}
+        >
+          {accountRows.map(account => (
+            <AccountRow key={account.id} account={account} currency={currency} />
+          ))}
+        </FlexWidget>
+      ) : null}
     </FlexWidget>
   );
 }

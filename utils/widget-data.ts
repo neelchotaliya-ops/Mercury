@@ -9,15 +9,24 @@
 
 import { FinanceState, QuickPreset, Transaction } from '@/types/finance';
 import { loadFinanceState, saveFinanceState, PersistedFinanceState } from '@/storage/storage';
-import { getMonthlyTotals, getTotalBalance } from '@/utils/selectors';
+import { getAccountBalance, getMonthlyTotals, getTotalBalance } from '@/utils/selectors';
 import { toMonthKey } from '@/utils/date';
 import { generateId } from '@/utils/id';
+
+export interface WidgetAccountBalance {
+  id: string;
+  name: string;
+  color: string;
+  balance: number;
+}
 
 export interface WidgetSummary {
   currency: string;
   balance: number;
   spentThisMonth: number;
   presets: QuickPreset[];
+  /** Non-archived accounts with a live balance, sorted highest first. */
+  accounts: WidgetAccountBalance[];
   /** False before onboarding, when there is nothing meaningful to show. */
   ready: boolean;
 }
@@ -25,6 +34,29 @@ export interface WidgetSummary {
 /** Selectors expect the in-memory shape, which adds the load flag. */
 function asFinanceState(persisted: PersistedFinanceState): FinanceState {
   return { ...persisted, quickPresets: persisted.quickPresets ?? [], isLoaded: true };
+}
+
+function buildSummary(state: FinanceState): WidgetSummary {
+  const accounts = state.accounts
+    .filter(account => !account.archived)
+    .map(account => ({
+      id: account.id,
+      name: account.name,
+      color: account.color,
+      balance: getAccountBalance(state, account.id),
+    }))
+    .sort((a, b) => b.balance - a.balance);
+
+  const { expense } = getMonthlyTotals(state, toMonthKey(new Date()));
+
+  return {
+    currency: state.settings.currency,
+    balance: getTotalBalance(state),
+    spentThisMonth: expense,
+    presets: state.quickPresets,
+    accounts,
+    ready: state.settings.hasOnboarded,
+  };
 }
 
 /**
@@ -66,19 +98,17 @@ export async function getWidgetSummary(): Promise<WidgetSummary> {
   const persisted = await loadFinanceState();
 
   if (!persisted) {
-    return { currency: 'INR', balance: 0, spentThisMonth: 0, presets: [], ready: false };
+    return {
+      currency: 'INR',
+      balance: 0,
+      spentThisMonth: 0,
+      presets: [],
+      accounts: [],
+      ready: false,
+    };
   }
 
-  const state = asFinanceState(persisted);
-  const { expense } = getMonthlyTotals(state, toMonthKey(new Date()));
-
-  return {
-    currency: state.settings.currency,
-    balance: getTotalBalance(state),
-    spentThisMonth: expense,
-    presets: state.quickPresets,
-    ready: state.settings.hasOnboarded,
-  };
+  return buildSummary(asFinanceState(persisted));
 }
 
 export type LogPresetResult =
@@ -104,17 +134,5 @@ export async function logPreset(presetId: string): Promise<LogPresetResult> {
   const { isLoaded, ...persistable } = next;
   await saveFinanceState(persistable);
 
-  const { expense } = getMonthlyTotals(next, toMonthKey(new Date()));
-
-  return {
-    ok: true,
-    transaction,
-    summary: {
-      currency: next.settings.currency,
-      balance: getTotalBalance(next),
-      spentThisMonth: expense,
-      presets: next.quickPresets,
-      ready: true,
-    },
-  };
+  return { ok: true, transaction, summary: buildSummary(next) };
 }

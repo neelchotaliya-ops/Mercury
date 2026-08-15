@@ -60,14 +60,17 @@ export async function refreshWidgets(): Promise<void> {
 
   /* eslint-disable @typescript-eslint/no-require-imports */
   const { requestWidgetUpdate } = require('react-native-android-widget');
-  const { renderWidgetByName } = require('@/widgets/widget-task-handler');
+  const { renderWidgetByInfo } = require('@/widgets/widget-task-handler');
   /* eslint-enable @typescript-eslint/no-require-imports */
 
   await Promise.all(
     WIDGET_NAMES.map(widgetName =>
+      // requestWidgetUpdate hands back each placed widget's current size, so
+      // an app-triggered refresh picks the same responsive layout the widget
+      // is already showing instead of assuming its smallest size.
       requestWidgetUpdate({
         widgetName,
-        renderWidget: () => renderWidgetByName(widgetName),
+        renderWidget: (widgetInfo: unknown) => renderWidgetByInfo(widgetInfo),
         // No widget of this name on the home screen; nothing to do.
         widgetNotFound: () => {},
       }).catch(() => {})
