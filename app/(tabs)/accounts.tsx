@@ -1,10 +1,11 @@
 import React from 'react';
 import { View, StyleSheet, ScrollView, Pressable } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 
 import { AppText } from '@/components/ui/app-text';
+import { GradientScreen } from '@/components/ui/gradient-screen';
+import { GlassCard } from '@/components/ui/glass-card';
 import { AccountCard } from '@/components/finance/account-card';
 import { EmptyState } from '@/components/finance/empty-state';
 import { useAppTheme } from '@/context/theme-context';
@@ -21,7 +22,7 @@ export default function AccountsScreen() {
   const totalBalance = getTotalBalance(state);
 
   return (
-    <SafeAreaView style={[styles.safeArea, { backgroundColor: colors.background }]} edges={['top']}>
+    <GradientScreen>
       <View style={styles.headerRow}>
         <AppText variant="h2" style={{ color: colors.textPrimary }}>
           Accounts
@@ -40,17 +41,24 @@ export default function AccountsScreen() {
         </View>
 
         {activeAccounts.length === 0 ? (
-          <EmptyState
-            icon="wallet-outline"
-            title="No accounts yet"
-            subtitle="Add a cash, bank, card, or wallet account to start tracking your balances."
-            actionLabel="Add account"
-            onAction={() => router.push('/add-account')}
-          />
+          <GlassCard>
+            <EmptyState
+              icon="wallet-outline"
+              title="No accounts yet"
+              subtitle="Add a cash, bank, card, or wallet account to start tracking your balances."
+              actionLabel="Add account"
+              onAction={() => router.push('/add-account')}
+            />
+          </GlassCard>
         ) : (
           <View style={{ gap: spacing.md, marginTop: spacing.xl }}>
-            {activeAccounts.map(account => (
-              <AccountCard key={account.id} account={account} onPress={() => router.push(`/add-account?id=${account.id}`)} />
+            {activeAccounts.map((account, index) => (
+              <AccountCard
+                key={account.id}
+                account={account}
+                animateIndex={index}
+                onPress={() => router.push(`/add-account?id=${account.id}`)}
+              />
             ))}
           </View>
         )}
@@ -67,14 +75,11 @@ export default function AccountsScreen() {
           </Pressable>
         )}
       </ScrollView>
-    </SafeAreaView>
+    </GradientScreen>
   );
 }
 
 const styles = StyleSheet.create({
-  safeArea: {
-    flex: 1,
-  },
   headerRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -93,7 +98,7 @@ const styles = StyleSheet.create({
   content: {
     paddingHorizontal: 20,
     paddingTop: 12,
-    paddingBottom: 40,
+    paddingBottom: 140,
   },
   totalRow: {
     marginBottom: 8,

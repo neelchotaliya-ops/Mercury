@@ -1,11 +1,13 @@
 import React from 'react';
 import { View, StyleSheet, ScrollView, Pressable, Alert } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import Constants from 'expo-constants';
 
 import { AppText } from '@/components/ui/app-text';
+import { GradientScreen } from '@/components/ui/gradient-screen';
+import { GlassCard } from '@/components/ui/glass-card';
+import { ModalHeader } from '@/components/ui/modal-header';
 import { useAppTheme } from '@/context/theme-context';
 import { useFinance } from '@/context/finance-context';
 import { CURRENCIES } from '@/utils/currency';
@@ -30,16 +32,8 @@ export default function SettingsScreen() {
   };
 
   return (
-    <SafeAreaView style={[styles.safeArea, { backgroundColor: colors.background }]}>
-      <View style={styles.header}>
-        <Pressable onPress={() => router.back()} hitSlop={10}>
-          <Ionicons name="close" size={24} color={colors.textPrimary} />
-        </Pressable>
-        <AppText variant="h3" style={{ color: colors.textPrimary }}>
-          Settings
-        </AppText>
-        <View style={{ width: 22 }} />
-      </View>
+    <GradientScreen edges={['top', 'bottom']}>
+      <ModalHeader title="Settings" onClose={() => router.back()} />
 
       <ScrollView contentContainerStyle={styles.content}>
         <AppText variant="caption" style={styles.sectionLabel}>
@@ -66,7 +60,7 @@ export default function SettingsScreen() {
         <AppText variant="caption" style={styles.sectionLabel}>
           Currency
         </AppText>
-        <View style={[styles.card, { backgroundColor: colors.cardBackground, borderColor: colors.cardBorder, borderRadius: borderRadius.md }]}>
+        <GlassCard padding={0} style={styles.listCard}>
           {CURRENCIES.map((c, index) => {
             const isActive = c.code === state.settings.currency;
             return (
@@ -87,12 +81,12 @@ export default function SettingsScreen() {
               </Pressable>
             );
           })}
-        </View>
+        </GlassCard>
 
         <AppText variant="caption" style={styles.sectionLabel}>
           Data
         </AppText>
-        <View style={[styles.card, { backgroundColor: colors.cardBackground, borderColor: colors.cardBorder, borderRadius: borderRadius.md }]}>
+        <GlassCard padding={0} style={styles.listCard}>
           <Pressable onPress={() => router.push('/manage-categories')} style={styles.row}>
             <View style={styles.rowLeft}>
               <Ionicons name="pricetags-outline" size={18} color={colors.textPrimary} />
@@ -110,27 +104,17 @@ export default function SettingsScreen() {
               </AppText>
             </View>
           </Pressable>
-        </View>
+        </GlassCard>
 
         <AppText variant="caption" align="center" style={styles.version}>
           Mercury v{Constants.expoConfig?.version ?? '1.0.0'}
         </AppText>
       </ScrollView>
-    </SafeAreaView>
+    </GradientScreen>
   );
 }
 
 const styles = StyleSheet.create({
-  safeArea: {
-    flex: 1,
-  },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 20,
-    paddingVertical: 12,
-  },
   content: {
     paddingHorizontal: 20,
     paddingBottom: 40,
@@ -154,8 +138,7 @@ const styles = StyleSheet.create({
     gap: 6,
     paddingVertical: 10,
   },
-  card: {
-    borderWidth: 1,
+  listCard: {
     overflow: 'hidden',
   },
   row: {

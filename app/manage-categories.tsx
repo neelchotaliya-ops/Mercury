@@ -1,11 +1,13 @@
 import React, { useMemo, useState } from 'react';
 import { View, StyleSheet, ScrollView, Pressable, TextInput, Alert } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 
 import { AppText } from '@/components/ui/app-text';
 import { AppButton } from '@/components/ui/app-button';
+import { GradientScreen } from '@/components/ui/gradient-screen';
+import { GlassCard } from '@/components/ui/glass-card';
+import { ModalHeader } from '@/components/ui/modal-header';
 import { IconBadge } from '@/components/finance/icon-badge';
 import { useAppTheme } from '@/context/theme-context';
 import { useFinance } from '@/context/finance-context';
@@ -69,16 +71,8 @@ export default function ManageCategoriesScreen() {
   };
 
   return (
-    <SafeAreaView style={[styles.safeArea, { backgroundColor: colors.background }]}>
-      <View style={styles.header}>
-        <Pressable onPress={() => router.back()} hitSlop={10}>
-          <Ionicons name="close" size={24} color={colors.textPrimary} />
-        </Pressable>
-        <AppText variant="h3" style={{ color: colors.textPrimary }}>
-          Categories
-        </AppText>
-        <View style={{ width: 22 }} />
-      </View>
+    <GradientScreen edges={['top', 'bottom']}>
+      <ModalHeader title="Categories" onClose={() => router.back()} />
 
       <View style={[styles.segmented, { backgroundColor: colors.buttonSecondaryBg, borderRadius: borderRadius.pill }]}>
         {(['expense', 'income'] as CategoryKind[]).map(k => {
@@ -101,33 +95,35 @@ export default function ManageCategoriesScreen() {
       </View>
 
       <ScrollView contentContainerStyle={styles.content}>
-        <View style={styles.grid}>
-          {categories.map(category => (
-            <Pressable key={category.id} onPress={() => openEditForm(category)} style={styles.gridItem}>
-              <IconBadge icon={category.icon} color={category.color} size={52} />
-              <AppText variant="caption" align="center" numberOfLines={1} style={{ maxWidth: 68 }}>
-                {category.name}
+        <GlassCard>
+          <View style={styles.grid}>
+            {categories.map(category => (
+              <Pressable key={category.id} onPress={() => openEditForm(category)} style={styles.gridItem}>
+                <IconBadge icon={category.icon} color={category.color} size={52} />
+                <AppText variant="caption" align="center" numberOfLines={1} style={{ maxWidth: 68 }}>
+                  {category.name}
+                </AppText>
+              </Pressable>
+            ))}
+            <Pressable onPress={openNewForm} style={styles.gridItem}>
+              <View style={[styles.addWrap, { borderColor: colors.border }]}>
+                <Ionicons name="add" size={22} color={colors.textSecondary} />
+              </View>
+              <AppText variant="caption" align="center">
+                Add new
               </AppText>
             </Pressable>
-          ))}
-          <Pressable onPress={openNewForm} style={styles.gridItem}>
-            <View style={[styles.addWrap, { borderColor: colors.border }]}>
-              <Ionicons name="add" size={22} color={colors.textSecondary} />
-            </View>
-            <AppText variant="caption" align="center">
-              Add new
-            </AppText>
-          </Pressable>
-        </View>
+          </View>
+        </GlassCard>
 
         {showForm && (
-          <View style={[styles.form, { backgroundColor: colors.cardBackground, borderColor: colors.cardBorder, borderRadius: borderRadius.md }]}>
+          <GlassCard style={styles.form}>
             <TextInput
               value={name}
               onChangeText={setName}
               placeholder="Category name"
               placeholderTextColor={colors.textMuted}
-              style={[styles.input, { color: colors.textPrimary, borderColor: colors.border, borderRadius: borderRadius.sm }]}
+              style={[styles.input, { color: colors.textPrimary, backgroundColor: colors.buttonSecondaryBg, borderRadius: borderRadius.sm }]}
             />
 
             <AppText variant="caption">Icon</AppText>
@@ -167,24 +163,14 @@ export default function ManageCategoriesScreen() {
               )}
               <AppButton title="Save" onPress={handleSave} disabled={name.trim().length === 0} fullWidth={false} size="md" />
             </View>
-          </View>
+          </GlassCard>
         )}
       </ScrollView>
-    </SafeAreaView>
+    </GradientScreen>
   );
 }
 
 const styles = StyleSheet.create({
-  safeArea: {
-    flex: 1,
-  },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 20,
-    paddingVertical: 12,
-  },
   segmented: {
     flexDirection: 'row',
     marginHorizontal: 20,
@@ -221,12 +207,9 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   form: {
-    borderWidth: 1,
-    padding: 16,
     gap: 12,
   },
   input: {
-    borderWidth: 1,
     paddingHorizontal: 14,
     paddingVertical: 10,
     fontSize: 14,

@@ -1,9 +1,11 @@
 import React, { useMemo, useState } from 'react';
 import { View, StyleSheet, ScrollView, Pressable } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 
 import { AppText } from '@/components/ui/app-text';
+import { GradientScreen } from '@/components/ui/gradient-screen';
+import { GlassCard } from '@/components/ui/glass-card';
+import { OrganicHeroCard } from '@/components/ui/organic-hero-card';
 import { DonutChart } from '@/components/finance/donut-chart';
 import { TrendBarChart } from '@/components/finance/trend-bar-chart';
 import { EmptyState } from '@/components/finance/empty-state';
@@ -14,7 +16,7 @@ import { lastNMonthKeys, monthKeyLabel, monthShortLabel, shiftMonthKey, toMonthK
 import { formatCurrency } from '@/utils/currency';
 
 export default function ReportsScreen() {
-  const { colors, spacing, borderRadius } = useAppTheme();
+  const { colors, spacing } = useAppTheme();
   const { state } = useFinance();
   const [monthKey, setMonthKey] = useState(() => toMonthKey(new Date()));
 
@@ -30,7 +32,7 @@ export default function ReportsScreen() {
   }, [state]);
 
   return (
-    <SafeAreaView style={[styles.safeArea, { backgroundColor: colors.background }]} edges={['top']}>
+    <GradientScreen showRings>
       <View style={styles.headerRow}>
         <AppText variant="h2" style={{ color: colors.textPrimary }}>
           Reports
@@ -55,21 +57,21 @@ export default function ReportsScreen() {
         </AppText>
 
         {categorySpend.length === 0 ? (
-          <EmptyState icon="pie-chart-outline" title="No expenses this month" subtitle="Add an expense to see your breakdown here." />
+          <GlassCard>
+            <EmptyState icon="pie-chart-outline" title="No expenses this month" subtitle="Add an expense to see your breakdown here." />
+          </GlassCard>
         ) : (
-          <View
-            style={[
-              styles.card,
-              { backgroundColor: colors.cardBackground, borderColor: colors.cardBorder, borderRadius: borderRadius.md },
-            ]}
-          >
-            <DonutChart
-              data={categorySpend.map(c => ({ label: c.category.name, value: c.amount, color: c.category.color }))}
-              centerLabel="Total"
-              centerValue={formatCurrency(totalExpense, state.settings.currency)}
-            />
+          <>
+            <OrganicHeroCard size={190}>
+              <DonutChart
+                data={categorySpend.map(c => ({ label: c.category.name, value: c.amount, color: c.category.color }))}
+                size={150}
+                centerLabel="Total"
+                centerValue={formatCurrency(totalExpense, state.settings.currency)}
+              />
+            </OrganicHeroCard>
 
-            <View style={[styles.legendList, { marginTop: spacing.lg }]}>
+            <GlassCard style={[styles.legendCard, { marginTop: spacing.lg }]} animateIndex={0}>
               {categorySpend.map(c => {
                 const percent = totalExpense > 0 ? Math.round((c.amount / totalExpense) * 100) : 0;
                 return (
@@ -86,30 +88,22 @@ export default function ReportsScreen() {
                   </View>
                 );
               })}
-            </View>
-          </View>
+            </GlassCard>
+          </>
         )}
 
         <AppText variant="h3" style={[styles.sectionTitle, { color: colors.textPrimary, marginTop: spacing['2xl'] }]}>
           Income vs expense (6 months)
         </AppText>
-        <View
-          style={[
-            styles.card,
-            { backgroundColor: colors.cardBackground, borderColor: colors.cardBorder, borderRadius: borderRadius.md },
-          ]}
-        >
+        <GlassCard style={styles.card} animateIndex={1}>
           <TrendBarChart data={trendData} />
-        </View>
+        </GlassCard>
       </ScrollView>
-    </SafeAreaView>
+    </GradientScreen>
   );
 }
 
 const styles = StyleSheet.create({
-  safeArea: {
-    flex: 1,
-  },
   headerRow: {
     paddingHorizontal: 20,
     paddingTop: 12,
@@ -117,7 +111,7 @@ const styles = StyleSheet.create({
   },
   content: {
     paddingHorizontal: 20,
-    paddingBottom: 40,
+    paddingBottom: 140,
   },
   monthRow: {
     flexDirection: 'row',
@@ -130,12 +124,10 @@ const styles = StyleSheet.create({
     marginBottom: 12,
   },
   card: {
-    borderWidth: 1,
     padding: 20,
     alignItems: 'center',
   },
-  legendList: {
-    width: '100%',
+  legendCard: {
     gap: 10,
   },
   legendRow: {

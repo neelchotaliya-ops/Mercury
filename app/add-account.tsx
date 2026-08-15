@@ -1,11 +1,12 @@
 import React, { useMemo, useState } from 'react';
 import { View, StyleSheet, ScrollView, Pressable, TextInput, Alert } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { Ionicons } from '@expo/vector-icons';
 
 import { AppText } from '@/components/ui/app-text';
 import { AppButton } from '@/components/ui/app-button';
+import { GradientScreen } from '@/components/ui/gradient-screen';
+import { GlassCard } from '@/components/ui/glass-card';
+import { ModalHeader } from '@/components/ui/modal-header';
 import { IconBadge } from '@/components/finance/icon-badge';
 import { useAppTheme } from '@/context/theme-context';
 import { useFinance } from '@/context/finance-context';
@@ -65,146 +66,120 @@ export default function AddAccountScreen() {
   };
 
   return (
-    <SafeAreaView style={[styles.safeArea, { backgroundColor: colors.background }]}>
-      <View style={styles.header}>
-        <Pressable onPress={() => router.back()} hitSlop={10}>
-          <Ionicons name="close" size={24} color={colors.textPrimary} />
-        </Pressable>
-        <AppText variant="h3" style={{ color: colors.textPrimary }}>
-          {editing ? 'Edit account' : 'Add account'}
-        </AppText>
-        {editing ? (
-          <Pressable onPress={handleDelete} hitSlop={10}>
-            <Ionicons name="trash-outline" size={22} color="#DC2626" />
-          </Pressable>
-        ) : (
-          <View style={{ width: 22 }} />
-        )}
-      </View>
+    <GradientScreen edges={['top', 'bottom']}>
+      <ModalHeader
+        title={editing ? 'Edit account' : 'Add account'}
+        onClose={() => router.back()}
+        onDelete={editing ? handleDelete : undefined}
+      />
 
       <ScrollView contentContainerStyle={styles.content}>
-        <View style={styles.previewRow}>
-          <IconBadge icon={ACCOUNT_TYPE_META[type].icon} color={color} size={56} />
-        </View>
-
-        <View style={styles.fieldGroup}>
-          <AppText variant="caption" style={styles.fieldLabel}>
-            Name
-          </AppText>
-          <TextInput
-            value={name}
-            onChangeText={setName}
-            placeholder="e.g. HDFC Savings"
-            placeholderTextColor={colors.textMuted}
-            style={[
-              styles.input,
-              { color: colors.textPrimary, backgroundColor: colors.cardBackground, borderColor: colors.cardBorder, borderRadius: borderRadius.sm },
-            ]}
-          />
-        </View>
-
-        <View style={styles.fieldGroup}>
-          <AppText variant="caption" style={styles.fieldLabel}>
-            Type
-          </AppText>
-          <View style={styles.typeRow}>
-            {ACCOUNT_TYPES.map(t => {
-              const isActive = t === type;
-              const meta = ACCOUNT_TYPE_META[t];
-              return (
-                <Pressable
-                  key={t}
-                  onPress={() => {
-                    setType(t);
-                    if (!editing) setColor(meta.color);
-                  }}
-                  style={[
-                    styles.typeChip,
-                    {
-                      borderRadius: borderRadius.pill,
-                      backgroundColor: isActive ? colors.buttonPrimaryBg : colors.cardBackground,
-                      borderColor: isActive ? colors.buttonPrimaryBg : colors.cardBorder,
-                    },
-                  ]}
-                >
-                  <AppText variant="body" weight="semibold" style={{ color: isActive ? '#FFFFFF' : colors.textPrimary }}>
-                    {meta.label}
-                  </AppText>
-                </Pressable>
-              );
-            })}
+        <GlassCard style={styles.formCard}>
+          <View style={styles.previewRow}>
+            <IconBadge icon={ACCOUNT_TYPE_META[type].icon} color={color} size={56} />
           </View>
-        </View>
 
-        <View style={styles.fieldGroup}>
-          <AppText variant="caption" style={styles.fieldLabel}>
-            Color
-          </AppText>
-          <View style={styles.colorRow}>
-            {CATEGORY_COLOR_CHOICES.map(c => (
-              <Pressable
-                key={c}
-                onPress={() => setColor(c)}
-                style={[
-                  styles.colorSwatch,
-                  { backgroundColor: c, borderWidth: color === c ? 3 : 0, borderColor: colors.textPrimary },
-                ]}
-              />
-            ))}
-          </View>
-        </View>
-
-        <View style={styles.fieldGroup}>
-          <AppText variant="caption" style={styles.fieldLabel}>
-            {editing ? 'Initial balance' : 'Starting balance'}
-          </AppText>
-          <View
-            style={[
-              styles.balanceInputRow,
-              { backgroundColor: colors.cardBackground, borderColor: colors.cardBorder, borderRadius: borderRadius.sm },
-            ]}
-          >
-            <AppText variant="body" weight="semibold" style={{ color: colors.textMuted }}>
-              {getCurrencySymbol(state.settings.currency)}
+          <View style={styles.fieldGroup}>
+            <AppText variant="caption" style={styles.fieldLabel}>
+              Name
             </AppText>
             <TextInput
-              value={initialBalance}
-              onChangeText={t => setInitialBalance(t.replace(/[^0-9.]/g, ''))}
-              placeholder="0.00"
-              keyboardType="decimal-pad"
+              value={name}
+              onChangeText={setName}
+              placeholder="e.g. HDFC Savings"
               placeholderTextColor={colors.textMuted}
-              style={[styles.balanceInput, { color: colors.textPrimary }]}
+              style={[styles.input, { color: colors.textPrimary, backgroundColor: colors.buttonSecondaryBg, borderRadius: borderRadius.sm }]}
             />
           </View>
-        </View>
+
+          <View style={styles.fieldGroup}>
+            <AppText variant="caption" style={styles.fieldLabel}>
+              Type
+            </AppText>
+            <View style={styles.typeRow}>
+              {ACCOUNT_TYPES.map(t => {
+                const isActive = t === type;
+                const meta = ACCOUNT_TYPE_META[t];
+                return (
+                  <Pressable
+                    key={t}
+                    onPress={() => {
+                      setType(t);
+                      if (!editing) setColor(meta.color);
+                    }}
+                    style={[
+                      styles.typeChip,
+                      {
+                        borderRadius: borderRadius.pill,
+                        backgroundColor: isActive ? colors.buttonPrimaryBg : colors.buttonSecondaryBg,
+                      },
+                    ]}
+                  >
+                    <AppText variant="body" weight="semibold" style={{ color: isActive ? '#FFFFFF' : colors.textPrimary }}>
+                      {meta.label}
+                    </AppText>
+                  </Pressable>
+                );
+              })}
+            </View>
+          </View>
+
+          <View style={styles.fieldGroup}>
+            <AppText variant="caption" style={styles.fieldLabel}>
+              Color
+            </AppText>
+            <View style={styles.colorRow}>
+              {CATEGORY_COLOR_CHOICES.map(c => (
+                <Pressable
+                  key={c}
+                  onPress={() => setColor(c)}
+                  style={[
+                    styles.colorSwatch,
+                    { backgroundColor: c, borderWidth: color === c ? 3 : 0, borderColor: colors.textPrimary },
+                  ]}
+                />
+              ))}
+            </View>
+          </View>
+
+          <View style={styles.fieldGroup}>
+            <AppText variant="caption" style={styles.fieldLabel}>
+              {editing ? 'Initial balance' : 'Starting balance'}
+            </AppText>
+            <View style={[styles.balanceInputRow, { backgroundColor: colors.buttonSecondaryBg, borderRadius: borderRadius.sm }]}>
+              <AppText variant="body" weight="semibold" style={{ color: colors.textMuted }}>
+                {getCurrencySymbol(state.settings.currency)}
+              </AppText>
+              <TextInput
+                value={initialBalance}
+                onChangeText={t => setInitialBalance(t.replace(/[^0-9.]/g, ''))}
+                placeholder="0.00"
+                keyboardType="decimal-pad"
+                placeholderTextColor={colors.textMuted}
+                style={[styles.balanceInput, { color: colors.textPrimary }]}
+              />
+            </View>
+          </View>
+        </GlassCard>
       </ScrollView>
 
       <View style={[styles.footer, { paddingBottom: spacing.xl }]}>
         <AppButton title="Save" onPress={handleSave} disabled={!canSave} />
       </View>
-    </SafeAreaView>
+    </GradientScreen>
   );
 }
 
 const styles = StyleSheet.create({
-  safeArea: {
-    flex: 1,
-  },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 20,
-    paddingVertical: 12,
-  },
   content: {
     paddingHorizontal: 20,
     paddingBottom: 20,
+  },
+  formCard: {
     gap: 22,
   },
   previewRow: {
     alignItems: 'center',
-    marginVertical: 8,
   },
   fieldGroup: {
     gap: 8,
@@ -213,7 +188,6 @@ const styles = StyleSheet.create({
     marginLeft: 4,
   },
   input: {
-    borderWidth: 1,
     paddingHorizontal: 14,
     paddingVertical: 12,
     fontSize: 14,
@@ -226,7 +200,6 @@ const styles = StyleSheet.create({
   typeChip: {
     paddingVertical: 8,
     paddingHorizontal: 16,
-    borderWidth: 1,
   },
   colorRow: {
     flexDirection: 'row',
@@ -242,7 +215,6 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
-    borderWidth: 1,
     paddingHorizontal: 14,
     paddingVertical: 10,
   },

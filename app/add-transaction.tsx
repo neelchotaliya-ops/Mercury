@@ -1,11 +1,13 @@
 import React, { useMemo, useState } from 'react';
 import { View, StyleSheet, ScrollView, Pressable, TextInput, Alert } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 
 import { AppText } from '@/components/ui/app-text';
 import { AppButton } from '@/components/ui/app-button';
+import { GradientScreen } from '@/components/ui/gradient-screen';
+import { GlassCard } from '@/components/ui/glass-card';
+import { ModalHeader } from '@/components/ui/modal-header';
 import { AmountInput } from '@/components/finance/amount-input';
 import { CategoryPicker } from '@/components/finance/category-picker';
 import { AccountPicker } from '@/components/finance/account-picker';
@@ -92,132 +94,116 @@ export default function AddTransactionScreen() {
   };
 
   return (
-    <SafeAreaView style={[styles.safeArea, { backgroundColor: colors.background }]}>
-      <View style={styles.header}>
-        <Pressable onPress={() => router.back()} hitSlop={10}>
-          <Ionicons name="close" size={24} color={colors.textPrimary} />
-        </Pressable>
-        <AppText variant="h3" style={{ color: colors.textPrimary }}>
-          {editing ? 'Edit transaction' : 'Add transaction'}
-        </AppText>
-        {editing ? (
-          <Pressable onPress={handleDelete} hitSlop={10}>
-            <Ionicons name="trash-outline" size={22} color="#DC2626" />
-          </Pressable>
-        ) : (
-          <View style={{ width: 22 }} />
-        )}
-      </View>
+    <GradientScreen edges={['top', 'bottom']}>
+      <ModalHeader
+        title={editing ? 'Edit transaction' : 'Add transaction'}
+        onClose={() => router.back()}
+        onDelete={editing ? handleDelete : undefined}
+      />
 
       <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
-        <View style={[styles.segmented, { backgroundColor: colors.buttonSecondaryBg, borderRadius: borderRadius.pill }]}>
-          {TYPES.map(t => {
-            const isActive = t.key === type;
-            return (
-              <Pressable
-                key={t.key}
-                onPress={() => {
-                  setType(t.key);
-                  setCategoryId(undefined);
-                }}
-                style={[
-                  styles.segment,
-                  { borderRadius: borderRadius.pill, backgroundColor: isActive ? colors.cardBackground : 'transparent' },
-                ]}
-              >
-                <AppText variant="body" weight="semibold" style={{ color: isActive ? t.color : colors.textSecondary }}>
-                  {t.label}
-                </AppText>
-              </Pressable>
-            );
-          })}
-        </View>
-
-        <AmountInput value={amount} onChangeValue={setAmount} currencySymbol={getCurrencySymbol(state.settings.currency)} accentColor={accent} />
-
-        <View style={styles.fieldGroup}>
-          <AppText variant="caption" style={styles.fieldLabel}>
-            {type === 'transfer' ? 'From account' : 'Account'}
-          </AppText>
-          <AccountPicker accounts={state.accounts} selectedId={accountId} onSelect={a => setAccountId(a.id)} />
-        </View>
-
-        {type === 'transfer' ? (
-          <View style={styles.fieldGroup}>
-            <AppText variant="caption" style={styles.fieldLabel}>
-              To account
-            </AppText>
-            <AccountPicker accounts={state.accounts} selectedId={toAccountId} onSelect={a => setToAccountId(a.id)} excludeId={accountId} />
+        <GlassCard style={styles.formCard}>
+          <View style={[styles.segmented, { backgroundColor: colors.buttonSecondaryBg, borderRadius: borderRadius.pill }]}>
+            {TYPES.map(t => {
+              const isActive = t.key === type;
+              return (
+                <Pressable
+                  key={t.key}
+                  onPress={() => {
+                    setType(t.key);
+                    setCategoryId(undefined);
+                  }}
+                  style={[
+                    styles.segment,
+                    { borderRadius: borderRadius.pill, backgroundColor: isActive ? colors.cardBackground : 'transparent' },
+                  ]}
+                >
+                  <AppText variant="body" weight="semibold" style={{ color: isActive ? t.color : colors.textSecondary }}>
+                    {t.label}
+                  </AppText>
+                </Pressable>
+              );
+            })}
           </View>
-        ) : (
+
+          <AmountInput value={amount} onChangeValue={setAmount} currencySymbol={getCurrencySymbol(state.settings.currency)} accentColor={accent} />
+
           <View style={styles.fieldGroup}>
             <AppText variant="caption" style={styles.fieldLabel}>
-              Category
+              {type === 'transfer' ? 'From account' : 'Account'}
             </AppText>
-            <CategoryPicker
-              categories={categories}
-              selectedId={categoryId}
-              onSelect={c => setCategoryId(c.id)}
-              onManage={() => router.push(`/manage-categories?kind=${type === 'income' ? 'income' : 'expense'}`)}
+            <AccountPicker accounts={state.accounts} selectedId={accountId} onSelect={a => setAccountId(a.id)} />
+          </View>
+
+          {type === 'transfer' ? (
+            <View style={styles.fieldGroup}>
+              <AppText variant="caption" style={styles.fieldLabel}>
+                To account
+              </AppText>
+              <AccountPicker accounts={state.accounts} selectedId={toAccountId} onSelect={a => setToAccountId(a.id)} excludeId={accountId} />
+            </View>
+          ) : (
+            <View style={styles.fieldGroup}>
+              <AppText variant="caption" style={styles.fieldLabel}>
+                Category
+              </AppText>
+              <CategoryPicker
+                categories={categories}
+                selectedId={categoryId}
+                onSelect={c => setCategoryId(c.id)}
+                onManage={() => router.push(`/manage-categories?kind=${type === 'income' ? 'income' : 'expense'}`)}
+              />
+            </View>
+          )}
+
+          <View style={styles.fieldGroup}>
+            <AppText variant="caption" style={styles.fieldLabel}>
+              Date
+            </AppText>
+            <View style={styles.dateRow}>
+              <Pressable onPress={() => shiftDay(-1)} hitSlop={10}>
+                <Ionicons name="chevron-back" size={20} color={colors.textPrimary} />
+              </Pressable>
+              <AppText variant="body" weight="semibold" style={{ color: colors.textPrimary }}>
+                {date.toLocaleDateString(undefined, { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' })}
+              </AppText>
+              <Pressable onPress={() => shiftDay(1)} hitSlop={10}>
+                <Ionicons name="chevron-forward" size={20} color={colors.textPrimary} />
+              </Pressable>
+            </View>
+          </View>
+
+          <View style={styles.fieldGroup}>
+            <AppText variant="caption" style={styles.fieldLabel}>
+              Note (optional)
+            </AppText>
+            <TextInput
+              value={note}
+              onChangeText={setNote}
+              placeholder="Add a note"
+              placeholderTextColor={colors.textMuted}
+              style={[
+                styles.noteInput,
+                { color: colors.textPrimary, backgroundColor: colors.buttonSecondaryBg, borderRadius: borderRadius.sm },
+              ]}
             />
           </View>
-        )}
-
-        <View style={styles.fieldGroup}>
-          <AppText variant="caption" style={styles.fieldLabel}>
-            Date
-          </AppText>
-          <View style={styles.dateRow}>
-            <Pressable onPress={() => shiftDay(-1)} hitSlop={10}>
-              <Ionicons name="chevron-back" size={20} color={colors.textPrimary} />
-            </Pressable>
-            <AppText variant="body" weight="semibold" style={{ color: colors.textPrimary }}>
-              {date.toLocaleDateString(undefined, { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' })}
-            </AppText>
-            <Pressable onPress={() => shiftDay(1)} hitSlop={10}>
-              <Ionicons name="chevron-forward" size={20} color={colors.textPrimary} />
-            </Pressable>
-          </View>
-        </View>
-
-        <View style={styles.fieldGroup}>
-          <AppText variant="caption" style={styles.fieldLabel}>
-            Note (optional)
-          </AppText>
-          <TextInput
-            value={note}
-            onChangeText={setNote}
-            placeholder="Add a note"
-            placeholderTextColor={colors.textMuted}
-            style={[
-              styles.noteInput,
-              { color: colors.textPrimary, backgroundColor: colors.cardBackground, borderColor: colors.cardBorder, borderRadius: borderRadius.sm },
-            ]}
-          />
-        </View>
+        </GlassCard>
       </ScrollView>
 
       <View style={[styles.footer, { paddingBottom: spacing.xl }]}>
         <AppButton title="Save" onPress={handleSave} disabled={!canSave} />
       </View>
-    </SafeAreaView>
+    </GradientScreen>
   );
 }
 
 const styles = StyleSheet.create({
-  safeArea: {
-    flex: 1,
-  },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 20,
-    paddingVertical: 12,
-  },
   content: {
     paddingHorizontal: 20,
     paddingBottom: 20,
+  },
+  formCard: {
     gap: 22,
   },
   segmented: {
@@ -242,7 +228,6 @@ const styles = StyleSheet.create({
     gap: 20,
   },
   noteInput: {
-    borderWidth: 1,
     paddingHorizontal: 14,
     paddingVertical: 12,
     fontSize: 14,

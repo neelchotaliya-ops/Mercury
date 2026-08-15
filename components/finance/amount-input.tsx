@@ -2,6 +2,7 @@ import React from 'react';
 import { View, StyleSheet, Pressable } from 'react-native';
 import * as Haptics from 'expo-haptics';
 import { Ionicons } from '@expo/vector-icons';
+import Animated, { useSharedValue, useAnimatedStyle, withSpring } from 'react-native-reanimated';
 
 import { AppText } from '@/components/ui/app-text';
 import { useAppTheme } from '@/context/theme-context';
@@ -14,6 +15,43 @@ export interface AmountInputProps {
 }
 
 const KEYS = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '.', '0', 'back'] as const;
+
+interface KeypadKeyProps {
+  keyValue: (typeof KEYS)[number];
+  onPress: () => void;
+}
+
+const KeypadKey: React.FC<KeypadKeyProps> = ({ keyValue, onPress }) => {
+  const { colors } = useAppTheme();
+  const scale = useSharedValue(1);
+
+  const animatedStyle = useAnimatedStyle(() => ({
+    transform: [{ scale: scale.value }],
+  }));
+
+  return (
+    <Pressable
+      onPress={onPress}
+      onPressIn={() => {
+        scale.value = withSpring(0.8, { damping: 12, stiffness: 350 });
+      }}
+      onPressOut={() => {
+        scale.value = withSpring(1, { damping: 10, stiffness: 250 });
+      }}
+      style={styles.key}
+    >
+      <Animated.View style={animatedStyle}>
+        {keyValue === 'back' ? (
+          <Ionicons name="backspace-outline" size={22} color={colors.textPrimary} />
+        ) : (
+          <AppText variant="h2" style={{ color: colors.textPrimary }}>
+            {keyValue}
+          </AppText>
+        )}
+      </Animated.View>
+    </Pressable>
+  );
+};
 
 export const AmountInput: React.FC<AmountInputProps> = ({ value, onChangeValue, currencySymbol, accentColor }) => {
   const { colors } = useAppTheme();
@@ -55,19 +93,7 @@ export const AmountInput: React.FC<AmountInputProps> = ({ value, onChangeValue, 
 
       <View style={styles.keypad}>
         {KEYS.map(key => (
-          <Pressable
-            key={key}
-            onPress={() => handleKey(key)}
-            style={({ pressed }) => [styles.key, { opacity: pressed ? 0.6 : 1 }]}
-          >
-            {key === 'back' ? (
-              <Ionicons name="backspace-outline" size={22} color={colors.textPrimary} />
-            ) : (
-              <AppText variant="h2" style={{ color: colors.textPrimary }}>
-                {key}
-              </AppText>
-            )}
-          </Pressable>
+          <KeypadKey key={key} keyValue={key} onPress={() => handleKey(key)} />
         ))}
       </View>
     </View>

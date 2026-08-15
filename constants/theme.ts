@@ -51,6 +51,13 @@ export const Colors = {
     badgeIcon2: '#8B5CF6',
     badgeBg3: '#FFFFFF',
     badgeIcon3: '#8B5CF6',
+
+    // Decorative rings + floating nav
+    ringColor: 'rgba(24, 24, 27, 0.08)',
+    navBarBg: 'rgba(24, 24, 27, 0.96)',
+    navPillBg: 'rgba(255, 255, 255, 0.16)',
+    navIconActive: '#FFFFFF',
+    navIconInactive: 'rgba(255, 255, 255, 0.45)',
   },
   dark: {
     text: '#F8FAFC',
@@ -94,6 +101,13 @@ export const Colors = {
     badgeIcon2: '#C084FC',
     badgeBg3: '#2E1065',
     badgeIcon3: '#C084FC',
+
+    // Decorative rings + floating nav
+    ringColor: 'rgba(248, 250, 252, 0.08)',
+    navBarBg: 'rgba(15, 23, 42, 0.96)',
+    navPillBg: 'rgba(255, 255, 255, 0.12)',
+    navIconActive: '#FFFFFF',
+    navIconInactive: 'rgba(248, 250, 252, 0.4)',
   },
 };
 
@@ -103,11 +117,13 @@ export const Gradients = {
     background: ['#E9DDFF', '#FFB3B2', '#FAF9FA'],
     locations: [0, 0.5, 1.0],
     card: ['rgba(255, 255, 255, 0.98)', 'rgba(255, 245, 248, 0.75)'],
+    progress: ['#EC4899', '#8B5CF6'],
   },
   dark: {
     background: ['#0F172A', '#1E1B4B', '#2E1065'],
     locations: [0, 0.5, 1.0],
     card: ['rgba(30, 41, 59, 0.9)', 'rgba(15, 23, 42, 0.6)'],
+    progress: ['#F472B6', '#A78BFA'],
   },
 };
 

@@ -1,11 +1,13 @@
 import React from 'react';
 import { View, StyleSheet, ScrollView, Pressable } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 
 import { AppText } from '@/components/ui/app-text';
 import { IconButton } from '@/components/ui/icon-button';
+import { GradientScreen } from '@/components/ui/gradient-screen';
+import { GlassCard } from '@/components/ui/glass-card';
+import { OrganicHeroCard } from '@/components/ui/organic-hero-card';
 import { StatCard } from '@/components/finance/stat-card';
 import { TransactionListItem } from '@/components/finance/transaction-list-item';
 import { EmptyState } from '@/components/finance/empty-state';
@@ -29,28 +31,34 @@ export default function HomeScreen() {
     .slice(0, 5);
 
   return (
-    <SafeAreaView style={[styles.safeArea, { backgroundColor: colors.background }]} edges={['top']}>
+    <GradientScreen showRings>
       <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
         <View style={styles.header}>
-          <View>
-            <AppText variant="caption">Total balance</AppText>
-            <AppText variant="h1" style={{ color: colors.textPrimary }}>
-              {formatCurrency(totalBalance, state.settings.currency)}
-            </AppText>
-          </View>
+          <AppText variant="h3" style={{ color: colors.textPrimary }}>
+            Overview
+          </AppText>
           <IconButton
             iconName="settings-outline"
             onPress={() => router.push('/settings')}
             size={44}
             iconSize={20}
             color={colors.textPrimary}
-            backgroundColor={colors.cardBackground}
           />
         </View>
 
+        <OrganicHeroCard
+          label="Total balance"
+          value={formatCurrency(totalBalance, state.settings.currency)}
+          badges={[
+            { icon: 'arrow-down-circle', color: '#16A34A' },
+            { icon: 'wallet', color: colors.primary },
+            { icon: 'arrow-up-circle', color: '#DC2626' },
+          ]}
+        />
+
         <View style={[styles.statsRow, { marginTop: spacing.xl }]}>
-          <StatCard label="Income this month" value={formatCurrency(income, state.settings.currency)} icon="arrow-down-circle" tint="#16A34A" />
-          <StatCard label="Expense this month" value={formatCurrency(expense, state.settings.currency)} icon="arrow-up-circle" tint="#DC2626" />
+          <StatCard label="Income this month" value={formatCurrency(income, state.settings.currency)} icon="arrow-down-circle" tint="#16A34A" animateIndex={0} />
+          <StatCard label="Expense this month" value={formatCurrency(expense, state.settings.currency)} icon="arrow-up-circle" tint="#DC2626" animateIndex={1} />
         </View>
 
         <View style={[styles.section, { marginTop: spacing['2xl'] }]}>
@@ -64,54 +72,51 @@ export default function HomeScreen() {
           </View>
 
           {recentTransactions.length === 0 ? (
-            <EmptyState
-              icon="receipt-outline"
-              title="No transactions yet"
-              subtitle="Add your first transaction to start tracking your spending."
-              actionLabel="Add transaction"
-              onAction={() => router.push('/add-transaction')}
-            />
+            <GlassCard>
+              <EmptyState
+                icon="receipt-outline"
+                title="No transactions yet"
+                subtitle="Add your first transaction to start tracking your spending."
+                actionLabel="Add transaction"
+                onAction={() => router.push('/add-transaction')}
+              />
+            </GlassCard>
           ) : (
-            <View
-              style={[
-                styles.card,
-                { backgroundColor: colors.cardBackground, borderColor: colors.cardBorder },
-              ]}
-            >
+            <GlassCard style={styles.listCard} animateIndex={2}>
               {recentTransactions.map(t => (
                 <TransactionListItem key={t.id} transaction={t} onPress={() => router.push(`/add-transaction?id=${t.id}`)} />
               ))}
-            </View>
+            </GlassCard>
           )}
         </View>
       </ScrollView>
 
-      <Pressable
-        onPress={() => router.push('/add-transaction')}
-        style={({ pressed }) => [
-          styles.fab,
-          { backgroundColor: colors.buttonPrimaryBg, opacity: pressed ? 0.85 : 1 },
-        ]}
-      >
-        <Ionicons name="add" size={28} color="#FFFFFF" />
-      </Pressable>
-    </SafeAreaView>
+      {recentTransactions.length > 0 && (
+        <Pressable
+          onPress={() => router.push('/add-transaction')}
+          style={({ pressed }) => [
+            styles.fab,
+            { backgroundColor: colors.buttonPrimaryBg, opacity: pressed ? 0.85 : 1 },
+          ]}
+        >
+          <Ionicons name="add" size={28} color="#FFFFFF" />
+        </Pressable>
+      )}
+    </GradientScreen>
   );
 }
 
 const styles = StyleSheet.create({
-  safeArea: {
-    flex: 1,
-  },
   content: {
     paddingHorizontal: 20,
     paddingTop: 12,
-    paddingBottom: 120,
+    paddingBottom: 140,
   },
   header: {
     flexDirection: 'row',
-    alignItems: 'flex-start',
+    alignItems: 'center',
     justifyContent: 'space-between',
+    marginBottom: 8,
   },
   statsRow: {
     flexDirection: 'row',
@@ -125,16 +130,14 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
   },
-  card: {
-    borderWidth: 1,
-    borderRadius: 16,
+  listCard: {
     paddingHorizontal: 14,
     paddingVertical: 4,
   },
   fab: {
     position: 'absolute',
     right: 20,
-    bottom: 28,
+    bottom: 100,
     width: 56,
     height: 56,
     borderRadius: 28,

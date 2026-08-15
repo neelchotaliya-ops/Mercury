@@ -1,10 +1,11 @@
 import React, { useMemo, useState } from 'react';
 import { View, StyleSheet, ScrollView, Pressable } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 
 import { AppText } from '@/components/ui/app-text';
+import { GradientScreen } from '@/components/ui/gradient-screen';
+import { GlassCard } from '@/components/ui/glass-card';
 import { BudgetProgressBarItem } from '@/components/finance/budget-progress-bar';
 import { EmptyState } from '@/components/finance/empty-state';
 import { useAppTheme } from '@/context/theme-context';
@@ -21,7 +22,7 @@ export default function BudgetsScreen() {
   const progress = useMemo(() => getBudgetProgress(state, monthKey), [state, monthKey]);
 
   return (
-    <SafeAreaView style={[styles.safeArea, { backgroundColor: colors.background }]} edges={['top']}>
+    <GradientScreen>
       <View style={styles.headerRow}>
         <AppText variant="h2" style={{ color: colors.textPrimary }}>
           Budgets
@@ -45,33 +46,33 @@ export default function BudgetsScreen() {
 
       <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
         {progress.length === 0 ? (
-          <EmptyState
-            icon="pie-chart-outline"
-            title="No budgets yet"
-            subtitle="Set a monthly spending limit for a category to start tracking your budget."
-            actionLabel="Create budget"
-            onAction={() => router.push('/add-budget')}
-          />
+          <GlassCard>
+            <EmptyState
+              icon="pie-chart-outline"
+              title="No budgets yet"
+              subtitle="Set a monthly spending limit for a category to start tracking your budget."
+              actionLabel="Create budget"
+              onAction={() => router.push('/add-budget')}
+            />
+          </GlassCard>
         ) : (
           <View style={{ gap: spacing.md }}>
-            {progress.map(p => (
+            {progress.map((p, index) => (
               <BudgetProgressBarItem
                 key={p.budget.id}
                 progress={p}
+                animateIndex={index}
                 onPress={() => router.push(`/add-budget?id=${p.budget.id}`)}
               />
             ))}
           </View>
         )}
       </ScrollView>
-    </SafeAreaView>
+    </GradientScreen>
   );
 }
 
 const styles = StyleSheet.create({
-  safeArea: {
-    flex: 1,
-  },
   headerRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -97,6 +98,6 @@ const styles = StyleSheet.create({
   content: {
     paddingHorizontal: 20,
     paddingTop: 12,
-    paddingBottom: 40,
+    paddingBottom: 140,
   },
 });

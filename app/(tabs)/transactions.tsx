@@ -1,10 +1,11 @@
 import React, { useMemo, useState } from 'react';
 import { View, StyleSheet, ScrollView, Pressable, TextInput } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 
 import { AppText } from '@/components/ui/app-text';
+import { GradientScreen } from '@/components/ui/gradient-screen';
+import { GlassCard } from '@/components/ui/glass-card';
 import { TransactionListItem } from '@/components/finance/transaction-list-item';
 import { EmptyState } from '@/components/finance/empty-state';
 import { useAppTheme } from '@/context/theme-context';
@@ -44,7 +45,7 @@ export default function TransactionsScreen() {
   const groups = useMemo(() => groupTransactionsByDay(filtered), [filtered]);
 
   return (
-    <SafeAreaView style={[styles.safeArea, { backgroundColor: colors.background }]} edges={['top']}>
+    <GradientScreen>
       <View style={styles.headerRow}>
         <AppText variant="h2" style={{ color: colors.textPrimary }}>
           Transactions
@@ -93,41 +94,35 @@ export default function TransactionsScreen() {
 
       <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
         {groups.length === 0 ? (
-          <EmptyState
-            icon="search-outline"
-            title="No transactions found"
-            subtitle="Try a different filter or add a new transaction."
-            actionLabel="Add transaction"
-            onAction={() => router.push('/add-transaction')}
-          />
+          <GlassCard>
+            <EmptyState
+              icon="search-outline"
+              title="No transactions found"
+              subtitle="Try a different filter or add a new transaction."
+              actionLabel="Add transaction"
+              onAction={() => router.push('/add-transaction')}
+            />
+          </GlassCard>
         ) : (
-          groups.map(group => (
+          groups.map((group, groupIndex) => (
             <View key={group.date} style={{ marginBottom: spacing.lg }}>
               <AppText variant="caption" style={styles.dayLabel}>
                 {dayLabel(group.date)}
               </AppText>
-              <View
-                style={[
-                  styles.card,
-                  { backgroundColor: colors.cardBackground, borderColor: colors.cardBorder },
-                ]}
-              >
+              <GlassCard style={styles.card} animateIndex={groupIndex}>
                 {group.transactions.map(t => (
                   <TransactionListItem key={t.id} transaction={t} onPress={() => router.push(`/add-transaction?id=${t.id}`)} />
                 ))}
-              </View>
+              </GlassCard>
             </View>
           ))
         )}
       </ScrollView>
-    </SafeAreaView>
+    </GradientScreen>
   );
 }
 
 const styles = StyleSheet.create({
-  safeArea: {
-    flex: 1,
-  },
   headerRow: {
     paddingHorizontal: 20,
     paddingTop: 12,
@@ -159,15 +154,13 @@ const styles = StyleSheet.create({
   content: {
     paddingHorizontal: 20,
     paddingTop: 16,
-    paddingBottom: 40,
+    paddingBottom: 140,
   },
   dayLabel: {
     marginBottom: 8,
     marginLeft: 4,
   },
   card: {
-    borderWidth: 1,
-    borderRadius: 16,
     paddingHorizontal: 14,
     paddingVertical: 4,
   },

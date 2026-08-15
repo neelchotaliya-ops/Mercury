@@ -2,23 +2,14 @@ import { Tabs } from 'expo-router';
 import React from 'react';
 import { Ionicons } from '@expo/vector-icons';
 
-import { HapticTab } from '@/components/haptic-tab';
-import { useAppTheme } from '@/context/theme-context';
+import { FloatingTabBar } from '@/components/navigation/floating-tab-bar';
 
 export default function TabLayout() {
-  const { colors } = useAppTheme();
-
   return (
     <Tabs
+      tabBar={props => <FloatingTabBar {...props} />}
       screenOptions={{
-        tabBarActiveTintColor: colors.tabIconSelected,
-        tabBarInactiveTintColor: colors.tabIconDefault,
         headerShown: false,
-        tabBarButton: HapticTab,
-        tabBarStyle: {
-          backgroundColor: colors.background,
-          borderTopColor: colors.border,
-        },
       }}>
       <Tabs.Screen
         name="index"

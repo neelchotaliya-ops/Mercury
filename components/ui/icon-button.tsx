@@ -32,8 +32,8 @@ export const IconButton: React.FC<IconButtonProps> = ({
     onPress();
   };
 
-  const bg = backgroundColor || 'rgba(255, 255, 255, 0.75)';
-  const iconColor = color || '#18181B'; // Crisp solid black icon
+  const bg = backgroundColor || colors.cardBackground;
+  const iconColor = color || colors.textPrimary;
 
   return (
     <Pressable
@@ -45,6 +45,7 @@ export const IconButton: React.FC<IconButtonProps> = ({
           height: size,
           borderRadius: size / 2,
           backgroundColor: bg,
+          borderColor: colors.cardBorder,
           opacity: pressed ? 0.75 : 1,
           transform: [{ scale: pressed ? 0.94 : 1 }],
         },
@@ -61,7 +62,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.9)',
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.05,
