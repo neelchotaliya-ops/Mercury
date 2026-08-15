@@ -9,7 +9,7 @@ import { GradientScreen } from '@/components/ui/gradient-screen';
 import { GlassCard } from '@/components/ui/glass-card';
 import { ModalHeader } from '@/components/ui/modal-header';
 import { SegmentedControl } from '@/components/ui/segmented-control';
-import { AmountInput } from '@/components/finance/amount-input';
+import { AmountDisplay, Numpad } from '@/components/finance/amount-input';
 import { CategoryPicker } from '@/components/finance/category-picker';
 import { AccountPicker } from '@/components/finance/account-picker';
 import { useFinance } from '@/context/finance-context';
@@ -100,134 +100,147 @@ export default function AddTransactionScreen() {
   const isToday = new Date().toDateString() === date.toDateString();
 
   return (
-    <GradientScreen edges={['top', 'bottom']} contours="top">
+    <GradientScreen edges={['top']} contours="top">
       <ModalHeader
         title={editing ? 'Edit transaction' : 'New transaction'}
         onClose={() => router.back()}
         onDelete={editing ? handleDelete : undefined}
       />
 
-      <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
-        <SegmentedControl<TransactionType>
-          options={[
-            { key: 'expense', label: 'Expense', activeColor: Colors.expense },
-            { key: 'income', label: 'Income', activeColor: Colors.income },
-            { key: 'transfer', label: 'Transfer', activeColor: Colors.primary },
-          ]}
-          value={type}
-          onChange={next => {
-            setType(next);
-            setCategoryId(undefined);
-          }}
-        />
-
-        <GlassCard strong style={styles.amountCard} elevated>
-          <AmountInput
-            value={amount}
-            onChangeValue={setAmount}
-            currencySymbol={getCurrencySymbol(state.settings.currency)}
-            accentColor={TYPE_COLOR[type]}
+      <View style={styles.screenBody}>
+        <ScrollView
+          contentContainerStyle={styles.content}
+          keyboardShouldPersistTaps="handled"
+          showsVerticalScrollIndicator={false}
+        >
+          <SegmentedControl<TransactionType>
+            options={[
+              { key: 'expense', label: 'Expense', activeColor: Colors.expense },
+              { key: 'income', label: 'Income', activeColor: Colors.income },
+              { key: 'transfer', label: 'Transfer', activeColor: Colors.primary },
+            ]}
+            value={type}
+            onChange={next => {
+              setType(next);
+              setCategoryId(undefined);
+            }}
           />
-        </GlassCard>
 
-        <GlassCard style={styles.formCard} padding={18}>
-          <View style={styles.field}>
-            <AppText variant="label">{type === 'transfer' ? 'From' : 'Account'}</AppText>
-            <AccountPicker
-              accounts={state.accounts}
-              selectedId={accountId}
-              onSelect={a => setAccountId(a.id)}
+          <GlassCard strong style={styles.amountCard} elevated>
+            <AmountDisplay
+              value={amount}
+              currencySymbol={getCurrencySymbol(state.settings.currency)}
+              accentColor={TYPE_COLOR[type]}
             />
-          </View>
+          </GlassCard>
 
-          {type === 'transfer' ? (
+          <GlassCard style={styles.formCard} padding={18}>
             <View style={styles.field}>
-              <AppText variant="label">To</AppText>
+              <AppText variant="label">{type === 'transfer' ? 'From' : 'Account'}</AppText>
               <AccountPicker
                 accounts={state.accounts}
-                selectedId={toAccountId}
-                onSelect={a => setToAccountId(a.id)}
-                excludeId={accountId}
+                selectedId={accountId}
+                onSelect={a => setAccountId(a.id)}
               />
             </View>
-          ) : (
-            <View style={styles.field}>
-              <AppText variant="label">Category</AppText>
-              <CategoryPicker
-                categories={categories}
-                selectedId={categoryId}
-                onSelect={c => setCategoryId(c.id)}
-                onManage={() =>
-                  router.push(`/manage-categories?kind=${type === 'income' ? 'income' : 'expense'}`)
-                }
-              />
-            </View>
-          )}
 
-          <View style={styles.field}>
-            <AppText variant="label">Date</AppText>
-            <View style={styles.dateRow}>
-              <Pressable onPress={() => shiftDay(-1)} hitSlop={10} style={styles.dateArrow}>
-                <Ionicons name="chevron-back" size={17} color={Colors.textSecondary} />
-              </Pressable>
-              <View style={styles.dateLabel}>
-                <AppText variant="bodyStrong" align="center">
-                  {isToday
-                    ? 'Today'
-                    : date.toLocaleDateString(undefined, {
-                        weekday: 'short',
-                        day: 'numeric',
-                        month: 'short',
-                      })}
-                </AppText>
+            {type === 'transfer' ? (
+              <View style={styles.field}>
+                <AppText variant="label">To</AppText>
+                <AccountPicker
+                  accounts={state.accounts}
+                  selectedId={toAccountId}
+                  onSelect={a => setToAccountId(a.id)}
+                  excludeId={accountId}
+                />
               </View>
-              <Pressable
-                onPress={() => shiftDay(1)}
-                hitSlop={10}
-                disabled={isToday}
-                style={[styles.dateArrow, isToday && styles.dateArrowDisabled]}
-              >
-                <Ionicons name="chevron-forward" size={17} color={Colors.textSecondary} />
-              </Pressable>
+            ) : (
+              <View style={styles.field}>
+                <AppText variant="label">Category</AppText>
+                <CategoryPicker
+                  categories={categories}
+                  selectedId={categoryId}
+                  onSelect={c => setCategoryId(c.id)}
+                  onManage={() =>
+                    router.push(`/manage-categories?kind=${type === 'income' ? 'income' : 'expense'}`)
+                  }
+                />
+              </View>
+            )}
+
+            <View style={styles.field}>
+              <AppText variant="label">Date</AppText>
+              <View style={styles.dateRow}>
+                <Pressable onPress={() => shiftDay(-1)} hitSlop={10} style={styles.dateArrow}>
+                  <Ionicons name="chevron-back" size={17} color={Colors.textSecondary} />
+                </Pressable>
+                <View style={styles.dateLabel}>
+                  <AppText variant="bodyStrong" align="center">
+                    {isToday
+                      ? 'Today'
+                      : date.toLocaleDateString(undefined, {
+                          weekday: 'short',
+                          day: 'numeric',
+                          month: 'short',
+                        })}
+                  </AppText>
+                </View>
+                <Pressable
+                  onPress={() => shiftDay(1)}
+                  hitSlop={10}
+                  disabled={isToday}
+                  style={[styles.dateArrow, isToday && styles.dateArrowDisabled]}
+                >
+                  <Ionicons name="chevron-forward" size={17} color={Colors.textSecondary} />
+                </Pressable>
+              </View>
             </View>
-          </View>
 
-          <View style={styles.field}>
-            <AppText variant="label">Note</AppText>
-            <TextInput
-              value={note}
-              onChangeText={setNote}
-              placeholder="Optional"
-              placeholderTextColor={Colors.textMuted}
-              style={styles.input}
-            />
-          </View>
-        </GlassCard>
-      </ScrollView>
+            <View style={styles.field}>
+              <AppText variant="label">Note</AppText>
+              <TextInput
+                value={note}
+                onChangeText={setNote}
+                placeholder="Optional"
+                placeholderTextColor={Colors.textMuted}
+                style={styles.input}
+              />
+            </View>
+          </GlassCard>
+        </ScrollView>
 
-      <View style={styles.footer}>
-        <AppButton
-          title={editing ? 'Save changes' : 'Add transaction'}
-          onPress={handleSave}
-          disabled={!canSave}
-        />
+        <View style={styles.fixedBottomContainer}>
+          <Numpad value={amount} onChangeValue={setAmount} />
+          <AppButton
+            title={editing ? 'Save changes' : 'Add transaction'}
+            onPress={handleSave}
+            size="md"
+            disabled={!canSave}
+            style={styles.submitBtn}
+          />
+        </View>
       </View>
     </GradientScreen>
   );
 }
 
 const styles = StyleSheet.create({
+  screenBody: {
+    flex: 1,
+    position: 'relative',
+  },
   content: {
     paddingHorizontal: 20,
-    paddingBottom: 20,
+    paddingTop: 4,
+    paddingBottom: 350,
     gap: Spacing.lg,
   },
   amountCard: {
-    paddingVertical: 22,
-    paddingHorizontal: 12,
+    paddingVertical: 16,
+    paddingHorizontal: 18,
   },
   formCard: {
-    gap: Spacing.xl,
+    gap: Spacing.lg,
   },
   field: {
     gap: 10,
@@ -262,9 +275,27 @@ const styles = StyleSheet.create({
     fontFamily: 'Manrope_500Medium',
     color: Colors.textPrimary,
   },
-  footer: {
-    paddingHorizontal: 20,
+  fixedBottomContainer: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: '#FFFFFF',
+    borderTopLeftRadius: 28,
+    borderTopRightRadius: 28,
+    borderTopWidth: 1,
+    borderColor: Colors.glassBorder,
+    paddingHorizontal: 16,
     paddingTop: 10,
-    paddingBottom: 12,
+    paddingBottom: 24,
+    gap: 6,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: -6 },
+    shadowOpacity: 0.06,
+    shadowRadius: 16,
+    elevation: 12,
+  },
+  submitBtn: {
+    marginTop: 4,
   },
 });

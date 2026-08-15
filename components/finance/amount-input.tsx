@@ -7,12 +7,48 @@ import Animated, { useSharedValue, useAnimatedStyle, withSpring } from 'react-na
 import { AppText } from '@/components/ui/app-text';
 import { Colors } from '@/constants/theme';
 
-export interface AmountInputProps {
+export interface AmountDisplayProps {
   value: string;
-  onChangeValue: (value: string) => void;
   currencySymbol: string;
   accentColor?: string;
 }
+
+const formatNumberWithCommas = (raw: string): string => {
+  if (!raw) return '0';
+  const [integerPart, decimalPart] = raw.split('.');
+  const formattedInteger = integerPart.replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+  if (decimalPart !== undefined) {
+    return `${formattedInteger}.${decimalPart}`;
+  }
+  return formattedInteger;
+};
+
+export const AmountDisplay: React.FC<AmountDisplayProps> = ({
+  value,
+  currencySymbol,
+  accentColor,
+}) => {
+  const tint = accentColor ?? Colors.textPrimary;
+  const isEmpty = value.length === 0;
+  const formattedValue = formatNumberWithCommas(value);
+
+  return (
+    <View style={styles.displayRow}>
+      <AppText variant="h2" color={isEmpty ? Colors.textMuted : tint} style={styles.symbol}>
+        {currencySymbol}
+      </AppText>
+      <AppText
+        variant="display"
+        color={isEmpty ? Colors.textMuted : tint}
+        style={styles.amount}
+        numberOfLines={1}
+        adjustsFontSizeToFit
+      >
+        {formattedValue}
+      </AppText>
+    </View>
+  );
+};
 
 const KEYS = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '.', '0', 'back'] as const;
 type KeyValue = (typeof KEYS)[number];
@@ -23,14 +59,14 @@ const KeypadKey: React.FC<{ keyValue: KeyValue; onPress: () => void }> = ({ keyV
 
   const animatedStyle = useAnimatedStyle(() => ({
     transform: [{ scale: scale.value }],
-    backgroundColor: `rgba(255, 255, 255, ${bg.value * 0.7})`,
+    backgroundColor: `rgba(25, 21, 39, ${bg.value * 0.08})`,
   }));
 
   return (
     <Pressable
       onPress={onPress}
       onPressIn={() => {
-        scale.value = withSpring(0.88, { damping: 13, stiffness: 380 });
+        scale.value = withSpring(0.9, { damping: 14, stiffness: 380 });
         bg.value = withSpring(1, { damping: 18, stiffness: 260 });
       }}
       onPressOut={() => {
@@ -41,9 +77,9 @@ const KeypadKey: React.FC<{ keyValue: KeyValue; onPress: () => void }> = ({ keyV
     >
       <Animated.View style={[styles.key, animatedStyle]}>
         {keyValue === 'back' ? (
-          <Ionicons name="backspace-outline" size={21} color={Colors.textSecondary} />
+          <Ionicons name="backspace-outline" size={20} color={Colors.textPrimary} />
         ) : (
-          <AppText variant="h2" style={styles.keyLabel}>
+          <AppText variant="h3" style={styles.keyLabel}>
             {keyValue}
           </AppText>
         )}
@@ -52,12 +88,12 @@ const KeypadKey: React.FC<{ keyValue: KeyValue; onPress: () => void }> = ({ keyV
   );
 };
 
-export const AmountInput: React.FC<AmountInputProps> = ({
-  value,
-  onChangeValue,
-  currencySymbol,
-  accentColor,
-}) => {
+export interface NumpadProps {
+  value: string;
+  onChangeValue: (value: string) => void;
+}
+
+export const Numpad: React.FC<NumpadProps> = ({ value, onChangeValue }) => {
   const handleKey = (key: KeyValue) => {
     try {
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
@@ -82,31 +118,27 @@ export const AmountInput: React.FC<AmountInputProps> = ({
     onChangeValue(`${value}${key}`);
   };
 
-  const tint = accentColor ?? Colors.textPrimary;
-  const isEmpty = value.length === 0;
+  return (
+    <View style={styles.keypad}>
+      {KEYS.map(key => (
+        <KeypadKey key={key} keyValue={key} onPress={() => handleKey(key)} />
+      ))}
+    </View>
+  );
+};
 
+export interface AmountInputProps extends AmountDisplayProps, NumpadProps {}
+
+export const AmountInput: React.FC<AmountInputProps> = ({
+  value,
+  onChangeValue,
+  currencySymbol,
+  accentColor,
+}) => {
   return (
     <View style={styles.container}>
-      <View style={styles.displayRow}>
-        <AppText variant="h2" color={isEmpty ? Colors.textMuted : tint} style={styles.symbol}>
-          {currencySymbol}
-        </AppText>
-        <AppText
-          variant="display"
-          color={isEmpty ? Colors.textMuted : tint}
-          style={styles.amount}
-          numberOfLines={1}
-          adjustsFontSizeToFit
-        >
-          {isEmpty ? '0' : value}
-        </AppText>
-      </View>
-
-      <View style={styles.keypad}>
-        {KEYS.map(key => (
-          <KeypadKey key={key} keyValue={key} onPress={() => handleKey(key)} />
-        ))}
-      </View>
+      <AmountDisplay value={value} currencySymbol={currencySymbol} accentColor={accentColor} />
+      <Numpad value={value} onChangeValue={onChangeValue} />
     </View>
   );
 };
@@ -119,32 +151,37 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'baseline',
     justifyContent: 'center',
-    gap: 4,
-    marginBottom: 14,
+    gap: 6,
+    paddingVertical: 4,
   },
   symbol: {
-    fontSize: 22,
+    fontSize: 26,
+    fontFamily: 'Manrope_700Bold',
   },
   amount: {
-    fontSize: 46,
-    lineHeight: 54,
+    fontSize: 44,
+    lineHeight: 50,
+    fontFamily: 'Manrope_800ExtraBold',
   },
   keypad: {
     flexDirection: 'row',
     flexWrap: 'wrap',
+    paddingVertical: 4,
   },
   keySlot: {
     width: '33.333%',
-    paddingVertical: 4,
-    paddingHorizontal: 6,
+    paddingVertical: 3,
+    paddingHorizontal: 4,
   },
   key: {
-    height: 54,
-    borderRadius: 18,
+    height: 52,
+    borderRadius: 16,
     alignItems: 'center',
     justifyContent: 'center',
   },
   keyLabel: {
-    fontSize: 23,
+    fontSize: 22,
+    fontFamily: 'Manrope_700Bold',
+    color: Colors.textPrimary,
   },
 });
