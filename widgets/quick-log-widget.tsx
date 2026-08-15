@@ -1,3 +1,11 @@
+'use no memo';
+// Directive above must stay the file's literal first line — react-native-android-widget
+// calls these components directly and walks the returned JSX to build native views;
+// there is no real React render happening. The project's React Compiler
+// (app.json experiments.reactCompiler) instruments components with a memoization
+// hook regardless, which throws "Invalid Hook Call" outside a real render. This
+// opts the whole file out of that instrumentation, per the library's own guidance.
+
 import React from 'react';
 import { FlexWidget, TextWidget } from 'react-native-android-widget';
 

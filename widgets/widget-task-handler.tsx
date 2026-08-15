@@ -1,3 +1,9 @@
+'use no memo';
+// Must stay the file's literal first line — see quick-log-widget.tsx for why:
+// render() below returns JSX that react-native-android-widget walks directly,
+// outside a real React render, and the project's React Compiler otherwise
+// instruments it anyway, which throws.
+
 import React from 'react';
 import type { WidgetTaskHandlerProps } from 'react-native-android-widget';
 

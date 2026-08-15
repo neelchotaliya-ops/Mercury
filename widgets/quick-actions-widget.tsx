@@ -1,3 +1,10 @@
+'use no memo';
+// Must stay the file's literal first line — see quick-log-widget.tsx for why:
+// react-native-android-widget calls these components directly, outside a real
+// React render, and the project's React Compiler otherwise instruments them
+// anyway, which throws. This opts the whole file out, per the library's own
+// error-message guidance.
+
 import React from 'react';
 import { FlexWidget, TextWidget, type HexColor } from 'react-native-android-widget';
 
