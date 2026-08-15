@@ -23,13 +23,16 @@ import Animated, {
 
 import { AppText } from '@/components/ui/app-text';
 import { Colors } from '@/constants/theme';
-import { BLOB_VIEWBOX } from '@/constants/shapes';
+import { BLOB_VIEWBOX, BLOB_PATH, BLOB_PATH_ALT } from '@/constants/shapes';
 
 const AnimatedPath = Animated.createAnimatedComponent(Path);
 
 export type BadgeSlot = 'topLeft' | 'topRight' | 'bottomLeft' | 'bottomRight';
 
 export interface HeroBadge {
+  id?: string;
+  name?: string;
+  balance?: number;
   icon: keyof typeof Ionicons.glyphMap;
   slot: BadgeSlot;
   color?: string;
@@ -42,14 +45,15 @@ export interface OrganicHeroProps {
   sub?: string;
   badges?: HeroBadge[];
   size?: number;
+  currency?: string;
   children?: React.ReactNode;
 }
 
 const SLOT_STYLES: Record<BadgeSlot, ViewStyle> = {
-  topLeft: { top: '21%', left: '6%' },
-  topRight: { top: '10%', right: '6%' },
-  bottomLeft: { bottom: '24%', left: '5%' },
-  bottomRight: { bottom: '15%', right: '7%' },
+  topLeft: { top: '21%', left: '4%' },
+  topRight: { top: '10%', right: '4%' },
+  bottomLeft: { bottom: '24%', left: '3%' },
+  bottomRight: { bottom: '15%', right: '5%' },
 };
 
 const RADIAL_VECTORS: Record<BadgeSlot, { dx: number; dy: number; stretchAngle: number }> = {
@@ -58,6 +62,20 @@ const RADIAL_VECTORS: Record<BadgeSlot, { dx: number; dy: number; stretchAngle: 
   bottomLeft: { dx: -20, dy: 20, stretchAngle: 25 },
   bottomRight: { dx: 22, dy: 18, stretchAngle: -25 },
 };
+
+function formatShortCurrency(amount: number, currency: string): string {
+  const abs = Math.abs(amount);
+  const sign = amount < 0 ? '-' : '';
+  const sym = currency === 'USD' ? '$' : currency === 'EUR' ? '€' : currency === 'GBP' ? '£' : '$';
+
+  if (abs >= 1000000) {
+    return `${sign}${sym}${(abs / 1000000).toFixed(1)}M`;
+  }
+  if (abs >= 1000) {
+    return `${sign}${sym}${(abs / 1000).toFixed(1)}k`;
+  }
+  return `${sign}${sym}${abs.toFixed(0)}`;
+}
 
 // Subtle organic bubble keyframes
 const HERO_NUMS_A = [
@@ -105,9 +123,16 @@ function interpolateHeroPath(t: number): string {
 interface SmallFloatingBubbleProps {
   badge: HeroBadge;
   index: number;
+  proportionalScale?: number;
+  currency?: string;
 }
 
-const SmallFloatingBubble: React.FC<SmallFloatingBubbleProps> = ({ badge, index }) => {
+const SmallFloatingBubble: React.FC<SmallFloatingBubbleProps> = ({
+  badge,
+  index,
+  proportionalScale = 1,
+  currency = 'USD',
+}) => {
   const mergeProgress = useSharedValue(0);
 
   useEffect(() => {
@@ -132,7 +157,7 @@ const SmallFloatingBubble: React.FC<SmallFloatingBubbleProps> = ({ badge, index 
     const tx = vector.dx * (p - 0.25);
     const ty = vector.dy * (p - 0.25);
 
-    // Liquid droplet stretching during de-merging (around p = 0.35 to 0.6)
+    // Liquid droplet stretching during de-merging
     const stretch = interpolate(
       p,
       [0, 0.35, 0.6, 1],
@@ -161,32 +186,60 @@ const SmallFloatingBubble: React.FC<SmallFloatingBubbleProps> = ({ badge, index 
       Extrapolation.CLAMP
     );
 
+    const scaleX = stretch * proportionalScale;
+    const scaleY = squish * proportionalScale;
+
     return {
       opacity,
       transform: [
         { translateX: tx },
         { translateY: ty },
         { rotate: `${rot}deg` },
-        { scaleX: stretch },
-        { scaleY: squish },
+        { scaleX },
+        { scaleY },
       ],
     };
   });
 
+  const displayText =
+    badge.balance !== undefined
+      ? formatShortCurrency(badge.balance, currency)
+      : badge.label;
+
+  const bubbleSize = 64;
+
   return (
     <Animated.View
       style={[
-        styles.bubbleBadge,
+        styles.miniBlobContainer,
         SLOT_STYLES[badge.slot],
         animatedStyle,
       ]}
     >
-      <Ionicons name={badge.icon} size={17} color={badge.color ?? Colors.primary} />
-      {badge.label ? (
-        <AppText variant="micro" style={styles.badgeLabel}>
-          {badge.label}
-        </AppText>
-      ) : null}
+      <Svg width={bubbleSize} height={bubbleSize} viewBox={`0 0 ${BLOB_VIEWBOX} ${BLOB_VIEWBOX}`}>
+        <Defs>
+          <SvgLinearGradient id={`miniBlobGrad-${index}`} x1="10%" y1="0%" x2="90%" y2="100%">
+            <Stop offset="0%" stopColor="#FFFFFF" stopOpacity="0.96" />
+            <Stop offset="100%" stopColor="#F5E8F0" stopOpacity="0.88" />
+          </SvgLinearGradient>
+        </Defs>
+
+        <Path
+          d={index % 2 === 0 ? BLOB_PATH : BLOB_PATH_ALT}
+          fill={`url(#miniBlobGrad-${index})`}
+          stroke="rgba(255,255,255,0.95)"
+          strokeWidth={2}
+        />
+      </Svg>
+
+      <View style={styles.miniBlobContent}>
+        <Ionicons name={badge.icon} size={14} color={badge.color ?? Colors.primary} />
+        {displayText ? (
+          <AppText variant="micro" numberOfLines={1} style={styles.miniBlobLabel}>
+            {displayText}
+          </AppText>
+        ) : null}
+      </View>
     </Animated.View>
   );
 };
@@ -197,6 +250,7 @@ export const OrganicHero: React.FC<OrganicHeroProps> = ({
   sub,
   badges = [],
   size = 225,
+  currency = 'USD',
   children,
 }) => {
   const morphProgress = useSharedValue(0);
@@ -268,6 +322,11 @@ export const OrganicHero: React.FC<OrganicHeroProps> = ({
     };
   });
 
+  const maxAbsBalance = Math.max(
+    ...badges.map(b => (b.balance !== undefined ? Math.abs(b.balance) : 1)),
+    1
+  );
+
   return (
     <View style={[styles.container, { width: size + 60, height: size + 30 }]}>
       <Animated.View style={[styles.blobWrap, { width: size, height: size }, blobContainerStyle]}>
@@ -301,7 +360,14 @@ export const OrganicHero: React.FC<OrganicHeroProps> = ({
                 </AppText>
               ) : null}
               {value ? (
-                <AppText variant="display" align="center" style={styles.value}>
+                <AppText
+                  variant="display"
+                  align="center"
+                  numberOfLines={1}
+                  adjustsFontSizeToFit
+                  minimumFontScale={0.6}
+                  style={styles.value}
+                >
                   {value}
                 </AppText>
               ) : null}
@@ -315,9 +381,21 @@ export const OrganicHero: React.FC<OrganicHeroProps> = ({
         </View>
       </Animated.View>
 
-      {badges.slice(0, 4).map((badge, index) => (
-        <SmallFloatingBubble key={`${badge.slot}-${index}`} badge={badge} index={index} />
-      ))}
+      {badges.slice(0, 4).map((badge, index) => {
+        const absBal = badge.balance !== undefined ? Math.abs(badge.balance) : 0;
+        const ratio = maxAbsBalance > 0 ? absBal / maxAbsBalance : 0.5;
+        const proportionalScale = 0.78 + ratio * 0.44;
+
+        return (
+          <SmallFloatingBubble
+            key={`${badge.slot}-${index}`}
+            badge={badge}
+            index={index}
+            proportionalScale={proportionalScale}
+            currency={currency}
+          />
+        );
+      })}
     </View>
   );
 };
@@ -340,31 +418,33 @@ const styles = StyleSheet.create({
     paddingHorizontal: 28,
   },
   value: {
+    width: '100%',
     marginTop: 2,
   },
   sub: {
     marginTop: 2,
   },
-  bubbleBadge: {
+  miniBlobContainer: {
     position: 'absolute',
-    flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
-    minWidth: 46,
-    height: 46,
-    paddingHorizontal: 14,
-    borderRadius: 23,
-    backgroundColor: 'rgba(255, 255, 255, 0.88)',
-    borderWidth: 1,
-    borderColor: Colors.glassBorder,
     justifyContent: 'center',
     shadowColor: '#6D28D9',
     shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.1,
+    shadowOpacity: 0.12,
     shadowRadius: 14,
   },
-  badgeLabel: {
+  miniBlobContent: {
+    ...StyleSheet.absoluteFillObject,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 1,
+    paddingHorizontal: 6,
+  },
+  miniBlobLabel: {
+    fontSize: 10,
+    fontWeight: '700',
     color: Colors.textSecondary,
+    textAlign: 'center',
   },
 });
 

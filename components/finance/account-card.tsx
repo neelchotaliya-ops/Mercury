@@ -38,7 +38,12 @@ export const AccountCard: React.FC<AccountCardProps> = ({ account, onPress, anim
             <AppText variant="caption">{ACCOUNT_TYPE_META[account.type].label}</AppText>
           </View>
           <View style={styles.amountCol}>
-            <AppText variant="h3" color={balance < 0 ? Colors.expense : Colors.textPrimary}>
+            <AppText
+              variant="h3"
+              color={balance < 0 ? Colors.expense : Colors.textPrimary}
+              numberOfLines={1}
+              adjustsFontSizeToFit
+            >
               {formatCurrency(balance, state.settings.currency)}
             </AppText>
             <Ionicons name="chevron-forward" size={15} color={Colors.textMuted} />

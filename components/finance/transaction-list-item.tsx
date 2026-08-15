@@ -63,7 +63,7 @@ export const TransactionListItem: React.FC<TransactionListItemProps> = ({
           </AppText>
         ) : null}
       </View>
-      <AppText variant="amount" color={amountColor}>
+      <AppText variant="amount" color={amountColor} numberOfLines={1}>
         {prefix}
         {formatCurrency(transaction.amount, state.settings.currency)}
       </AppText>

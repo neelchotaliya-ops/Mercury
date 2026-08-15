@@ -57,12 +57,15 @@ export default function HomeScreen() {
           label="Total balance"
           value={formatCurrency(totalBalance, currency)}
           sub={`${accounts.length} ${accounts.length === 1 ? 'account' : 'accounts'}`}
-          badges={[
-            { icon: 'trending-up', slot: 'topLeft', color: Colors.income },
-            { icon: 'sparkles', slot: 'topRight', color: Colors.primary },
-            { icon: 'card-outline', slot: 'bottomLeft', color: Colors.primary },
-            { icon: 'trending-down', slot: 'bottomRight', color: Colors.expense },
-          ]}
+          currency={currency}
+          badges={accounts.slice(0, 4).map((account, idx) => ({
+            id: account.id,
+            name: account.name,
+            balance: getAccountBalance(state, account.id),
+            icon: account.icon,
+            color: account.color,
+            slot: (['topLeft', 'topRight', 'bottomLeft', 'bottomRight'] as const)[idx],
+          }))}
         />
 
         <View style={styles.statsRow}>
