@@ -1,7 +1,8 @@
-import React, { useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { View, StyleSheet, ScrollView, Pressable, TextInput, Alert } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
+import * as Haptics from 'expo-haptics';
 
 import { AppText } from '@/components/ui/app-text';
 import { AppButton } from '@/components/ui/app-button';
@@ -12,9 +13,20 @@ import { SegmentedControl } from '@/components/ui/segmented-control';
 import { AmountDisplay, Numpad } from '@/components/finance/amount-input';
 import { CategoryPicker } from '@/components/finance/category-picker';
 import { AccountPicker } from '@/components/finance/account-picker';
+import { ScanReceiptButton } from '@/components/finance/scan-receipt-button';
 import { useFinance } from '@/context/finance-context';
 import { TransactionType } from '@/types/finance';
 import { getCurrencySymbol } from '@/utils/currency';
+import { buildNote } from '@/utils/receipt-parser';
+import { guessAccount, guessCategory } from '@/utils/receipt-match';
+import {
+  ScanResult,
+  captureAndScan,
+  describeScanFailure,
+  isScanSupported,
+  pickAndScan,
+  scanImage,
+} from '@/utils/receipt-scan';
 import { Colors, BorderRadius, Spacing } from '@/constants/theme';
 
 const TYPE_COLOR: Record<TransactionType, string> = {
@@ -25,7 +37,7 @@ const TYPE_COLOR: Record<TransactionType, string> = {
 
 export default function AddTransactionScreen() {
   const router = useRouter();
-  const params = useLocalSearchParams<{ id?: string; type?: string }>();
+  const params = useLocalSearchParams<{ id?: string; type?: string; imageUri?: string }>();
   const { state, addTransaction, updateTransaction, deleteTransaction } = useFinance();
 
   const editing = useMemo(
@@ -48,9 +60,73 @@ export default function AddTransactionScreen() {
   const [note, setNote] = useState(editing?.note ?? '');
   const [date, setDate] = useState<Date>(editing ? new Date(editing.date) : new Date());
 
+  const [scanning, setScanning] = useState(false);
+  const [scanned, setScanned] = useState<{ merchant?: string; confidence: number } | null>(null);
+
   const categories = state.categories.filter(
     c => c.kind === (type === 'income' ? 'income' : 'expense')
   );
+
+  /**
+   * Applies a scan to the form. Nothing is saved here — the fields are filled
+   * in and the user still has to confirm, so a misread never lands silently.
+   */
+  const applyScanResult = useCallback(
+    (result: ScanResult) => {
+      if (result.status !== 'ok') {
+        if (result.status !== 'canceled') {
+          Alert.alert('Scan', describeScanFailure(result));
+        }
+        return;
+      }
+
+      const receipt = result.receipt;
+      const nextType: TransactionType = receipt.direction;
+      const kind = nextType === 'income' ? 'income' : 'expense';
+
+      setType(nextType);
+      if (receipt.amount !== undefined) {
+        setAmount(String(Number(receipt.amount.toFixed(2))));
+      }
+      if (receipt.date) setDate(receipt.date);
+
+      const scannedNote = buildNote(receipt);
+      if (scannedNote) setNote(scannedNote);
+
+      // Category list is keyed off the new type, so always reassign it.
+      setCategoryId(guessCategory(receipt, state.categories, kind)?.id);
+
+      const matchedAccount = guessAccount(receipt, state.accounts);
+      if (matchedAccount) setAccountId(matchedAccount.id);
+
+      setScanned({ merchant: receipt.merchant, confidence: receipt.confidence });
+      try {
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      } catch {}
+    },
+    [state.accounts, state.categories]
+  );
+
+  const runScan = useCallback(
+    async (scan: () => Promise<ScanResult>) => {
+      setScanning(true);
+      try {
+        applyScanResult(await scan());
+      } finally {
+        setScanning(false);
+      }
+    },
+    [applyScanResult]
+  );
+
+  // A screenshot shared into Mercury arrives as a URI param; scan it on entry.
+  const handledImageRef = useRef<string | undefined>(undefined);
+  useEffect(() => {
+    const uri = params.imageUri;
+    if (!uri || handledImageRef.current === uri) return;
+    handledImageRef.current = uri;
+    runScan(() => scanImage(uri));
+  }, [params.imageUri, runScan]);
   const numericAmount = parseFloat(amount || '0');
 
   const canSave =
@@ -113,6 +189,32 @@ export default function AddTransactionScreen() {
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
         >
+          {!editing && isScanSupported() ? (
+            <ScanReceiptButton
+              scanning={scanning}
+              onPickImage={() => runScan(pickAndScan)}
+              onOpenCamera={() => runScan(captureAndScan)}
+            />
+          ) : null}
+
+          {scanned ? (
+            <View style={styles.scanBanner}>
+              <Ionicons
+                name={scanned.confidence >= 0.7 ? 'checkmark-circle' : 'alert-circle'}
+                size={17}
+                color={scanned.confidence >= 0.7 ? Colors.income : Colors.expense}
+              />
+              <AppText variant="micro" style={styles.scanBannerText}>
+                {scanned.confidence >= 0.7
+                  ? `Read from screenshot${scanned.merchant ? ` · ${scanned.merchant}` : ''}. Check the details, then save.`
+                  : 'Only part of that screenshot was readable — please check every field before saving.'}
+              </AppText>
+              <Pressable onPress={() => setScanned(null)} hitSlop={10}>
+                <Ionicons name="close" size={15} color={Colors.textMuted} />
+              </Pressable>
+            </View>
+          ) : null}
+
           <SegmentedControl<TransactionType>
             options={[
               { key: 'expense', label: 'Expense', activeColor: Colors.expense },
@@ -238,6 +340,22 @@ const styles = StyleSheet.create({
   amountCard: {
     paddingVertical: 16,
     paddingHorizontal: 18,
+  },
+  scanBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 9,
+    paddingVertical: 11,
+    paddingHorizontal: 14,
+    borderRadius: BorderRadius.sm,
+    backgroundColor: Colors.primarySoft,
+    borderWidth: 1,
+    borderColor: Colors.glassBorderSoft,
+    marginTop: -4,
+  },
+  scanBannerText: {
+    flex: 1,
+    color: Colors.textSecondary,
   },
   formCard: {
     gap: Spacing.lg,

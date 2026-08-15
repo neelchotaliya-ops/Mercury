@@ -38,6 +38,22 @@
             "backgroundColor": "#000000"
           }
         }
+      ],
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Mercury reads payment screenshots you choose so it can fill in a transaction for you. Images are processed on your device and never uploaded.",
+          "cameraPermission": "Mercury uses the camera to scan a paper receipt. Photos are processed on your device and never uploaded."
+        }
+      ],
+      [
+        "expo-share-intent",
+        {
+          "iosActivationRules": {
+            "NSExtensionActivationSupportsImageWithMaxCount": 1
+          },
+          "androidIntentFilters": ["image/*"]
+        }
       ]
     ],
     "experiments": {

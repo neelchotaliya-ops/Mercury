@@ -18,8 +18,11 @@ import {
   Manrope_700Bold,
 } from '@expo-google-fonts/manrope';
 
+import { ShareIntentProvider } from 'expo-share-intent';
+
 import { AppThemeProvider } from '@/context/theme-context';
 import { FinanceProvider, useFinance } from '@/context/finance-context';
+import { useSharedReceipt } from '@/hooks/use-shared-receipt';
 
 SplashScreen.preventAutoHideAsync();
 
@@ -35,6 +38,9 @@ function RootNavigator() {
       SplashScreen.hideAsync();
     }
   }, [state.isLoaded]);
+
+  // Only route a shared screenshot once accounts and categories exist to match against.
+  useSharedReceipt(state.isLoaded && state.settings.hasOnboarded);
 
   if (!state.isLoaded) {
     return null;
@@ -78,11 +84,15 @@ export default function RootLayout() {
     return null;
   }
 
+  // ShareIntentProvider has to wrap every other provider so the native module
+  // is reachable when the app is cold-started by a share.
   return (
-    <FinanceProvider>
-      <AppThemeProvider>
-        <RootNavigator />
-      </AppThemeProvider>
-    </FinanceProvider>
+    <ShareIntentProvider>
+      <FinanceProvider>
+        <AppThemeProvider>
+          <RootNavigator />
+        </AppThemeProvider>
+      </FinanceProvider>
+    </ShareIntentProvider>
   );
 }
