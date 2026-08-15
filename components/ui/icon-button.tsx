@@ -1,5 +1,5 @@
 import React from 'react';
-import { Pressable, StyleSheet, ViewStyle, StyleProp } from 'react-native';
+import { Pressable, StyleSheet, ViewStyle, StyleProp, Platform } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { BlurView } from 'expo-blur';
 import * as Haptics from 'expo-haptics';
@@ -65,7 +65,9 @@ export const IconButton: React.FC<IconButtonProps> = ({
           style,
         ]}
       >
-        {!solid && <BlurView intensity={24} tint="light" style={StyleSheet.absoluteFill} />}
+        {!solid && Platform.OS !== 'android' && (
+          <BlurView intensity={24} tint="light" style={StyleSheet.absoluteFill} />
+        )}
         <Ionicons name={iconName} size={iconSize ?? Math.round(size * 0.42)} color={iconColor} />
       </Animated.View>
     </Pressable>

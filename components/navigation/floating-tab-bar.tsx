@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, StyleSheet, Pressable } from 'react-native';
+import { View, StyleSheet, Pressable, Platform } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { BottomTabBarProps } from '@react-navigation/bottom-tabs';
 import { BlurView } from 'expo-blur';
@@ -134,7 +134,9 @@ export const FloatingTabBar: React.FC<BottomTabBarProps> = ({ state, descriptors
     <View style={[styles.wrapper, { paddingBottom: insets.bottom > 0 ? insets.bottom : 16 }]} pointerEvents="box-none">
       <View style={styles.bar}>
         <View style={styles.barSurface}>
-          <BlurView intensity={40} tint="light" style={StyleSheet.absoluteFill} />
+          {Platform.OS !== 'android' && (
+            <BlurView intensity={40} tint="light" style={StyleSheet.absoluteFill} />
+          )}
           <LinearGradient
             colors={['rgba(255,255,255,0.82)', 'rgba(255,255,255,0.58)']}
             start={{ x: 0, y: 0 }}

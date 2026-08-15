@@ -1,5 +1,5 @@
 import React from 'react';
-import { StyleSheet, ViewStyle, StyleProp } from 'react-native';
+import { StyleSheet, ViewStyle, StyleProp, View, Platform } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';
 import Animated, { FadeInDown } from 'react-native-reanimated';
@@ -20,6 +20,53 @@ export interface GlassCardProps {
   elevated?: boolean;
 }
 
+const PADDING_KEYS = new Set([
+  'padding',
+  'paddingTop',
+  'paddingBottom',
+  'paddingLeft',
+  'paddingRight',
+  'paddingHorizontal',
+  'paddingVertical',
+]);
+
+const CONTENT_LAYOUT_KEYS = new Set([
+  'flexDirection',
+  'alignItems',
+  'justifyContent',
+  'gap',
+  'rowGap',
+  'columnGap',
+  'flexWrap',
+]);
+
+function splitCardStyles(style: StyleProp<ViewStyle> | undefined, paddingProp: number | undefined) {
+  const flattened = StyleSheet.flatten(style) || {};
+  const containerStyle: ViewStyle = {};
+  const contentStyle: ViewStyle = {};
+
+  let hasPaddingInStyle = false;
+
+  for (const [key, value] of Object.entries(flattened)) {
+    if (PADDING_KEYS.has(key)) {
+      hasPaddingInStyle = true;
+      (contentStyle as any)[key] = value;
+    } else if (CONTENT_LAYOUT_KEYS.has(key)) {
+      (contentStyle as any)[key] = value;
+    } else {
+      (containerStyle as any)[key] = value;
+    }
+  }
+
+  if (paddingProp !== undefined) {
+    contentStyle.padding = paddingProp;
+  } else if (!hasPaddingInStyle) {
+    contentStyle.padding = Spacing.xl;
+  }
+
+  return { containerStyle, contentStyle };
+}
+
 export const GlassCard: React.FC<GlassCardProps> = ({
   children,
   style,
@@ -30,13 +77,16 @@ export const GlassCard: React.FC<GlassCardProps> = ({
   animateIndex,
   elevated = false,
 }) => {
-  const containerStyle: ViewStyle = {
-    borderRadius: radius ?? BorderRadius.lg,
-    padding: padding ?? Spacing.xl,
+  const { containerStyle, contentStyle } = splitCardStyles(style, padding);
+
+  const cardContainerStyle: ViewStyle = {
+    borderRadius: radius ?? containerStyle.borderRadius ?? BorderRadius.lg,
     borderWidth: 1,
     borderColor: strong ? Colors.glassBorder : Colors.glassBorderSoft,
+    backgroundColor: strong ? 'rgba(255, 255, 255, 0.75)' : 'rgba(255, 255, 255, 0.45)',
     overflow: 'hidden',
     ...(elevated ? Shadows.lifted : Shadows.soft),
+    ...containerStyle,
   };
 
   return (
@@ -49,16 +99,26 @@ export const GlassCard: React.FC<GlassCardProps> = ({
               .damping(18)
           : undefined
       }
-      style={[containerStyle, style]}
+      style={cardContainerStyle}
     >
-      <BlurView intensity={intensity} tint="light" style={StyleSheet.absoluteFill} />
+      {Platform.OS !== 'android' && (
+        <BlurView intensity={intensity} tint="light" style={StyleSheet.absoluteFill} />
+      )}
       <LinearGradient
         colors={(strong ? Gradients.glassStrong : Gradients.glass) as [string, string]}
         start={{ x: 0.1, y: 0 }}
         end={{ x: 0.9, y: 1 }}
         style={StyleSheet.absoluteFill}
       />
-      {children}
+      <View style={[styles.content, contentStyle]}>{children}</View>
     </Animated.View>
   );
 };
+
+const styles = StyleSheet.create({
+  content: {
+    flexGrow: 1,
+    width: '100%',
+  },
+});
+

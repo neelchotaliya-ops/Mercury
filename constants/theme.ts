@@ -135,7 +135,11 @@ const shadow = (
       shadowOpacity: opacity,
       shadowRadius: radius,
     },
-    android: { elevation },
+    android: {
+      // Android native elevation renders an opaque white background rectangle
+      // behind child views when applied to semi-transparent glass surfaces.
+      elevation: color === '#17131F' ? elevation : 0,
+    },
     web: {
       boxShadow: `0px ${y}px ${radius}px rgba(${color === '#17131F' ? '23, 19, 31' : '109, 40, 217'}, ${opacity})`,
     },

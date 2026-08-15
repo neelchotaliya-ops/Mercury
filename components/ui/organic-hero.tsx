@@ -207,7 +207,6 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 6 },
     shadowOpacity: 0.1,
     shadowRadius: 14,
-    elevation: 4,
   },
   badgeLabel: {
     color: Colors.textSecondary,

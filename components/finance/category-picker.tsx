@@ -77,7 +77,6 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 6 },
     shadowOpacity: 0.25,
     shadowRadius: 12,
-    elevation: 5,
   },
   addTile: {
     width: 52,
