@@ -1,184 +1,129 @@
 import React, { useState } from 'react';
 import { View, StyleSheet, Pressable } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
 import { Redirect, useRouter } from 'expo-router';
+import Animated, { FadeIn, FadeInDown } from 'react-native-reanimated';
 
-import { BackgroundGradient } from '@/components/onboarding/background-gradient';
-import { OnboardingGraphic } from '@/components/onboarding/onboarding-graphic';
-import { IconButton } from '@/components/ui/icon-button';
+import { GradientScreen } from '@/components/ui/gradient-screen';
+import { OrganicHero } from '@/components/ui/organic-hero';
 import { AppText } from '@/components/ui/app-text';
 import { AppButton } from '@/components/ui/app-button';
+import { IconButton } from '@/components/ui/icon-button';
 import { PageIndicator } from '@/components/ui/page-indicator';
+import { OnboardingGlyph } from '@/components/onboarding/onboarding-glyph';
 import { useFinance } from '@/context/finance-context';
+import { Colors, Spacing } from '@/constants/theme';
 
-interface OnboardingSlide {
-  id: number;
+interface Slide {
   title: string;
   subtitle: string;
-  buttonText: string;
+  cta: string;
 }
 
-const SLIDES: OnboardingSlide[] = [
+const SLIDES: Slide[] = [
   {
-    id: 1,
-    title: 'Snap it, share it, done',
-    subtitle: 'Screenshots become transactions automatically.',
-    buttonText: 'Next',
+    title: 'Every rupee, in one place',
+    subtitle: 'Log spending in seconds and always know where your money stands.',
+    cta: 'Next',
   },
   {
-    id: 2,
     title: 'Your data never leaves your phone',
-    subtitle: 'Full local privacy, no cloud storage.',
-    buttonText: 'Next →',
+    subtitle: 'No account, no cloud, no tracking. Everything is stored locally.',
+    cta: 'Next',
   },
   {
-    id: 3,
     title: 'See your money clearly',
-    subtitle: 'Automatic categorization and rich spend insights.',
-    buttonText: 'Get Started',
+    subtitle: 'Budgets that hold you accountable and insights that actually explain things.',
+    cta: 'Get started',
   },
 ];
 
 export default function OnboardingScreen() {
   const router = useRouter();
   const { state, completeOnboarding } = useFinance();
-  const [activeIndex, setActiveIndex] = useState<number>(0); // Start at Step 1
+  const [index, setIndex] = useState(0);
 
   if (state.settings.hasOnboarded) {
     return <Redirect href="/(tabs)" />;
   }
 
-  const currentSlide = SLIDES[activeIndex];
+  const slide = SLIDES[index];
 
-  const finishOnboarding = () => {
+  const finish = () => {
     completeOnboarding();
     router.replace('/(tabs)');
   };
 
-  const handleNext = () => {
-    if (activeIndex < SLIDES.length - 1) {
-      setActiveIndex(prev => prev + 1);
-    } else {
-      finishOnboarding();
-    }
-  };
-
-  const handleBack = () => {
-    if (activeIndex > 0) {
-      setActiveIndex(prev => prev - 1);
-    }
-  };
-
-  const handleSkip = () => {
-    finishOnboarding();
-  };
+  const next = () => (index < SLIDES.length - 1 ? setIndex(i => i + 1) : finish());
 
   return (
-    <BackgroundGradient>
-      <SafeAreaView style={styles.safeArea}>
-        {/* Header Bar */}
-        <View style={styles.header}>
-          <IconButton
-            iconName="arrow-back"
-            onPress={handleBack}
-            size={44}
-            iconSize={20}
-            color="#18181B"
-            backgroundColor="rgba(255, 255, 255, 0.85)"
-            style={{ opacity: activeIndex > 0 ? 1 : 0.35 }}
-          />
-
-          <Pressable onPress={handleSkip} style={({ pressed }) => [{ opacity: pressed ? 0.6 : 1 }]}>
-            <AppText variant="button" style={styles.skipText}>
-              Skip
-            </AppText>
-          </Pressable>
+    <GradientScreen contours="full">
+      <View style={styles.header}>
+        <View style={styles.backSlot}>
+          {index > 0 ? (
+            <IconButton iconName="arrow-back" onPress={() => setIndex(i => i - 1)} size={42} />
+          ) : null}
         </View>
+        <Pressable onPress={finish} hitSlop={10}>
+          <AppText variant="link" color={Colors.textSecondary}>
+            Skip
+          </AppText>
+        </Pressable>
+      </View>
 
-        {/* Main Content Area */}
-        <View style={styles.contentContainer}>
-          {/* Step 1 / 2 / 3 Illustration Graphic */}
-          <OnboardingGraphic stepIndex={activeIndex} />
+      <View style={styles.main}>
+        <OrganicHero size={256}>
+          <OnboardingGlyph step={index} size={158} />
+        </OrganicHero>
 
-          {/* Headline & Subtitle */}
-          <View style={styles.textContainer}>
-            <AppText variant="h1" align="center" style={styles.titleText}>
-              {currentSlide.title}
-            </AppText>
-            <AppText variant="subtitle" align="center" style={styles.subtitleText}>
-              {currentSlide.subtitle}
-            </AppText>
-          </View>
+        <Animated.View key={index} entering={FadeInDown.duration(420)} style={styles.copy}>
+          <AppText variant="h1" align="center">
+            {slide.title}
+          </AppText>
+          <AppText variant="subtitle" align="center" style={styles.subtitle}>
+            {slide.subtitle}
+          </AppText>
+        </Animated.View>
 
-          {/* Page Dots Indicator */}
-          <PageIndicator
-            count={SLIDES.length}
-            activeIndex={activeIndex}
-            onSelect={index => setActiveIndex(index)}
-          />
-        </View>
+        <PageIndicator count={SLIDES.length} activeIndex={index} onSelect={setIndex} />
+      </View>
 
-        {/* Bottom Actions Section */}
-        <View style={styles.footerContainer}>
-          <AppButton
-            title={currentSlide.buttonText}
-            onPress={handleNext}
-            variant="primary"
-            size="lg"
-          />
-        </View>
-      </SafeAreaView>
-    </BackgroundGradient>
+      <Animated.View entering={FadeIn.delay(200)} style={styles.footer}>
+        <AppButton title={slide.cta} onPress={next} size="lg" />
+      </Animated.View>
+    </GradientScreen>
   );
 }
 
 const styles = StyleSheet.create({
-  safeArea: {
-    flex: 1,
-    justifyContent: 'space-between',
-  },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: 24,
-    paddingTop: 8,
+    paddingHorizontal: 20,
+    paddingTop: 6,
+    height: 52,
   },
-  skipText: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#18181B',
+  backSlot: {
+    width: 42,
+    height: 42,
   },
-  contentContainer: {
+  main: {
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
     paddingHorizontal: 24,
+    gap: Spacing.sm,
   },
-  textContainer: {
+  copy: {
     alignItems: 'center',
-    paddingHorizontal: 16,
-    marginTop: 12,
+    gap: 10,
+    marginTop: Spacing.lg,
   },
-  titleText: {
-    fontSize: 30,
-    lineHeight: 36,
-    fontWeight: '800',
-    color: '#18181B',
-    marginBottom: 10,
-    letterSpacing: -0.5,
+  subtitle: {
+    maxWidth: 300,
   },
-  subtitleText: {
-    fontSize: 15,
-    lineHeight: 22,
-    color: '#52525B',
-    maxWidth: 310,
-    fontWeight: '400',
-  },
-  footerContainer: {
+  footer: {
     paddingHorizontal: 28,
-    paddingBottom: 24,
-    gap: 16,
-    alignItems: 'center',
+    paddingBottom: Spacing.xl,
   },
 });

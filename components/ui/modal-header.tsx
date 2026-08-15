@@ -3,31 +3,44 @@ import { View, StyleSheet } from 'react-native';
 
 import { AppText } from '@/components/ui/app-text';
 import { IconButton } from '@/components/ui/icon-button';
-import { useAppTheme } from '@/context/theme-context';
+import { Colors } from '@/constants/theme';
 
 export interface ModalHeaderProps {
   title: string;
+  subtitle?: string;
   onClose: () => void;
   onDelete?: () => void;
+  closeIcon?: 'close' | 'arrow-back';
 }
 
-export const ModalHeader: React.FC<ModalHeaderProps> = ({ title, onClose, onDelete }) => {
-  const { colors } = useAppTheme();
+export const ModalHeader: React.FC<ModalHeaderProps> = ({
+  title,
+  subtitle,
+  onClose,
+  onDelete,
+  closeIcon = 'close',
+}) => (
+  <View style={styles.header}>
+    <IconButton iconName={closeIcon} onPress={onClose} size={42} />
 
-  return (
-    <View style={styles.header}>
-      <IconButton iconName="close" onPress={onClose} size={40} iconSize={18} />
-      <AppText variant="h3" style={{ color: colors.textPrimary }}>
+    <View style={styles.titleCol}>
+      <AppText variant="h3" align="center" numberOfLines={1}>
         {title}
       </AppText>
-      {onDelete ? (
-        <IconButton iconName="trash-outline" onPress={onDelete} size={40} iconSize={18} color="#DC2626" />
-      ) : (
-        <View style={{ width: 40 }} />
-      )}
+      {subtitle ? (
+        <AppText variant="micro" align="center">
+          {subtitle}
+        </AppText>
+      ) : null}
     </View>
-  );
-};
+
+    {onDelete ? (
+      <IconButton iconName="trash-outline" onPress={onDelete} size={42} color={Colors.expense} />
+    ) : (
+      <View style={styles.spacer} />
+    )}
+  </View>
+);
 
 const styles = StyleSheet.create({
   header: {
@@ -35,6 +48,15 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingHorizontal: 20,
-    paddingVertical: 12,
+    paddingTop: 6,
+    paddingBottom: 14,
+    gap: 12,
+  },
+  titleCol: {
+    flex: 1,
+    gap: 2,
+  },
+  spacer: {
+    width: 42,
   },
 });

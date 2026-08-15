@@ -1,6 +1,7 @@
 import React, { useMemo, useState } from 'react';
 import { View, StyleSheet, ScrollView, Pressable, TextInput, Alert } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
+import { Ionicons } from '@expo/vector-icons';
 
 import { AppText } from '@/components/ui/app-text';
 import { AppButton } from '@/components/ui/app-button';
@@ -8,45 +9,42 @@ import { GradientScreen } from '@/components/ui/gradient-screen';
 import { GlassCard } from '@/components/ui/glass-card';
 import { ModalHeader } from '@/components/ui/modal-header';
 import { IconBadge } from '@/components/finance/icon-badge';
-import { useAppTheme } from '@/context/theme-context';
 import { useFinance } from '@/context/finance-context';
 import { AccountType } from '@/types/finance';
 import { ACCOUNT_TYPE_META, CATEGORY_COLOR_CHOICES } from '@/constants/categories';
 import { getCurrencySymbol } from '@/utils/currency';
+import { Colors, BorderRadius, Spacing } from '@/constants/theme';
 
 const ACCOUNT_TYPES = Object.keys(ACCOUNT_TYPE_META) as AccountType[];
 
 export default function AddAccountScreen() {
   const router = useRouter();
   const params = useLocalSearchParams<{ id?: string }>();
-  const { colors, spacing, borderRadius } = useAppTheme();
   const { state, addAccount, updateAccount, deleteAccount } = useFinance();
 
-  const editing = useMemo(() => state.accounts.find(a => a.id === params.id), [state.accounts, params.id]);
+  const editing = useMemo(
+    () => state.accounts.find(a => a.id === params.id),
+    [state.accounts, params.id]
+  );
 
   const [name, setName] = useState(editing?.name ?? '');
   const [type, setType] = useState<AccountType>(editing?.type ?? 'cash');
-  const [color, setColor] = useState(editing?.color ?? ACCOUNT_TYPE_META['cash'].color);
-  const [initialBalance, setInitialBalance] = useState(editing ? String(editing.initialBalance) : '');
+  const [color, setColor] = useState(editing?.color ?? ACCOUNT_TYPE_META.cash.color);
+  const [balance, setBalance] = useState(editing ? String(editing.initialBalance) : '');
 
   const canSave = name.trim().length > 0;
 
   const handleSave = () => {
     if (!canSave) return;
-    const meta = ACCOUNT_TYPE_META[type];
     const payload = {
       name: name.trim(),
       type,
-      icon: meta.icon,
+      icon: ACCOUNT_TYPE_META[type].icon,
       color,
-      initialBalance: parseFloat(initialBalance || '0'),
+      initialBalance: parseFloat(balance || '0'),
     };
-
-    if (editing) {
-      updateAccount({ ...editing, ...payload });
-    } else {
-      addAccount(payload);
-    }
+    if (editing) updateAccount({ ...editing, ...payload });
+    else addAccount(payload);
     router.back();
   };
 
@@ -66,39 +64,37 @@ export default function AddAccountScreen() {
   };
 
   return (
-    <GradientScreen edges={['top', 'bottom']}>
+    <GradientScreen edges={['top', 'bottom']} contours="top">
       <ModalHeader
-        title={editing ? 'Edit account' : 'Add account'}
+        title={editing ? 'Edit account' : 'New account'}
         onClose={() => router.back()}
         onDelete={editing ? handleDelete : undefined}
       />
 
-      <ScrollView contentContainerStyle={styles.content}>
-        <GlassCard style={styles.formCard}>
-          <View style={styles.previewRow}>
-            <IconBadge icon={ACCOUNT_TYPE_META[type].icon} color={color} size={56} />
-          </View>
+      <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
+        <GlassCard strong style={styles.preview} elevated>
+          <IconBadge icon={ACCOUNT_TYPE_META[type].icon} color={color} size={64} solid />
+          <AppText variant="h3">{name.trim() || 'Account name'}</AppText>
+          <AppText variant="caption">{ACCOUNT_TYPE_META[type].label}</AppText>
+        </GlassCard>
 
-          <View style={styles.fieldGroup}>
-            <AppText variant="caption" style={styles.fieldLabel}>
-              Name
-            </AppText>
+        <GlassCard style={styles.formCard} padding={18}>
+          <View style={styles.field}>
+            <AppText variant="label">Name</AppText>
             <TextInput
               value={name}
               onChangeText={setName}
-              placeholder="e.g. HDFC Savings"
-              placeholderTextColor={colors.textMuted}
-              style={[styles.input, { color: colors.textPrimary, backgroundColor: colors.buttonSecondaryBg, borderRadius: borderRadius.sm }]}
+              placeholder="e.g. Everyday savings"
+              placeholderTextColor={Colors.textMuted}
+              style={styles.input}
             />
           </View>
 
-          <View style={styles.fieldGroup}>
-            <AppText variant="caption" style={styles.fieldLabel}>
-              Type
-            </AppText>
+          <View style={styles.field}>
+            <AppText variant="label">Type</AppText>
             <View style={styles.typeRow}>
               {ACCOUNT_TYPES.map(t => {
-                const isActive = t === type;
+                const active = t === type;
                 const meta = ACCOUNT_TYPE_META[t];
                 return (
                   <Pressable
@@ -110,12 +106,17 @@ export default function AddAccountScreen() {
                     style={[
                       styles.typeChip,
                       {
-                        borderRadius: borderRadius.pill,
-                        backgroundColor: isActive ? colors.buttonPrimaryBg : colors.buttonSecondaryBg,
+                        backgroundColor: active ? Colors.ctaBg : Colors.controlBg,
+                        borderColor: active ? 'transparent' : Colors.glassBorder,
                       },
                     ]}
                   >
-                    <AppText variant="body" weight="semibold" style={{ color: isActive ? '#FFFFFF' : colors.textPrimary }}>
+                    <Ionicons
+                      name={meta.icon}
+                      size={15}
+                      color={active ? Colors.ctaText : Colors.textSecondary}
+                    />
+                    <AppText variant="micro" color={active ? Colors.ctaText : Colors.textPrimary}>
                       {meta.label}
                     </AppText>
                   </Pressable>
@@ -124,47 +125,50 @@ export default function AddAccountScreen() {
             </View>
           </View>
 
-          <View style={styles.fieldGroup}>
-            <AppText variant="caption" style={styles.fieldLabel}>
-              Color
-            </AppText>
+          <View style={styles.field}>
+            <AppText variant="label">Colour</AppText>
             <View style={styles.colorRow}>
               {CATEGORY_COLOR_CHOICES.map(c => (
-                <Pressable
-                  key={c}
-                  onPress={() => setColor(c)}
-                  style={[
-                    styles.colorSwatch,
-                    { backgroundColor: c, borderWidth: color === c ? 3 : 0, borderColor: colors.textPrimary },
-                  ]}
-                />
+                <Pressable key={c} onPress={() => setColor(c)} style={styles.swatchSlot}>
+                  <View
+                    style={[
+                      styles.swatch,
+                      { backgroundColor: c },
+                      color === c && styles.swatchActive,
+                    ]}
+                  >
+                    {color === c ? <Ionicons name="checkmark" size={15} color="#FFFFFF" /> : null}
+                  </View>
+                </Pressable>
               ))}
             </View>
           </View>
 
-          <View style={styles.fieldGroup}>
-            <AppText variant="caption" style={styles.fieldLabel}>
-              {editing ? 'Initial balance' : 'Starting balance'}
-            </AppText>
-            <View style={[styles.balanceInputRow, { backgroundColor: colors.buttonSecondaryBg, borderRadius: borderRadius.sm }]}>
-              <AppText variant="body" weight="semibold" style={{ color: colors.textMuted }}>
+          <View style={styles.field}>
+            <AppText variant="label">Starting balance</AppText>
+            <View style={styles.balanceRow}>
+              <AppText variant="bodyStrong" color={Colors.textMuted}>
                 {getCurrencySymbol(state.settings.currency)}
               </AppText>
               <TextInput
-                value={initialBalance}
-                onChangeText={t => setInitialBalance(t.replace(/[^0-9.]/g, ''))}
+                value={balance}
+                onChangeText={t => setBalance(t.replace(/[^0-9.]/g, ''))}
                 placeholder="0.00"
                 keyboardType="decimal-pad"
-                placeholderTextColor={colors.textMuted}
-                style={[styles.balanceInput, { color: colors.textPrimary }]}
+                placeholderTextColor={Colors.textMuted}
+                style={styles.balanceInput}
               />
             </View>
           </View>
         </GlassCard>
       </ScrollView>
 
-      <View style={[styles.footer, { paddingBottom: spacing.xl }]}>
-        <AppButton title="Save" onPress={handleSave} disabled={!canSave} />
+      <View style={styles.footer}>
+        <AppButton
+          title={editing ? 'Save changes' : 'Add account'}
+          onPress={handleSave}
+          disabled={!canSave}
+        />
       </View>
     </GradientScreen>
   );
@@ -174,23 +178,27 @@ const styles = StyleSheet.create({
   content: {
     paddingHorizontal: 20,
     paddingBottom: 20,
+    gap: Spacing.lg,
+  },
+  preview: {
+    alignItems: 'center',
+    gap: 8,
+    paddingVertical: 26,
   },
   formCard: {
-    gap: 22,
+    gap: Spacing.xl,
   },
-  previewRow: {
-    alignItems: 'center',
-  },
-  fieldGroup: {
-    gap: 8,
-  },
-  fieldLabel: {
-    marginLeft: 4,
+  field: {
+    gap: 10,
   },
   input: {
-    paddingHorizontal: 14,
-    paddingVertical: 12,
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    borderRadius: BorderRadius.sm,
+    backgroundColor: 'rgba(25, 21, 39, 0.04)',
     fontSize: 14,
+    fontFamily: 'Manrope_500Medium',
+    color: Colors.textPrimary,
   },
   typeRow: {
     flexDirection: 'row',
@@ -198,32 +206,56 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   typeChip: {
-    paddingVertical: 8,
-    paddingHorizontal: 16,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingVertical: 10,
+    paddingHorizontal: 14,
+    borderRadius: BorderRadius.pill,
+    borderWidth: 1,
   },
   colorRow: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: 12,
+    gap: 10,
   },
-  colorSwatch: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
+  swatchSlot: {
+    padding: 1,
   },
-  balanceInputRow: {
+  swatch: {
+    width: 34,
+    height: 34,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  swatchActive: {
+    borderWidth: 2,
+    borderColor: '#FFFFFF',
+    shadowColor: '#17131F',
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.25,
+    shadowRadius: 6,
+    elevation: 4,
+  },
+  balanceRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
-    paddingHorizontal: 14,
-    paddingVertical: 10,
+    gap: 8,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderRadius: BorderRadius.sm,
+    backgroundColor: 'rgba(25, 21, 39, 0.04)',
   },
   balanceInput: {
     flex: 1,
     fontSize: 14,
+    fontFamily: 'Manrope_500Medium',
+    color: Colors.textPrimary,
   },
   footer: {
     paddingHorizontal: 20,
-    paddingTop: 8,
+    paddingTop: 10,
+    paddingBottom: 12,
   },
 });

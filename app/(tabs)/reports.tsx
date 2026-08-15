@@ -1,90 +1,110 @@
 import React, { useMemo, useState } from 'react';
-import { View, StyleSheet, ScrollView, Pressable } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
+import { View, StyleSheet, ScrollView } from 'react-native';
 
 import { AppText } from '@/components/ui/app-text';
 import { GradientScreen } from '@/components/ui/gradient-screen';
 import { GlassCard } from '@/components/ui/glass-card';
-import { OrganicHeroCard } from '@/components/ui/organic-hero-card';
+import { MonthStepper } from '@/components/ui/month-stepper';
+import { SegmentedControl } from '@/components/ui/segmented-control';
 import { DonutChart } from '@/components/finance/donut-chart';
 import { TrendBarChart } from '@/components/finance/trend-bar-chart';
+import { ProgressBar } from '@/components/finance/progress-bar';
+import { IconBadge } from '@/components/finance/icon-badge';
 import { EmptyState } from '@/components/finance/empty-state';
-import { useAppTheme } from '@/context/theme-context';
 import { useFinance } from '@/context/finance-context';
 import { getCategorySpend, getMonthlyTotals } from '@/utils/selectors';
-import { lastNMonthKeys, monthKeyLabel, monthShortLabel, shiftMonthKey, toMonthKey } from '@/utils/date';
+import { lastNMonthKeys, monthShortLabel, toMonthKey } from '@/utils/date';
 import { formatCurrency } from '@/utils/currency';
+import { Colors, Spacing } from '@/constants/theme';
+
+type Mode = 'expense' | 'income';
 
 export default function ReportsScreen() {
-  const { colors, spacing } = useAppTheme();
   const { state } = useFinance();
   const [monthKey, setMonthKey] = useState(() => toMonthKey(new Date()));
+  const [mode, setMode] = useState<Mode>('expense');
 
-  const categorySpend = useMemo(() => getCategorySpend(state, monthKey, 'expense'), [state, monthKey]);
-  const totalExpense = categorySpend.reduce((sum, c) => sum + c.amount, 0);
+  const currency = state.settings.currency;
+  const breakdown = useMemo(() => getCategorySpend(state, monthKey, mode), [state, monthKey, mode]);
+  const total = breakdown.reduce((sum, c) => sum + c.amount, 0);
 
-  const trendData = useMemo(() => {
-    const keys = lastNMonthKeys(6);
-    return keys.map(key => {
-      const totals = getMonthlyTotals(state, key);
-      return { label: monthShortLabel(key), income: totals.income, expense: totals.expense };
-    });
-  }, [state]);
+  const trend = useMemo(
+    () =>
+      lastNMonthKeys(6).map(key => {
+        const totals = getMonthlyTotals(state, key);
+        return { label: monthShortLabel(key), income: totals.income, expense: totals.expense };
+      }),
+    [state]
+  );
 
   return (
-    <GradientScreen showRings>
-      <View style={styles.headerRow}>
-        <AppText variant="h2" style={{ color: colors.textPrimary }}>
-          Reports
-        </AppText>
+    <GradientScreen contours="top">
+      <View style={styles.header}>
+        <AppText variant="h2">Insights</AppText>
+        <AppText variant="caption">Where your money went</AppText>
       </View>
 
       <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
-        <View style={styles.monthRow}>
-          <Pressable onPress={() => setMonthKey(k => shiftMonthKey(k, -1))} hitSlop={10}>
-            <Ionicons name="chevron-back" size={20} color={colors.textPrimary} />
-          </Pressable>
-          <AppText variant="body" weight="semibold" style={{ color: colors.textPrimary }}>
-            {monthKeyLabel(monthKey)}
-          </AppText>
-          <Pressable onPress={() => setMonthKey(k => shiftMonthKey(k, 1))} hitSlop={10}>
-            <Ionicons name="chevron-forward" size={20} color={colors.textPrimary} />
-          </Pressable>
-        </View>
+        <MonthStepper monthKey={monthKey} onChange={setMonthKey} />
 
-        <AppText variant="h3" style={[styles.sectionTitle, { color: colors.textPrimary }]}>
-          Spending by category
-        </AppText>
+        <SegmentedControl<Mode>
+          options={[
+            { key: 'expense', label: 'Spending', activeColor: Colors.expense },
+            { key: 'income', label: 'Income', activeColor: Colors.income },
+          ]}
+          value={mode}
+          onChange={setMode}
+          style={styles.modeSwitch}
+        />
 
-        {categorySpend.length === 0 ? (
+        {breakdown.length === 0 ? (
           <GlassCard>
-            <EmptyState icon="pie-chart-outline" title="No expenses this month" subtitle="Add an expense to see your breakdown here." />
+            <EmptyState
+              icon="analytics-outline"
+              title={`No ${mode === 'expense' ? 'spending' : 'income'} this month`}
+              subtitle="Add a transaction to see the breakdown here."
+            />
           </GlassCard>
         ) : (
           <>
-            <OrganicHeroCard size={190}>
+            <GlassCard strong style={styles.chartCard} elevated>
               <DonutChart
-                data={categorySpend.map(c => ({ label: c.category.name, value: c.amount, color: c.category.color }))}
-                size={150}
-                centerLabel="Total"
-                centerValue={formatCurrency(totalExpense, state.settings.currency)}
+                data={breakdown.map(c => ({
+                  label: c.category.name,
+                  value: c.amount,
+                  color: c.category.color,
+                }))}
+                centerLabel={mode === 'expense' ? 'Total spent' : 'Total earned'}
+                centerValue={formatCurrency(total, currency)}
               />
-            </OrganicHeroCard>
+            </GlassCard>
 
-            <GlassCard style={[styles.legendCard, { marginTop: spacing.lg }]} animateIndex={0}>
-              {categorySpend.map(c => {
-                const percent = totalExpense > 0 ? Math.round((c.amount / totalExpense) * 100) : 0;
+            <GlassCard style={styles.breakdownCard} padding={18}>
+              {breakdown.map((c, index) => {
+                const share = total > 0 ? c.amount / total : 0;
                 return (
-                  <View key={c.category.id} style={styles.legendRow}>
-                    <View style={styles.legendLeft}>
-                      <View style={[styles.legendDot, { backgroundColor: c.category.color }]} />
-                      <AppText variant="body" style={{ color: colors.textPrimary }}>
-                        {c.category.name}
-                      </AppText>
+                  <View
+                    key={c.category.id}
+                    style={[styles.breakdownRow, index < breakdown.length - 1 && styles.rowDivider]}
+                  >
+                    <IconBadge icon={c.category.icon} color={c.category.color} size={38} />
+                    <View style={styles.breakdownText}>
+                      <View style={styles.breakdownTop}>
+                        <AppText variant="bodyStrong" numberOfLines={1} style={styles.breakdownName}>
+                          {c.category.name}
+                        </AppText>
+                        <AppText variant="amount">{formatCurrency(c.amount, currency)}</AppText>
+                      </View>
+                      <View style={styles.breakdownBottom}>
+                        <ProgressBar
+                          progress={share}
+                          height={5}
+                          color={c.category.color}
+                          style={styles.breakdownBar}
+                        />
+                        <AppText variant="micro">{Math.round(share * 100)}%</AppText>
+                      </View>
                     </View>
-                    <AppText variant="body" style={{ color: colors.textSecondary }}>
-                      {formatCurrency(c.amount, state.settings.currency)} · {percent}%
-                    </AppText>
                   </View>
                 );
               })}
@@ -92,57 +112,80 @@ export default function ReportsScreen() {
           </>
         )}
 
-        <AppText variant="h3" style={[styles.sectionTitle, { color: colors.textPrimary, marginTop: spacing['2xl'] }]}>
-          Income vs expense (6 months)
-        </AppText>
-        <GlassCard style={styles.card} animateIndex={1}>
-          <TrendBarChart data={trendData} />
-        </GlassCard>
+        <View style={styles.trendSection}>
+          <AppText variant="label" style={styles.trendLabel}>
+            Last 6 months
+          </AppText>
+          <GlassCard style={styles.trendCard}>
+            <TrendBarChart data={trend} />
+          </GlassCard>
+        </View>
       </ScrollView>
     </GradientScreen>
   );
 }
 
 const styles = StyleSheet.create({
-  headerRow: {
+  header: {
     paddingHorizontal: 20,
-    paddingTop: 12,
-    paddingBottom: 4,
+    paddingTop: 6,
+    gap: 3,
   },
   content: {
     paddingHorizontal: 20,
-    paddingBottom: 140,
+    paddingTop: Spacing.lg,
+    paddingBottom: 130,
+    gap: Spacing.lg,
   },
-  monthRow: {
+  modeSwitch: {
+    marginTop: 2,
+  },
+  chartCard: {
+    alignItems: 'center',
+    paddingVertical: 26,
+  },
+  breakdownCard: {
+    gap: 2,
+  },
+  breakdownRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
-    gap: 16,
-    paddingVertical: 8,
+    gap: 12,
+    paddingVertical: 13,
   },
-  sectionTitle: {
-    marginBottom: 12,
+  rowDivider: {
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.divider,
   },
-  card: {
-    padding: 20,
-    alignItems: 'center',
+  breakdownText: {
+    flex: 1,
+    gap: 7,
   },
-  legendCard: {
-    gap: 10,
-  },
-  legendRow: {
+  breakdownTop: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
+    gap: 10,
   },
-  legendLeft: {
+  breakdownName: {
+    flex: 1,
+  },
+  breakdownBottom: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
+    gap: 10,
   },
-  legendDot: {
-    width: 10,
-    height: 10,
-    borderRadius: 5,
+  breakdownBar: {
+    flex: 1,
+  },
+  trendSection: {
+    gap: 10,
+    marginTop: Spacing.sm,
+  },
+  trendLabel: {
+    marginLeft: 4,
+  },
+  trendCard: {
+    paddingVertical: 22,
   },
 });

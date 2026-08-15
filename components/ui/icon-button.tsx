@@ -1,8 +1,11 @@
 import React from 'react';
-import { Pressable, StyleSheet, ViewStyle } from 'react-native';
+import { Pressable, StyleSheet, ViewStyle, StyleProp } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { BlurView } from 'expo-blur';
 import * as Haptics from 'expo-haptics';
-import { useAppTheme } from '@/context/theme-context';
+import Animated, { useSharedValue, useAnimatedStyle, withSpring } from 'react-native-reanimated';
+
+import { Colors, Shadows } from '@/constants/theme';
 
 export interface IconButtonProps {
   iconName: keyof typeof Ionicons.glyphMap;
@@ -10,49 +13,61 @@ export interface IconButtonProps {
   size?: number;
   iconSize?: number;
   color?: string;
-  backgroundColor?: string;
-  style?: ViewStyle;
+  /** Solid dark treatment for primary actions. */
+  solid?: boolean;
+  style?: StyleProp<ViewStyle>;
 }
 
 export const IconButton: React.FC<IconButtonProps> = ({
   iconName,
   onPress,
   size = 44,
-  iconSize = 20,
+  iconSize,
   color,
-  backgroundColor,
+  solid = false,
   style,
 }) => {
-  const { colors } = useAppTheme();
+  const scale = useSharedValue(1);
+  const animatedStyle = useAnimatedStyle(() => ({ transform: [{ scale: scale.value }] }));
+
+  const iconColor = color ?? (solid ? Colors.ctaText : Colors.textPrimary);
 
   const handlePress = () => {
     try {
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    } catch (e) {}
+    } catch {}
     onPress();
   };
-
-  const bg = backgroundColor || colors.cardBackground;
-  const iconColor = color || colors.textPrimary;
 
   return (
     <Pressable
       onPress={handlePress}
-      style={({ pressed }) => [
-        styles.button,
-        {
-          width: size,
-          height: size,
-          borderRadius: size / 2,
-          backgroundColor: bg,
-          borderColor: colors.cardBorder,
-          opacity: pressed ? 0.75 : 1,
-          transform: [{ scale: pressed ? 0.94 : 1 }],
-        },
-        style,
-      ]}
+      onPressIn={() => {
+        scale.value = withSpring(0.9, { damping: 14, stiffness: 340 });
+      }}
+      onPressOut={() => {
+        scale.value = withSpring(1, { damping: 11, stiffness: 240 });
+      }}
+      hitSlop={6}
     >
-      <Ionicons name={iconName} size={iconSize} color={iconColor} />
+      <Animated.View
+        style={[
+          styles.button,
+          {
+            width: size,
+            height: size,
+            borderRadius: size / 2,
+            backgroundColor: solid ? Colors.ctaBg : Colors.controlBg,
+            borderColor: solid ? 'transparent' : Colors.glassBorder,
+          },
+          solid ? Shadows.floating : Shadows.soft,
+          animatedStyle,
+          style,
+        ]}
+      >
+        {!solid && <BlurView intensity={24} tint="light" style={StyleSheet.absoluteFill} />}
+        <Ionicons name={iconName} size={iconSize ?? Math.round(size * 0.42)} color={iconColor} />
+      </Animated.View>
     </Pressable>
   );
 };
@@ -62,10 +77,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 1,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.05,
-    shadowRadius: 4,
-    elevation: 2,
+    overflow: 'hidden',
   },
 });

@@ -1,6 +1,8 @@
 import React from 'react';
 import { View, StyleSheet, Pressable } from 'react-native';
-import { useAppTheme } from '@/context/theme-context';
+import Animated, { useAnimatedStyle, withSpring } from 'react-native-reanimated';
+
+import { Colors } from '@/constants/theme';
 
 export interface PageIndicatorProps {
   count: number;
@@ -8,56 +10,43 @@ export interface PageIndicatorProps {
   onSelect?: (index: number) => void;
 }
 
-export const PageIndicator: React.FC<PageIndicatorProps> = ({
-  count,
-  activeIndex,
-  onSelect,
-}) => {
-  const { colors } = useAppTheme();
+const Dot: React.FC<{ active: boolean; onPress?: () => void }> = ({ active, onPress }) => {
+  const animatedStyle = useAnimatedStyle(() => ({
+    width: withSpring(active ? 26 : 7, { damping: 16, stiffness: 200 }),
+    opacity: withSpring(active ? 1 : 0.35),
+  }));
 
   return (
-    <View style={styles.container}>
-      {Array.from({ length: count }).map((_, index) => {
-        const isActive = index === activeIndex;
-
-        return (
-          <Pressable
-            key={index}
-            onPress={() => onSelect?.(index)}
-            disabled={!onSelect}
-            style={({ pressed }) => [
-              styles.dot,
-              isActive ? styles.activeDot : styles.inactiveDot,
-              {
-                backgroundColor: isActive ? '#18181B' : '#D1D5DB',
-                opacity: pressed ? 0.7 : 1,
-              },
-            ]}
-          />
-        );
-      })}
-    </View>
+    <Pressable onPress={onPress} disabled={!onPress} hitSlop={10}>
+      <Animated.View
+        style={[styles.dot, { backgroundColor: active ? Colors.primary : Colors.textMuted }, animatedStyle]}
+      />
+    </Pressable>
   );
 };
+
+export const PageIndicator: React.FC<PageIndicatorProps> = ({ count, activeIndex, onSelect }) => (
+  <View style={styles.container}>
+    {Array.from({ length: count }).map((_, index) => (
+      <Dot
+        key={index}
+        active={index === activeIndex}
+        onPress={onSelect ? () => onSelect(index) : undefined}
+      />
+    ))}
+  </View>
+);
 
 const styles = StyleSheet.create({
   container: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    marginVertical: 18,
-    gap: 8,
+    gap: 7,
+    marginTop: 22,
   },
   dot: {
-    height: 8,
+    height: 7,
     borderRadius: 4,
-  },
-  inactiveDot: {
-    width: 8,
-    backgroundColor: '#D1D5DB',
-  },
-  activeDot: {
-    width: 24,
-    backgroundColor: '#18181B',
   },
 });

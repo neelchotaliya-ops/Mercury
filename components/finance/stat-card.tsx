@@ -4,7 +4,7 @@ import { Ionicons } from '@expo/vector-icons';
 
 import { AppText } from '@/components/ui/app-text';
 import { GlassCard } from '@/components/ui/glass-card';
-import { useAppTheme } from '@/context/theme-context';
+import { BorderRadius } from '@/constants/theme';
 
 export interface StatCardProps {
   label: string;
@@ -14,37 +14,40 @@ export interface StatCardProps {
   animateIndex?: number;
 }
 
-export const StatCard: React.FC<StatCardProps> = ({ label, value, icon, tint, animateIndex }) => {
-  const { colors } = useAppTheme();
-
-  return (
-    <GlassCard style={styles.card} animateIndex={animateIndex}>
+export const StatCard: React.FC<StatCardProps> = ({ label, value, icon, tint, animateIndex }) => (
+  <GlassCard style={styles.card} padding={16} radius={BorderRadius.md} animateIndex={animateIndex}>
+    <View style={styles.row}>
       <View style={[styles.iconWrap, { backgroundColor: `${tint}1F` }]}>
-        <Ionicons name={icon} size={16} color={tint} />
+        <Ionicons name={icon} size={14} color={tint} />
       </View>
-      <AppText variant="caption" style={styles.label}>
+      <AppText variant="micro" numberOfLines={1} style={styles.label}>
         {label}
       </AppText>
-      <AppText variant="h3" style={{ color: colors.textPrimary }}>
-        {value}
-      </AppText>
-    </GlassCard>
-  );
-};
+    </View>
+    <AppText variant="h3" numberOfLines={1} adjustsFontSizeToFit>
+      {value}
+    </AppText>
+  </GlassCard>
+);
 
 const styles = StyleSheet.create({
   card: {
     flex: 1,
+    gap: 10,
+  },
+  row: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
   },
   iconWrap: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
+    width: 26,
+    height: 26,
+    borderRadius: 9,
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: 10,
   },
   label: {
-    marginBottom: 4,
+    flex: 1,
   },
 });

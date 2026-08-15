@@ -18,7 +18,7 @@ import {
   Manrope_700Bold,
 } from '@expo-google-fonts/manrope';
 
-import { AppThemeProvider, useAppTheme } from '@/context/theme-context';
+import { AppThemeProvider } from '@/context/theme-context';
 import { FinanceProvider, useFinance } from '@/context/finance-context';
 
 SplashScreen.preventAutoHideAsync();
@@ -27,7 +27,7 @@ export const unstable_settings = {
   anchor: 'index',
 };
 
-function ThemedApp() {
+function RootNavigator() {
   const { state } = useFinance();
 
   useEffect(() => {
@@ -40,30 +40,24 @@ function ThemedApp() {
     return null;
   }
 
-  const preference = state.settings.themePreference;
-
-  return (
-    <AppThemeProvider overrideColorScheme={preference === 'system' ? undefined : preference}>
-      <RootNavigator />
-    </AppThemeProvider>
-  );
-}
-
-function RootNavigator() {
-  const { isDark } = useAppTheme();
-
   return (
     <>
-      <Stack screenOptions={{ headerShown: false }}>
-        <Stack.Screen name="index" options={{ headerShown: false }} />
-        <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+      <Stack
+        screenOptions={{
+          headerShown: false,
+          contentStyle: { backgroundColor: 'transparent' },
+        }}
+      >
+        <Stack.Screen name="index" />
+        <Stack.Screen name="(tabs)" />
+        <Stack.Screen name="accounts" />
         <Stack.Screen name="add-transaction" options={{ presentation: 'modal' }} />
         <Stack.Screen name="add-account" options={{ presentation: 'modal' }} />
         <Stack.Screen name="add-budget" options={{ presentation: 'modal' }} />
         <Stack.Screen name="manage-categories" options={{ presentation: 'modal' }} />
         <Stack.Screen name="settings" options={{ presentation: 'modal' }} />
       </Stack>
-      <StatusBar style={isDark ? 'light' : 'dark'} />
+      <StatusBar style="dark" />
     </>
   );
 }
@@ -86,7 +80,9 @@ export default function RootLayout() {
 
   return (
     <FinanceProvider>
-      <ThemedApp />
+      <AppThemeProvider>
+        <RootNavigator />
+      </AppThemeProvider>
     </FinanceProvider>
   );
 }

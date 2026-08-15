@@ -8,16 +8,16 @@ import { AppButton } from '@/components/ui/app-button';
 import { GradientScreen } from '@/components/ui/gradient-screen';
 import { GlassCard } from '@/components/ui/glass-card';
 import { ModalHeader } from '@/components/ui/modal-header';
+import { SegmentedControl } from '@/components/ui/segmented-control';
 import { IconBadge } from '@/components/finance/icon-badge';
-import { useAppTheme } from '@/context/theme-context';
 import { useFinance } from '@/context/finance-context';
 import { CategoryKind, Category } from '@/types/finance';
 import { CATEGORY_ICON_CHOICES, CATEGORY_COLOR_CHOICES } from '@/constants/categories';
+import { Colors, BorderRadius, Spacing } from '@/constants/theme';
 
 export default function ManageCategoriesScreen() {
   const router = useRouter();
   const params = useLocalSearchParams<{ kind?: string }>();
-  const { colors, borderRadius } = useAppTheme();
   const { state, addCategory, updateCategory, deleteCategory } = useFinance();
 
   const [kind, setKind] = useState<CategoryKind>(params.kind === 'income' ? 'income' : 'expense');
@@ -27,9 +27,12 @@ export default function ManageCategoriesScreen() {
   const [icon, setIcon] = useState(CATEGORY_ICON_CHOICES[0]);
   const [color, setColor] = useState(CATEGORY_COLOR_CHOICES[0]);
 
-  const categories = useMemo(() => state.categories.filter(c => c.kind === kind), [state.categories, kind]);
+  const categories = useMemo(
+    () => state.categories.filter(c => c.kind === kind),
+    [state.categories, kind]
+  );
 
-  const openNewForm = () => {
+  const openNew = () => {
     setEditingCategory(null);
     setName('');
     setIcon(CATEGORY_ICON_CHOICES[0]);
@@ -37,7 +40,7 @@ export default function ManageCategoriesScreen() {
     setShowForm(true);
   };
 
-  const openEditForm = (category: Category) => {
+  const openEdit = (category: Category) => {
     setEditingCategory(category);
     setName(category.name);
     setIcon(category.icon);
@@ -47,121 +50,144 @@ export default function ManageCategoriesScreen() {
 
   const handleSave = () => {
     if (name.trim().length === 0) return;
-    if (editingCategory) {
-      updateCategory({ ...editingCategory, name: name.trim(), icon, color });
-    } else {
-      addCategory({ name: name.trim(), icon, color, kind });
-    }
+    if (editingCategory) updateCategory({ ...editingCategory, name: name.trim(), icon, color });
+    else addCategory({ name: name.trim(), icon, color, kind });
     setShowForm(false);
   };
 
   const handleDelete = () => {
     if (!editingCategory) return;
-    Alert.alert('Delete category', 'Existing transactions will keep this category, but it will no longer be selectable.', [
-      { text: 'Cancel', style: 'cancel' },
-      {
-        text: 'Delete',
-        style: 'destructive',
-        onPress: () => {
-          deleteCategory(editingCategory.id);
-          setShowForm(false);
+    Alert.alert(
+      'Delete category',
+      'Existing transactions keep this category, but it will no longer be selectable.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: () => {
+            deleteCategory(editingCategory.id);
+            setShowForm(false);
+          },
         },
-      },
-    ]);
+      ]
+    );
   };
 
   return (
-    <GradientScreen edges={['top', 'bottom']}>
+    <GradientScreen edges={['top', 'bottom']} contours="top">
       <ModalHeader title="Categories" onClose={() => router.back()} />
 
-      <View style={[styles.segmented, { backgroundColor: colors.buttonSecondaryBg, borderRadius: borderRadius.pill }]}>
-        {(['expense', 'income'] as CategoryKind[]).map(k => {
-          const isActive = k === kind;
-          return (
-            <Pressable
-              key={k}
-              onPress={() => {
-                setKind(k);
-                setShowForm(false);
-              }}
-              style={[styles.segment, { borderRadius: borderRadius.pill, backgroundColor: isActive ? colors.cardBackground : 'transparent' }]}
-            >
-              <AppText variant="body" weight="semibold" style={{ color: colors.textPrimary, textTransform: 'capitalize' }}>
-                {k}
-              </AppText>
-            </Pressable>
-          );
-        })}
+      <View style={styles.switchWrap}>
+        <SegmentedControl<CategoryKind>
+          options={[
+            { key: 'expense', label: 'Spending' },
+            { key: 'income', label: 'Income' },
+          ]}
+          value={kind}
+          onChange={next => {
+            setKind(next);
+            setShowForm(false);
+          }}
+        />
       </View>
 
-      <ScrollView contentContainerStyle={styles.content}>
-        <GlassCard>
+      <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
+        <GlassCard padding={18}>
           <View style={styles.grid}>
-            {categories.map(category => (
-              <Pressable key={category.id} onPress={() => openEditForm(category)} style={styles.gridItem}>
-                <IconBadge icon={category.icon} color={category.color} size={52} />
-                <AppText variant="caption" align="center" numberOfLines={1} style={{ maxWidth: 68 }}>
-                  {category.name}
-                </AppText>
-              </Pressable>
-            ))}
-            <Pressable onPress={openNewForm} style={styles.gridItem}>
-              <View style={[styles.addWrap, { borderColor: colors.border }]}>
-                <Ionicons name="add" size={22} color={colors.textSecondary} />
+            {categories.map(category => {
+              const active = editingCategory?.id === category.id && showForm;
+              return (
+                <Pressable
+                  key={category.id}
+                  onPress={() => openEdit(category)}
+                  style={({ pressed }) => [styles.gridItem, { opacity: pressed ? 0.7 : 1 }]}
+                >
+                  <IconBadge icon={category.icon} color={category.color} size={52} solid={active} />
+                  <AppText variant="micro" align="center" numberOfLines={1}>
+                    {category.name}
+                  </AppText>
+                </Pressable>
+              );
+            })}
+
+            <Pressable onPress={openNew} style={({ pressed }) => [styles.gridItem, { opacity: pressed ? 0.7 : 1 }]}>
+              <View style={styles.addTile}>
+                <Ionicons name="add" size={21} color={Colors.textSecondary} />
               </View>
-              <AppText variant="caption" align="center">
-                Add new
+              <AppText variant="micro" align="center">
+                New
               </AppText>
             </Pressable>
           </View>
         </GlassCard>
 
         {showForm && (
-          <GlassCard style={styles.form}>
+          <GlassCard strong style={styles.form} padding={18} elevated>
+            <View style={styles.formHeader}>
+              <IconBadge icon={icon} color={color} size={46} solid />
+              <AppText variant="h3">{editingCategory ? 'Edit category' : 'New category'}</AppText>
+            </View>
+
             <TextInput
               value={name}
               onChangeText={setName}
               placeholder="Category name"
-              placeholderTextColor={colors.textMuted}
-              style={[styles.input, { color: colors.textPrimary, backgroundColor: colors.buttonSecondaryBg, borderRadius: borderRadius.sm }]}
+              placeholderTextColor={Colors.textMuted}
+              style={styles.input}
             />
 
-            <AppText variant="caption">Icon</AppText>
-            <View style={styles.iconGrid}>
-              {CATEGORY_ICON_CHOICES.map(i => (
-                <Pressable
-                  key={i}
-                  onPress={() => setIcon(i)}
-                  style={[styles.iconOption, { borderColor: icon === i ? color : 'transparent' }]}
-                >
-                  <IconBadge icon={i} color={color} size={40} />
-                </Pressable>
-              ))}
+            <View style={styles.field}>
+              <AppText variant="label">Icon</AppText>
+              <View style={styles.iconGrid}>
+                {CATEGORY_ICON_CHOICES.map(i => (
+                  <Pressable key={i} onPress={() => setIcon(i)}>
+                    <IconBadge icon={i} color={color} size={40} solid={icon === i} />
+                  </Pressable>
+                ))}
+              </View>
             </View>
 
-            <AppText variant="caption">Color</AppText>
-            <View style={styles.colorRow}>
-              {CATEGORY_COLOR_CHOICES.map(c => (
-                <Pressable
-                  key={c}
-                  onPress={() => setColor(c)}
-                  style={[styles.colorSwatch, { backgroundColor: c, borderWidth: color === c ? 3 : 0, borderColor: colors.textPrimary }]}
-                />
-              ))}
+            <View style={styles.field}>
+              <AppText variant="label">Colour</AppText>
+              <View style={styles.colorRow}>
+                {CATEGORY_COLOR_CHOICES.map(c => (
+                  <Pressable key={c} onPress={() => setColor(c)}>
+                    <View style={[styles.swatch, { backgroundColor: c }, color === c && styles.swatchActive]}>
+                      {color === c ? <Ionicons name="checkmark" size={15} color="#FFFFFF" /> : null}
+                    </View>
+                  </Pressable>
+                ))}
+              </View>
             </View>
 
             <View style={styles.formActions}>
               {editingCategory ? (
-                <Pressable onPress={handleDelete} style={styles.deleteAction}>
-                  <Ionicons name="trash-outline" size={18} color="#DC2626" />
-                  <AppText variant="body" style={{ color: '#DC2626' }}>
-                    Delete
-                  </AppText>
-                </Pressable>
+                <AppButton
+                  title="Delete"
+                  onPress={handleDelete}
+                  variant="ghost"
+                  size="sm"
+                  fullWidth={false}
+                  textStyle={{ color: Colors.expense }}
+                />
               ) : (
-                <View />
+                <AppButton
+                  title="Cancel"
+                  onPress={() => setShowForm(false)}
+                  variant="ghost"
+                  size="sm"
+                  fullWidth={false}
+                />
               )}
-              <AppButton title="Save" onPress={handleSave} disabled={name.trim().length === 0} fullWidth={false} size="md" />
+              <AppButton
+                title="Save"
+                onPress={handleSave}
+                disabled={name.trim().length === 0}
+                size="sm"
+                fullWidth={false}
+                style={styles.saveButton}
+              />
             </View>
           </GlassCard>
         )}
@@ -171,21 +197,14 @@ export default function ManageCategoriesScreen() {
 }
 
 const styles = StyleSheet.create({
-  segmented: {
-    flexDirection: 'row',
-    marginHorizontal: 20,
-    padding: 4,
-  },
-  segment: {
-    flex: 1,
-    paddingVertical: 10,
-    alignItems: 'center',
+  switchWrap: {
+    paddingHorizontal: 20,
   },
   content: {
     paddingHorizontal: 20,
-    paddingTop: 20,
+    paddingTop: Spacing.lg,
     paddingBottom: 40,
-    gap: 20,
+    gap: Spacing.lg,
   },
   grid: {
     flexDirection: 'row',
@@ -194,55 +213,67 @@ const styles = StyleSheet.create({
   },
   gridItem: {
     alignItems: 'center',
-    gap: 6,
-    width: 68,
+    gap: 7,
+    width: 64,
   },
-  addWrap: {
+  addTile: {
     width: 52,
     height: 52,
-    borderRadius: 26,
+    borderRadius: 52 * 0.34,
     borderWidth: 1.5,
     borderStyle: 'dashed',
+    borderColor: Colors.textMuted,
     alignItems: 'center',
     justifyContent: 'center',
   },
   form: {
+    gap: Spacing.lg,
+  },
+  formHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
     gap: 12,
   },
   input: {
-    paddingHorizontal: 14,
-    paddingVertical: 10,
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    borderRadius: BorderRadius.sm,
+    backgroundColor: 'rgba(25, 21, 39, 0.04)',
     fontSize: 14,
+    fontFamily: 'Manrope_500Medium',
+    color: Colors.textPrimary,
+  },
+  field: {
+    gap: 10,
   },
   iconGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: 8,
-  },
-  iconOption: {
-    borderRadius: 22,
-    borderWidth: 2,
-    padding: 2,
+    gap: 9,
   },
   colorRow: {
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: 10,
   },
-  colorSwatch: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
+  swatch: {
+    width: 34,
+    height: 34,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  swatchActive: {
+    borderWidth: 2,
+    borderColor: '#FFFFFF',
   },
   formActions: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    marginTop: 4,
+    gap: 12,
   },
-  deleteAction: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
+  saveButton: {
+    minWidth: 120,
   },
 });

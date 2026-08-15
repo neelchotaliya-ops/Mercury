@@ -1,38 +1,44 @@
 import React from 'react';
-import { StyleSheet, View, ViewStyle } from 'react-native';
+import { StyleSheet, View, ViewStyle, StyleProp } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { SafeAreaView, Edge } from 'react-native-safe-area-context';
 
-import { useAppTheme } from '@/context/theme-context';
-import { Gradients } from '@/constants/theme';
-import { TopographicRings } from '@/components/ui/topographic-rings';
+import { Colors, Gradients } from '@/constants/theme';
+import { TopographicField } from '@/components/ui/topographic-field';
 
 export interface GradientScreenProps {
   children: React.ReactNode;
-  showRings?: boolean;
+  /** Decorative contour field behind the content. */
+  contours?: 'none' | 'top' | 'full';
   edges?: readonly Edge[];
-  contentStyle?: ViewStyle;
+  contentStyle?: StyleProp<ViewStyle>;
 }
 
 export const GradientScreen: React.FC<GradientScreenProps> = ({
   children,
-  showRings = false,
+  contours = 'none',
   edges = ['top'],
   contentStyle,
 }) => {
-  const { colorScheme } = useAppTheme();
-  const gradient = Gradients[colorScheme];
-
   return (
     <View style={styles.container}>
       <LinearGradient
-        colors={gradient.background as [string, string, string]}
-        locations={gradient.locations as [number, number, number]}
-        start={{ x: 0.5, y: 0.0 }}
-        end={{ x: 0.5, y: 1.0 }}
+        colors={Gradients.screen.colors as [string, string, string, string]}
+        locations={Gradients.screen.locations as [number, number, number, number]}
+        start={{ x: 0.15, y: 0 }}
+        end={{ x: 0.85, y: 1 }}
         style={StyleSheet.absoluteFill}
       />
-      {showRings ? <TopographicRings style={styles.rings} /> : null}
+
+      {contours !== 'none' && (
+        <>
+          <TopographicField size={520} rings={8} rotate={-12} style={styles.contourTop} />
+          {contours === 'full' && (
+            <TopographicField size={420} rings={6} rotate={24} warm style={styles.contourBottom} />
+          )}
+        </>
+      )}
+
       <SafeAreaView style={[styles.content, contentStyle]} edges={edges}>
         {children}
       </SafeAreaView>
@@ -43,12 +49,17 @@ export const GradientScreen: React.FC<GradientScreenProps> = ({
 const styles = StyleSheet.create({
   container: {
     flex: 1,
+    backgroundColor: Colors.background,
   },
   content: {
     flex: 1,
   },
-  rings: {
-    top: -60,
-    alignSelf: 'center',
+  contourTop: {
+    top: -170,
+    left: -110,
+  },
+  contourBottom: {
+    bottom: -150,
+    right: -140,
   },
 });

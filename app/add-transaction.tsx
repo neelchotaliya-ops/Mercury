@@ -8,40 +8,49 @@ import { AppButton } from '@/components/ui/app-button';
 import { GradientScreen } from '@/components/ui/gradient-screen';
 import { GlassCard } from '@/components/ui/glass-card';
 import { ModalHeader } from '@/components/ui/modal-header';
+import { SegmentedControl } from '@/components/ui/segmented-control';
 import { AmountInput } from '@/components/finance/amount-input';
 import { CategoryPicker } from '@/components/finance/category-picker';
 import { AccountPicker } from '@/components/finance/account-picker';
-import { useAppTheme } from '@/context/theme-context';
 import { useFinance } from '@/context/finance-context';
 import { TransactionType } from '@/types/finance';
 import { getCurrencySymbol } from '@/utils/currency';
+import { Colors, BorderRadius, Spacing } from '@/constants/theme';
 
-const TYPES: { key: TransactionType; label: string; color: string }[] = [
-  { key: 'expense', label: 'Expense', color: '#DC2626' },
-  { key: 'income', label: 'Income', color: '#16A34A' },
-  { key: 'transfer', label: 'Transfer', color: '#2563EB' },
-];
+const TYPE_COLOR: Record<TransactionType, string> = {
+  expense: Colors.expense,
+  income: Colors.income,
+  transfer: Colors.primary,
+};
 
 export default function AddTransactionScreen() {
   const router = useRouter();
   const params = useLocalSearchParams<{ id?: string; type?: string }>();
-  const { colors, spacing, borderRadius } = useAppTheme();
   const { state, addTransaction, updateTransaction, deleteTransaction } = useFinance();
 
-  const editing = useMemo(() => state.transactions.find(t => t.id === params.id), [state.transactions, params.id]);
+  const editing = useMemo(
+    () => state.transactions.find(t => t.id === params.id),
+    [state.transactions, params.id]
+  );
 
   const [type, setType] = useState<TransactionType>(
-    editing?.type ?? (params.type === 'transfer' || params.type === 'income' ? (params.type as TransactionType) : 'expense')
+    editing?.type ??
+      (params.type === 'transfer' || params.type === 'income'
+        ? (params.type as TransactionType)
+        : 'expense')
   );
-  const [amount, setAmount] = useState<string>(editing ? String(editing.amount) : '');
-  const [accountId, setAccountId] = useState<string | undefined>(editing?.accountId ?? state.accounts[0]?.id);
+  const [amount, setAmount] = useState(editing ? String(editing.amount) : '');
+  const [accountId, setAccountId] = useState<string | undefined>(
+    editing?.accountId ?? state.accounts[0]?.id
+  );
   const [toAccountId, setToAccountId] = useState<string | undefined>(editing?.toAccountId);
   const [categoryId, setCategoryId] = useState<string | undefined>(editing?.categoryId);
   const [note, setNote] = useState(editing?.note ?? '');
   const [date, setDate] = useState<Date>(editing ? new Date(editing.date) : new Date());
 
-  const categories = state.categories.filter(c => c.kind === (type === 'income' ? 'income' : 'expense'));
-  const accent = TYPES.find(t => t.key === type)?.color;
+  const categories = state.categories.filter(
+    c => c.kind === (type === 'income' ? 'income' : 'expense')
+  );
   const numericAmount = parseFloat(amount || '0');
 
   const canSave =
@@ -49,17 +58,15 @@ export default function AddTransactionScreen() {
     !!accountId &&
     (type !== 'transfer' ? !!categoryId : !!toAccountId && toAccountId !== accountId);
 
-  const shiftDay = (delta: number) => {
+  const shiftDay = (delta: number) =>
     setDate(prev => {
       const next = new Date(prev);
       next.setDate(prev.getDate() + delta);
       return next;
     });
-  };
 
   const handleSave = () => {
     if (!canSave || !accountId) return;
-
     const payload = {
       type,
       amount: numericAmount,
@@ -70,11 +77,8 @@ export default function AddTransactionScreen() {
       note: note.trim() || undefined,
     };
 
-    if (editing) {
-      updateTransaction({ ...editing, ...payload });
-    } else {
-      addTransaction(payload);
-    }
+    if (editing) updateTransaction({ ...editing, ...payload });
+    else addTransaction(payload);
     router.back();
   };
 
@@ -93,106 +97,120 @@ export default function AddTransactionScreen() {
     ]);
   };
 
+  const isToday = new Date().toDateString() === date.toDateString();
+
   return (
-    <GradientScreen edges={['top', 'bottom']}>
+    <GradientScreen edges={['top', 'bottom']} contours="top">
       <ModalHeader
-        title={editing ? 'Edit transaction' : 'Add transaction'}
+        title={editing ? 'Edit transaction' : 'New transaction'}
         onClose={() => router.back()}
         onDelete={editing ? handleDelete : undefined}
       />
 
       <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
-        <GlassCard style={styles.formCard}>
-          <View style={[styles.segmented, { backgroundColor: colors.buttonSecondaryBg, borderRadius: borderRadius.pill }]}>
-            {TYPES.map(t => {
-              const isActive = t.key === type;
-              return (
-                <Pressable
-                  key={t.key}
-                  onPress={() => {
-                    setType(t.key);
-                    setCategoryId(undefined);
-                  }}
-                  style={[
-                    styles.segment,
-                    { borderRadius: borderRadius.pill, backgroundColor: isActive ? colors.cardBackground : 'transparent' },
-                  ]}
-                >
-                  <AppText variant="body" weight="semibold" style={{ color: isActive ? t.color : colors.textSecondary }}>
-                    {t.label}
-                  </AppText>
-                </Pressable>
-              );
-            })}
-          </View>
+        <SegmentedControl<TransactionType>
+          options={[
+            { key: 'expense', label: 'Expense', activeColor: Colors.expense },
+            { key: 'income', label: 'Income', activeColor: Colors.income },
+            { key: 'transfer', label: 'Transfer', activeColor: Colors.primary },
+          ]}
+          value={type}
+          onChange={next => {
+            setType(next);
+            setCategoryId(undefined);
+          }}
+        />
 
-          <AmountInput value={amount} onChangeValue={setAmount} currencySymbol={getCurrencySymbol(state.settings.currency)} accentColor={accent} />
+        <GlassCard strong style={styles.amountCard} elevated>
+          <AmountInput
+            value={amount}
+            onChangeValue={setAmount}
+            currencySymbol={getCurrencySymbol(state.settings.currency)}
+            accentColor={TYPE_COLOR[type]}
+          />
+        </GlassCard>
 
-          <View style={styles.fieldGroup}>
-            <AppText variant="caption" style={styles.fieldLabel}>
-              {type === 'transfer' ? 'From account' : 'Account'}
-            </AppText>
-            <AccountPicker accounts={state.accounts} selectedId={accountId} onSelect={a => setAccountId(a.id)} />
+        <GlassCard style={styles.formCard} padding={18}>
+          <View style={styles.field}>
+            <AppText variant="label">{type === 'transfer' ? 'From' : 'Account'}</AppText>
+            <AccountPicker
+              accounts={state.accounts}
+              selectedId={accountId}
+              onSelect={a => setAccountId(a.id)}
+            />
           </View>
 
           {type === 'transfer' ? (
-            <View style={styles.fieldGroup}>
-              <AppText variant="caption" style={styles.fieldLabel}>
-                To account
-              </AppText>
-              <AccountPicker accounts={state.accounts} selectedId={toAccountId} onSelect={a => setToAccountId(a.id)} excludeId={accountId} />
+            <View style={styles.field}>
+              <AppText variant="label">To</AppText>
+              <AccountPicker
+                accounts={state.accounts}
+                selectedId={toAccountId}
+                onSelect={a => setToAccountId(a.id)}
+                excludeId={accountId}
+              />
             </View>
           ) : (
-            <View style={styles.fieldGroup}>
-              <AppText variant="caption" style={styles.fieldLabel}>
-                Category
-              </AppText>
+            <View style={styles.field}>
+              <AppText variant="label">Category</AppText>
               <CategoryPicker
                 categories={categories}
                 selectedId={categoryId}
                 onSelect={c => setCategoryId(c.id)}
-                onManage={() => router.push(`/manage-categories?kind=${type === 'income' ? 'income' : 'expense'}`)}
+                onManage={() =>
+                  router.push(`/manage-categories?kind=${type === 'income' ? 'income' : 'expense'}`)
+                }
               />
             </View>
           )}
 
-          <View style={styles.fieldGroup}>
-            <AppText variant="caption" style={styles.fieldLabel}>
-              Date
-            </AppText>
+          <View style={styles.field}>
+            <AppText variant="label">Date</AppText>
             <View style={styles.dateRow}>
-              <Pressable onPress={() => shiftDay(-1)} hitSlop={10}>
-                <Ionicons name="chevron-back" size={20} color={colors.textPrimary} />
+              <Pressable onPress={() => shiftDay(-1)} hitSlop={10} style={styles.dateArrow}>
+                <Ionicons name="chevron-back" size={17} color={Colors.textSecondary} />
               </Pressable>
-              <AppText variant="body" weight="semibold" style={{ color: colors.textPrimary }}>
-                {date.toLocaleDateString(undefined, { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' })}
-              </AppText>
-              <Pressable onPress={() => shiftDay(1)} hitSlop={10}>
-                <Ionicons name="chevron-forward" size={20} color={colors.textPrimary} />
+              <View style={styles.dateLabel}>
+                <AppText variant="bodyStrong" align="center">
+                  {isToday
+                    ? 'Today'
+                    : date.toLocaleDateString(undefined, {
+                        weekday: 'short',
+                        day: 'numeric',
+                        month: 'short',
+                      })}
+                </AppText>
+              </View>
+              <Pressable
+                onPress={() => shiftDay(1)}
+                hitSlop={10}
+                disabled={isToday}
+                style={[styles.dateArrow, isToday && styles.dateArrowDisabled]}
+              >
+                <Ionicons name="chevron-forward" size={17} color={Colors.textSecondary} />
               </Pressable>
             </View>
           </View>
 
-          <View style={styles.fieldGroup}>
-            <AppText variant="caption" style={styles.fieldLabel}>
-              Note (optional)
-            </AppText>
+          <View style={styles.field}>
+            <AppText variant="label">Note</AppText>
             <TextInput
               value={note}
               onChangeText={setNote}
-              placeholder="Add a note"
-              placeholderTextColor={colors.textMuted}
-              style={[
-                styles.noteInput,
-                { color: colors.textPrimary, backgroundColor: colors.buttonSecondaryBg, borderRadius: borderRadius.sm },
-              ]}
+              placeholder="Optional"
+              placeholderTextColor={Colors.textMuted}
+              style={styles.input}
             />
           </View>
         </GlassCard>
       </ScrollView>
 
-      <View style={[styles.footer, { paddingBottom: spacing.xl }]}>
-        <AppButton title="Save" onPress={handleSave} disabled={!canSave} />
+      <View style={styles.footer}>
+        <AppButton
+          title={editing ? 'Save changes' : 'Add transaction'}
+          onPress={handleSave}
+          disabled={!canSave}
+        />
       </View>
     </GradientScreen>
   );
@@ -202,38 +220,51 @@ const styles = StyleSheet.create({
   content: {
     paddingHorizontal: 20,
     paddingBottom: 20,
+    gap: Spacing.lg,
+  },
+  amountCard: {
+    paddingVertical: 22,
+    paddingHorizontal: 12,
   },
   formCard: {
-    gap: 22,
+    gap: Spacing.xl,
   },
-  segmented: {
-    flexDirection: 'row',
-    padding: 4,
-  },
-  segment: {
-    flex: 1,
-    paddingVertical: 10,
-    alignItems: 'center',
-  },
-  fieldGroup: {
-    gap: 8,
-  },
-  fieldLabel: {
-    marginLeft: 4,
+  field: {
+    gap: 10,
   },
   dateRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
-    gap: 20,
+    gap: 8,
   },
-  noteInput: {
-    paddingHorizontal: 14,
-    paddingVertical: 12,
+  dateArrow: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: Colors.controlBg,
+    borderWidth: 1,
+    borderColor: Colors.glassBorderSoft,
+  },
+  dateArrowDisabled: {
+    opacity: 0.35,
+  },
+  dateLabel: {
+    flex: 1,
+  },
+  input: {
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    borderRadius: BorderRadius.sm,
+    backgroundColor: 'rgba(25, 21, 39, 0.04)',
     fontSize: 14,
+    fontFamily: 'Manrope_500Medium',
+    color: Colors.textPrimary,
   },
   footer: {
     paddingHorizontal: 20,
-    paddingTop: 8,
+    paddingTop: 10,
+    paddingBottom: 12,
   },
 });

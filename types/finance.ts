@@ -47,12 +47,9 @@ export interface Budget {
   createdAt: string;
 }
 
-export type ThemePreference = 'light' | 'dark' | 'system';
-
 export interface AppSettings {
   currency: string;
   hasOnboarded: boolean;
-  themePreference: ThemePreference;
 }
 
 export interface FinanceState {

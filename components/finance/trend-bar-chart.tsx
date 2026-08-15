@@ -1,8 +1,10 @@
 import React from 'react';
 import { View, StyleSheet } from 'react-native';
+import { LinearGradient } from 'expo-linear-gradient';
+import Animated, { FadeInDown } from 'react-native-reanimated';
 
 import { AppText } from '@/components/ui/app-text';
-import { useAppTheme } from '@/context/theme-context';
+import { Colors } from '@/constants/theme';
 
 export interface TrendDatum {
   label: string;
@@ -13,49 +15,60 @@ export interface TrendDatum {
 export interface TrendBarChartProps {
   data: TrendDatum[];
   height?: number;
+  /** Highlight the final column (usually the current month). */
+  highlightLast?: boolean;
 }
 
-const INCOME_COLOR = '#16A34A';
-const EXPENSE_COLOR = '#DC2626';
-
-export const TrendBarChart: React.FC<TrendBarChartProps> = ({ data, height = 140 }) => {
-  const { colors } = useAppTheme();
+export const TrendBarChart: React.FC<TrendBarChartProps> = ({
+  data,
+  height = 132,
+  highlightLast = true,
+}) => {
   const max = Math.max(1, ...data.map(d => Math.max(d.income, d.expense)));
 
   return (
     <View style={styles.container}>
-      <View style={[styles.chartArea, { height }]}>
-        {data.map((d, index) => (
-          <View key={index} style={styles.column}>
-            <View style={styles.bars}>
-              <View
-                style={[
-                  styles.bar,
-                  { height: `${(d.income / max) * 100}%`, backgroundColor: INCOME_COLOR },
-                ]}
-              />
-              <View
-                style={[
-                  styles.bar,
-                  { height: `${(d.expense / max) * 100}%`, backgroundColor: EXPENSE_COLOR },
-                ]}
-              />
+      <View style={[styles.plot, { height }]}>
+        {data.map((d, index) => {
+          const isLast = highlightLast && index === data.length - 1;
+          return (
+            <View key={index} style={styles.column}>
+              <View style={styles.bars}>
+                <Animated.View
+                  entering={FadeInDown.delay(index * 60).duration(420)}
+                  style={[styles.barWrap, { height: `${(d.income / max) * 100}%` }]}
+                >
+                  <LinearGradient
+                    colors={['#4FCB97', Colors.income]}
+                    style={StyleSheet.absoluteFill}
+                  />
+                </Animated.View>
+                <Animated.View
+                  entering={FadeInDown.delay(index * 60 + 40).duration(420)}
+                  style={[styles.barWrap, { height: `${(d.expense / max) * 100}%` }]}
+                >
+                  <LinearGradient
+                    colors={[Colors.accent, Colors.expense]}
+                    style={StyleSheet.absoluteFill}
+                  />
+                </Animated.View>
+              </View>
+              <AppText variant="micro" color={isLast ? Colors.textPrimary : Colors.textMuted}>
+                {d.label}
+              </AppText>
             </View>
-            <AppText variant="caption" style={{ color: colors.textMuted }}>
-              {d.label}
-            </AppText>
-          </View>
-        ))}
+          );
+        })}
       </View>
 
       <View style={styles.legend}>
         <View style={styles.legendItem}>
-          <View style={[styles.legendDot, { backgroundColor: INCOME_COLOR }]} />
-          <AppText variant="caption">Income</AppText>
+          <View style={[styles.legendDot, { backgroundColor: Colors.income }]} />
+          <AppText variant="micro">Income</AppText>
         </View>
         <View style={styles.legendItem}>
-          <View style={[styles.legendDot, { backgroundColor: EXPENSE_COLOR }]} />
-          <AppText variant="caption">Expense</AppText>
+          <View style={[styles.legendDot, { backgroundColor: Colors.expense }]} />
+          <AppText variant="micro">Expense</AppText>
         </View>
       </View>
     </View>
@@ -66,35 +79,35 @@ const styles = StyleSheet.create({
   container: {
     width: '100%',
   },
-  chartArea: {
+  plot: {
     flexDirection: 'row',
     alignItems: 'flex-end',
     justifyContent: 'space-between',
-    gap: 8,
   },
   column: {
     flex: 1,
     alignItems: 'center',
     height: '100%',
     justifyContent: 'flex-end',
-    gap: 6,
+    gap: 8,
   },
   bars: {
     flexDirection: 'row',
     alignItems: 'flex-end',
-    gap: 3,
-    height: '85%',
+    gap: 4,
+    height: '82%',
   },
-  bar: {
-    width: 8,
-    borderRadius: 4,
-    minHeight: 3,
+  barWrap: {
+    width: 9,
+    minHeight: 4,
+    borderRadius: 5,
+    overflow: 'hidden',
   },
   legend: {
     flexDirection: 'row',
     justifyContent: 'center',
-    gap: 20,
-    marginTop: 14,
+    gap: 18,
+    marginTop: 16,
   },
   legendItem: {
     flexDirection: 'row',
@@ -102,8 +115,8 @@ const styles = StyleSheet.create({
     gap: 6,
   },
   legendDot: {
-    width: 8,
-    height: 8,
+    width: 7,
+    height: 7,
     borderRadius: 4,
   },
 });

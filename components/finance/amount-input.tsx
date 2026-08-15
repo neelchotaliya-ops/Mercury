@@ -5,7 +5,7 @@ import { Ionicons } from '@expo/vector-icons';
 import Animated, { useSharedValue, useAnimatedStyle, withSpring } from 'react-native-reanimated';
 
 import { AppText } from '@/components/ui/app-text';
-import { useAppTheme } from '@/context/theme-context';
+import { Colors } from '@/constants/theme';
 
 export interface AmountInputProps {
   value: string;
@@ -15,36 +15,35 @@ export interface AmountInputProps {
 }
 
 const KEYS = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '.', '0', 'back'] as const;
+type KeyValue = (typeof KEYS)[number];
 
-interface KeypadKeyProps {
-  keyValue: (typeof KEYS)[number];
-  onPress: () => void;
-}
-
-const KeypadKey: React.FC<KeypadKeyProps> = ({ keyValue, onPress }) => {
-  const { colors } = useAppTheme();
+const KeypadKey: React.FC<{ keyValue: KeyValue; onPress: () => void }> = ({ keyValue, onPress }) => {
   const scale = useSharedValue(1);
+  const bg = useSharedValue(0);
 
   const animatedStyle = useAnimatedStyle(() => ({
     transform: [{ scale: scale.value }],
+    backgroundColor: `rgba(255, 255, 255, ${bg.value * 0.7})`,
   }));
 
   return (
     <Pressable
       onPress={onPress}
       onPressIn={() => {
-        scale.value = withSpring(0.8, { damping: 12, stiffness: 350 });
+        scale.value = withSpring(0.88, { damping: 13, stiffness: 380 });
+        bg.value = withSpring(1, { damping: 18, stiffness: 260 });
       }}
       onPressOut={() => {
         scale.value = withSpring(1, { damping: 10, stiffness: 250 });
+        bg.value = withSpring(0, { damping: 18, stiffness: 200 });
       }}
-      style={styles.key}
+      style={styles.keySlot}
     >
-      <Animated.View style={animatedStyle}>
+      <Animated.View style={[styles.key, animatedStyle]}>
         {keyValue === 'back' ? (
-          <Ionicons name="backspace-outline" size={22} color={colors.textPrimary} />
+          <Ionicons name="backspace-outline" size={21} color={Colors.textSecondary} />
         ) : (
-          <AppText variant="h2" style={{ color: colors.textPrimary }}>
+          <AppText variant="h2" style={styles.keyLabel}>
             {keyValue}
           </AppText>
         )}
@@ -53,13 +52,16 @@ const KeypadKey: React.FC<KeypadKeyProps> = ({ keyValue, onPress }) => {
   );
 };
 
-export const AmountInput: React.FC<AmountInputProps> = ({ value, onChangeValue, currencySymbol, accentColor }) => {
-  const { colors } = useAppTheme();
-
-  const handleKey = (key: string) => {
+export const AmountInput: React.FC<AmountInputProps> = ({
+  value,
+  onChangeValue,
+  currencySymbol,
+  accentColor,
+}) => {
+  const handleKey = (key: KeyValue) => {
     try {
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    } catch (e) {}
+    } catch {}
 
     if (key === 'back') {
       onChangeValue(value.length > 0 ? value.slice(0, -1) : value);
@@ -80,14 +82,23 @@ export const AmountInput: React.FC<AmountInputProps> = ({ value, onChangeValue, 
     onChangeValue(`${value}${key}`);
   };
 
+  const tint = accentColor ?? Colors.textPrimary;
+  const isEmpty = value.length === 0;
+
   return (
     <View style={styles.container}>
       <View style={styles.displayRow}>
-        <AppText variant="h1" style={[styles.currencySymbol, { color: accentColor ?? colors.textPrimary }]}>
+        <AppText variant="h2" color={isEmpty ? Colors.textMuted : tint} style={styles.symbol}>
           {currencySymbol}
         </AppText>
-        <AppText variant="h1" style={[styles.amountText, { color: accentColor ?? colors.textPrimary }]} numberOfLines={1}>
-          {value.length > 0 ? value : '0'}
+        <AppText
+          variant="display"
+          color={isEmpty ? Colors.textMuted : tint}
+          style={styles.amount}
+          numberOfLines={1}
+          adjustsFontSizeToFit
+        >
+          {isEmpty ? '0' : value}
         </AppText>
       </View>
 
@@ -106,26 +117,34 @@ const styles = StyleSheet.create({
   },
   displayRow: {
     flexDirection: 'row',
-    alignItems: 'center',
+    alignItems: 'baseline',
     justifyContent: 'center',
-    marginBottom: 20,
-    paddingHorizontal: 16,
+    gap: 4,
+    marginBottom: 14,
   },
-  currencySymbol: {
-    fontSize: 28,
-    marginRight: 6,
+  symbol: {
+    fontSize: 22,
   },
-  amountText: {
-    fontSize: 44,
+  amount: {
+    fontSize: 46,
+    lineHeight: 54,
   },
   keypad: {
     flexDirection: 'row',
     flexWrap: 'wrap',
   },
-  key: {
+  keySlot: {
     width: '33.333%',
-    paddingVertical: 16,
+    paddingVertical: 4,
+    paddingHorizontal: 6,
+  },
+  key: {
+    height: 54,
+    borderRadius: 18,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  keyLabel: {
+    fontSize: 23,
   },
 });

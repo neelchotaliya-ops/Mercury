@@ -1,10 +1,14 @@
 import React from 'react';
-import { Pressable, ViewStyle, TextStyle, ActivityIndicator } from 'react-native';
+import { Pressable, StyleSheet, ViewStyle, TextStyle, ActivityIndicator, StyleProp } from 'react-native';
+import { LinearGradient } from 'expo-linear-gradient';
+import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
-import { useAppTheme } from '@/context/theme-context';
-import { AppText } from './app-text';
+import Animated, { useSharedValue, useAnimatedStyle, withSpring } from 'react-native-reanimated';
 
-export type ButtonVariant = 'primary' | 'secondary' | 'ghost' | 'text';
+import { AppText } from '@/components/ui/app-text';
+import { Colors, Gradients, BorderRadius, Shadows, Spacing } from '@/constants/theme';
+
+export type ButtonVariant = 'primary' | 'glass' | 'ghost' | 'text';
 export type ButtonSize = 'sm' | 'md' | 'lg';
 
 export interface AppButtonProps {
@@ -12,136 +16,112 @@ export interface AppButtonProps {
   onPress: () => void;
   variant?: ButtonVariant;
   size?: ButtonSize;
+  icon?: keyof typeof Ionicons.glyphMap;
   disabled?: boolean;
   loading?: boolean;
   fullWidth?: boolean;
-  style?: ViewStyle | ViewStyle[];
+  style?: StyleProp<ViewStyle>;
   textStyle?: TextStyle;
-  enableHaptics?: boolean;
 }
+
+const SIZES: Record<ButtonSize, { paddingVertical: number; paddingHorizontal: number; fontSize: number }> = {
+  sm: { paddingVertical: 10, paddingHorizontal: Spacing.lg, fontSize: 13 },
+  md: { paddingVertical: 14, paddingHorizontal: Spacing.xl, fontSize: 14 },
+  lg: { paddingVertical: 18, paddingHorizontal: Spacing['2xl'], fontSize: 15 },
+};
 
 export const AppButton: React.FC<AppButtonProps> = ({
   title,
   onPress,
   variant = 'primary',
   size = 'lg',
+  icon,
   disabled = false,
   loading = false,
   fullWidth = true,
   style,
   textStyle,
-  enableHaptics = true,
 }) => {
-  const { colors, borderRadius, spacing, shadows } = useAppTheme();
+  const scale = useSharedValue(1);
+  const animatedStyle = useAnimatedStyle(() => ({ transform: [{ scale: scale.value }] }));
+
+  const dims = SIZES[size];
+  const isDisabled = disabled || loading;
+
+  const textColor =
+    variant === 'primary'
+      ? Colors.ctaText
+      : variant === 'text'
+        ? Colors.textSecondary
+        : Colors.textPrimary;
 
   const handlePress = () => {
-    if (disabled || loading) return;
-    if (enableHaptics) {
-      try {
-        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-      } catch (e) {
-        // Ignore fallback
-      }
-    }
+    if (isDisabled) return;
+    try {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    } catch {}
     onPress();
   };
 
-  const getContainerStyle = (pressed: boolean): ViewStyle => {
-    let base: ViewStyle = {
-      flexDirection: 'row',
-      alignItems: 'center',
-      justifyContent: 'center',
-      borderRadius: borderRadius.pill,
-      opacity: pressed ? 0.90 : disabled ? 0.5 : 1,
-      transform: [{ scale: pressed ? 0.98 : 1 }],
-    };
-
-    if (fullWidth) {
-      base.width = '100%';
-    }
-
-    // Size styling
-    switch (size) {
-      case 'sm':
-        base.paddingVertical = spacing.sm;
-        base.paddingHorizontal = spacing.md;
-        break;
-      case 'md':
-        base.paddingVertical = spacing.md;
-        base.paddingHorizontal = spacing.xl;
-        break;
-      case 'lg':
-      default:
-        base.paddingVertical = 18;
-        base.paddingHorizontal = spacing['2xl'];
-        break;
-    }
-
-    // Variant styling
-    switch (variant) {
-      case 'primary':
-        base.backgroundColor = '#000000';
-        Object.assign(base, shadows.button);
-        break;
-      case 'secondary':
-        base.backgroundColor = colors.buttonSecondaryBg;
-        break;
-      case 'ghost':
-        base.backgroundColor = 'transparent';
-        base.borderWidth = 1;
-        base.borderColor = colors.border;
-        break;
-      case 'text':
-        base.backgroundColor = 'transparent';
-        base.paddingVertical = spacing.xs;
-        base.paddingHorizontal = spacing.xs;
-        break;
-    }
-
-    return base;
+  const container: ViewStyle = {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    borderRadius: BorderRadius.pill,
+    paddingVertical: variant === 'text' ? 4 : dims.paddingVertical,
+    paddingHorizontal: variant === 'text' ? 4 : dims.paddingHorizontal,
+    overflow: 'hidden',
+    opacity: isDisabled ? 0.4 : 1,
+    ...(fullWidth ? { width: '100%' } : {}),
+    ...(variant === 'primary' ? Shadows.floating : {}),
+    ...(variant === 'glass'
+      ? { backgroundColor: Colors.controlBg, borderWidth: 1, borderColor: Colors.glassBorder }
+      : {}),
+    ...(variant === 'ghost'
+      ? { backgroundColor: 'transparent', borderWidth: 1, borderColor: Colors.track }
+      : {}),
   };
-
-  const getTextColor = (): string => {
-    switch (variant) {
-      case 'primary':
-        return '#FFFFFF';
-      case 'secondary':
-        return colors.buttonSecondaryText;
-      case 'ghost':
-        return colors.textPrimary;
-      case 'text':
-        return colors.textSecondary;
-      default:
-        return '#FFFFFF';
-    }
-  };
-
-  const computedTextStyle: TextStyle[] = [
-    {
-      textTransform: variant === 'primary' ? 'uppercase' : 'none',
-      letterSpacing: variant === 'primary' ? 1.5 : 0,
-      fontSize: 14,
-      fontWeight: '700',
-    },
-    ...(textStyle ? [textStyle] : []),
-  ];
 
   return (
     <Pressable
       onPress={handlePress}
-      disabled={disabled || loading}
-      style={({ pressed }) => [
-        getContainerStyle(pressed),
-        ...(Array.isArray(style) ? style : style ? [style] : []),
-      ]}
+      disabled={isDisabled}
+      onPressIn={() => {
+        scale.value = withSpring(0.97, { damping: 15, stiffness: 320 });
+      }}
+      onPressOut={() => {
+        scale.value = withSpring(1, { damping: 12, stiffness: 240 });
+      }}
+      style={fullWidth ? styles.fullWidth : undefined}
     >
-      {loading ? (
-        <ActivityIndicator color={getTextColor()} size="small" />
-      ) : (
-        <AppText variant="button" color={getTextColor()} style={computedTextStyle}>
-          {title}
-        </AppText>
-      )}
+      <Animated.View style={[container, animatedStyle, style]}>
+        {variant === 'primary' && (
+          <LinearGradient
+            colors={Gradients.cta as [string, string]}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 1 }}
+            style={StyleSheet.absoluteFill}
+          />
+        )}
+
+        {loading ? (
+          <ActivityIndicator color={textColor} size="small" />
+        ) : (
+          <>
+            {icon ? <Ionicons name={icon} size={dims.fontSize + 3} color={textColor} /> : null}
+            <AppText variant="button" color={textColor} style={[{ fontSize: dims.fontSize }, textStyle]}>
+              {title}
+            </AppText>
+          </>
+        )}
+      </Animated.View>
     </Pressable>
   );
 };
+
+const styles = StyleSheet.create({
+  fullWidth: {
+    width: '100%',
+  },
+});

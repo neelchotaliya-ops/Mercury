@@ -1,103 +1,128 @@
 import React from 'react';
-import { Text as RNText, TextProps as RNTextProps, TextStyle } from 'react-native';
-import { useAppTheme } from '@/context/theme-context';
-import { Fonts } from '@/constants/theme';
+import { Text as RNText, TextProps as RNTextProps, TextStyle, StyleProp } from 'react-native';
 
-export type TextVariant = 'h1' | 'h2' | 'h3' | 'subtitle' | 'body' | 'caption' | 'button' | 'link';
+import { Colors, Fonts, Typography } from '@/constants/theme';
+
+export type TextVariant =
+  | 'display'
+  | 'h1'
+  | 'h2'
+  | 'h3'
+  | 'subtitle'
+  | 'body'
+  | 'bodyStrong'
+  | 'caption'
+  | 'micro'
+  | 'label'
+  | 'button'
+  | 'link'
+  | 'amount';
 
 export interface AppTextProps extends RNTextProps {
   variant?: TextVariant;
   color?: string;
-  weight?: 'regular' | 'medium' | 'semibold' | 'bold' | 'heavy';
-  align?: 'auto' | 'left' | 'right' | 'center' | 'justify';
-  style?: TextStyle | TextStyle[];
+  align?: TextStyle['textAlign'];
+  style?: StyleProp<TextStyle>;
   children: React.ReactNode;
 }
+
+const VARIANTS: Record<TextVariant, TextStyle> = {
+  display: {
+    fontFamily: Fonts.title.extraBold,
+    fontSize: Typography.fontSizes['4xl'],
+    lineHeight: 40,
+    letterSpacing: Typography.letterSpacing.tighter,
+    color: Colors.textPrimary,
+  },
+  h1: {
+    fontFamily: Fonts.title.extraBold,
+    fontSize: Typography.fontSizes['3xl'],
+    lineHeight: 34,
+    letterSpacing: Typography.letterSpacing.tight,
+    color: Colors.textPrimary,
+  },
+  h2: {
+    fontFamily: Fonts.title.bold,
+    fontSize: Typography.fontSizes['2xl'],
+    lineHeight: 30,
+    letterSpacing: Typography.letterSpacing.tight,
+    color: Colors.textPrimary,
+  },
+  h3: {
+    fontFamily: Fonts.title.semibold,
+    fontSize: Typography.fontSizes.lg,
+    lineHeight: 23,
+    color: Colors.textPrimary,
+  },
+  subtitle: {
+    fontFamily: Fonts.body.regular,
+    fontSize: Typography.fontSizes.md,
+    lineHeight: 23,
+    color: Colors.textSecondary,
+  },
+  body: {
+    fontFamily: Fonts.body.medium,
+    fontSize: Typography.fontSizes.md,
+    lineHeight: 21,
+    color: Colors.textPrimary,
+  },
+  bodyStrong: {
+    fontFamily: Fonts.body.semibold,
+    fontSize: Typography.fontSizes.md,
+    lineHeight: 21,
+    color: Colors.textPrimary,
+  },
+  caption: {
+    fontFamily: Fonts.body.medium,
+    fontSize: Typography.fontSizes.sm,
+    lineHeight: 18,
+    color: Colors.textMuted,
+  },
+  micro: {
+    fontFamily: Fonts.body.semibold,
+    fontSize: Typography.fontSizes.xs,
+    lineHeight: 15,
+    color: Colors.textMuted,
+  },
+  label: {
+    fontFamily: Fonts.body.bold,
+    fontSize: Typography.fontSizes.xs,
+    lineHeight: 15,
+    letterSpacing: 0.9,
+    textTransform: 'uppercase',
+    color: Colors.textMuted,
+  },
+  button: {
+    fontFamily: Fonts.title.bold,
+    fontSize: Typography.fontSizes.md,
+    letterSpacing: 0.1,
+    color: Colors.ctaText,
+  },
+  link: {
+    fontFamily: Fonts.body.bold,
+    fontSize: Typography.fontSizes.sm,
+    color: Colors.primary,
+  },
+  amount: {
+    fontFamily: Fonts.title.bold,
+    fontSize: Typography.fontSizes.md,
+    letterSpacing: Typography.letterSpacing.tight,
+    color: Colors.textPrimary,
+  },
+};
 
 export const AppText: React.FC<AppTextProps> = ({
   variant = 'body',
   color,
-  weight,
-  align = 'left',
+  align,
   style,
   children,
   ...rest
-}) => {
-  const { colors, typography } = useAppTheme();
-
-  const getVariantStyles = (): TextStyle => {
-    switch (variant) {
-      case 'h1':
-        return {
-          fontFamily: Fonts.title.extraBold,
-          fontSize: typography.fontSizes['4xl'], // 32
-          lineHeight: 38,
-          letterSpacing: typography.letterSpacing.tight,
-          color: colors.textPrimary,
-        };
-      case 'h2':
-        return {
-          fontFamily: Fonts.title.bold,
-          fontSize: typography.fontSizes['3xl'], // 28
-          lineHeight: 34,
-          letterSpacing: typography.letterSpacing.tight,
-          color: colors.textPrimary,
-        };
-      case 'h3':
-        return {
-          fontFamily: Fonts.title.semibold,
-          fontSize: typography.fontSizes['2xl'], // 24
-          lineHeight: 30,
-          color: colors.textPrimary,
-        };
-      case 'subtitle':
-        return {
-          fontFamily: Fonts.subtitle.regular,
-          fontSize: typography.fontSizes.md, // 16
-          lineHeight: 22,
-          color: colors.textSecondary,
-        };
-      case 'body':
-        return {
-          fontFamily: Fonts.subtitle.regular,
-          fontSize: typography.fontSizes.sm, // 14
-          lineHeight: 20,
-          color: colors.textSecondary,
-        };
-      case 'caption':
-        return {
-          fontFamily: Fonts.subtitle.regular,
-          fontSize: typography.fontSizes.xs, // 12
-          lineHeight: 16,
-          color: colors.textMuted,
-        };
-      case 'button':
-        return {
-          fontFamily: Fonts.title.bold,
-          fontSize: typography.fontSizes.sm, // 14
-          letterSpacing: typography.letterSpacing.wide,
-          color: colors.buttonPrimaryText,
-        };
-      case 'link':
-        return {
-          fontFamily: Fonts.subtitle.semibold,
-          fontSize: typography.fontSizes.sm, // 14
-          color: colors.primary,
-        };
-      default:
-        return {};
-    }
-  };
-
-  const computedStyle: TextStyle = {
-    ...getVariantStyles(),
-    ...(color ? { color } : {}),
-    ...(align ? { textAlign: align } : {}),
-  };
-
-  return (
-    <RNText style={[computedStyle, ...(Array.isArray(style) ? style : style ? [style] : [])]} {...rest}>
-      {children}
-    </RNText>
-  );
-};
+}) => (
+  <RNText
+    style={[VARIANTS[variant], color ? { color } : null, align ? { textAlign: align } : null, style]}
+    {...rest}
+  >
+    {children}
+  </RNText>
+);

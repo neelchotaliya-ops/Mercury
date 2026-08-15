@@ -1,47 +1,48 @@
 import React, { useMemo, useState } from 'react';
-import { View, StyleSheet, ScrollView, Pressable } from 'react-native';
+import { View, StyleSheet, ScrollView } from 'react-native';
 import { useRouter } from 'expo-router';
-import { Ionicons } from '@expo/vector-icons';
 
 import { AppText } from '@/components/ui/app-text';
 import { GradientScreen } from '@/components/ui/gradient-screen';
 import { GlassCard } from '@/components/ui/glass-card';
-import { BudgetProgressBarItem } from '@/components/finance/budget-progress-bar';
+import { IconButton } from '@/components/ui/icon-button';
+import { MonthStepper } from '@/components/ui/month-stepper';
+import { ProgressBar } from '@/components/finance/progress-bar';
+import { BudgetRow } from '@/components/finance/budget-row';
 import { EmptyState } from '@/components/finance/empty-state';
-import { useAppTheme } from '@/context/theme-context';
 import { useFinance } from '@/context/finance-context';
 import { getBudgetProgress } from '@/utils/selectors';
-import { monthKeyLabel, shiftMonthKey, toMonthKey } from '@/utils/date';
+import { formatCurrency } from '@/utils/currency';
+import { toMonthKey } from '@/utils/date';
+import { Colors, Spacing } from '@/constants/theme';
 
 export default function BudgetsScreen() {
   const router = useRouter();
-  const { colors, spacing } = useAppTheme();
   const { state } = useFinance();
   const [monthKey, setMonthKey] = useState(() => toMonthKey(new Date()));
 
   const progress = useMemo(() => getBudgetProgress(state, monthKey), [state, monthKey]);
+  const currency = state.settings.currency;
+
+  const totals = progress.reduce(
+    (acc, p) => ({ limit: acc.limit + p.budget.monthlyLimit, spent: acc.spent + p.spent }),
+    { limit: 0, spent: 0 }
+  );
+  const overallPercent = totals.limit > 0 ? totals.spent / totals.limit : 0;
+  const overallOver = totals.spent > totals.limit;
 
   return (
     <GradientScreen>
-      <View style={styles.headerRow}>
-        <AppText variant="h2" style={{ color: colors.textPrimary }}>
-          Budgets
-        </AppText>
-        <Pressable onPress={() => router.push('/add-budget')} style={[styles.addButton, { backgroundColor: colors.buttonPrimaryBg }]}>
-          <Ionicons name="add" size={20} color="#FFFFFF" />
-        </Pressable>
+      <View style={styles.header}>
+        <View style={styles.headerText}>
+          <AppText variant="h2">Budgets</AppText>
+          <AppText variant="caption">Keep your monthly spending on track</AppText>
+        </View>
+        <IconButton iconName="add" onPress={() => router.push('/add-budget')} solid />
       </View>
 
-      <View style={styles.monthRow}>
-        <Pressable onPress={() => setMonthKey(k => shiftMonthKey(k, -1))} hitSlop={10}>
-          <Ionicons name="chevron-back" size={20} color={colors.textPrimary} />
-        </Pressable>
-        <AppText variant="body" weight="semibold" style={{ color: colors.textPrimary }}>
-          {monthKeyLabel(monthKey)}
-        </AppText>
-        <Pressable onPress={() => setMonthKey(k => shiftMonthKey(k, 1))} hitSlop={10}>
-          <Ionicons name="chevron-forward" size={20} color={colors.textPrimary} />
-        </Pressable>
+      <View style={styles.stepperWrap}>
+        <MonthStepper monthKey={monthKey} onChange={setMonthKey} />
       </View>
 
       <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
@@ -50,22 +51,40 @@ export default function BudgetsScreen() {
             <EmptyState
               icon="pie-chart-outline"
               title="No budgets yet"
-              subtitle="Set a monthly spending limit for a category to start tracking your budget."
-              actionLabel="Create budget"
+              subtitle="Set a monthly limit on a category and track how much is left."
+              actionLabel="Create a budget"
               onAction={() => router.push('/add-budget')}
             />
           </GlassCard>
         ) : (
-          <View style={{ gap: spacing.md }}>
-            {progress.map((p, index) => (
-              <BudgetProgressBarItem
-                key={p.budget.id}
-                progress={p}
-                animateIndex={index}
-                onPress={() => router.push(`/add-budget?id=${p.budget.id}`)}
-              />
-            ))}
-          </View>
+          <>
+            <GlassCard strong style={styles.summary} elevated>
+              <View style={styles.summaryTop}>
+                <View style={styles.summaryText}>
+                  <AppText variant="label">Total budgeted</AppText>
+                  <AppText variant="h1">{formatCurrency(totals.spent, currency)}</AppText>
+                  <AppText variant="caption">of {formatCurrency(totals.limit, currency)}</AppText>
+                </View>
+                <View style={styles.summaryPill}>
+                  <AppText variant="h3" color={overallOver ? Colors.expense : Colors.primary}>
+                    {Math.round(overallPercent * 100)}%
+                  </AppText>
+                </View>
+              </View>
+              <ProgressBar progress={overallPercent} over={overallOver} height={10} />
+            </GlassCard>
+
+            <View style={styles.list}>
+              {progress.map((p, index) => (
+                <BudgetRow
+                  key={p.budget.id}
+                  progress={p}
+                  animateIndex={index}
+                  onPress={() => router.push(`/add-budget?id=${p.budget.id}`)}
+                />
+              ))}
+            </View>
+          </>
         )}
       </ScrollView>
     </GradientScreen>
@@ -73,31 +92,50 @@ export default function BudgetsScreen() {
 }
 
 const styles = StyleSheet.create({
-  headerRow: {
+  header: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingHorizontal: 20,
-    paddingTop: 12,
-    paddingBottom: 8,
+    paddingTop: 6,
+    gap: 12,
   },
-  addButton: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    alignItems: 'center',
-    justifyContent: 'center',
+  headerText: {
+    gap: 3,
+    flex: 1,
   },
-  monthRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 16,
-    paddingVertical: 8,
+  stepperWrap: {
+    marginTop: Spacing.lg,
+    paddingHorizontal: 20,
   },
   content: {
     paddingHorizontal: 20,
-    paddingTop: 12,
-    paddingBottom: 140,
+    paddingTop: Spacing.lg,
+    paddingBottom: 130,
+    gap: Spacing.lg,
+  },
+  summary: {
+    gap: 16,
+  },
+  summaryTop: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 12,
+  },
+  summaryText: {
+    gap: 3,
+    flex: 1,
+  },
+  summaryPill: {
+    width: 62,
+    height: 62,
+    borderRadius: 31,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: Colors.primarySoft,
+  },
+  list: {
+    gap: 12,
   },
 });

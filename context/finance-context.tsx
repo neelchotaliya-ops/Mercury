@@ -25,7 +25,6 @@ type Action =
 const defaultSettings: AppSettings = {
   currency: 'USD',
   hasOnboarded: false,
-  themePreference: 'system',
 };
 
 function buildDefaultCategories(): Category[] {

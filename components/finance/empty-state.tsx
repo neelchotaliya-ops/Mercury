@@ -4,7 +4,7 @@ import { Ionicons } from '@expo/vector-icons';
 
 import { AppText } from '@/components/ui/app-text';
 import { AppButton } from '@/components/ui/app-button';
-import { useAppTheme } from '@/context/theme-context';
+import { Colors } from '@/constants/theme';
 
 export interface EmptyStateProps {
   icon: keyof typeof Ionicons.glyphMap;
@@ -14,51 +14,53 @@ export interface EmptyStateProps {
   onAction?: () => void;
 }
 
-export const EmptyState: React.FC<EmptyStateProps> = ({ icon, title, subtitle, actionLabel, onAction }) => {
-  const { colors } = useAppTheme();
-
-  return (
-    <View style={styles.container}>
-      <View style={[styles.iconWrap, { backgroundColor: colors.primaryLight }]}>
-        <Ionicons name={icon} size={30} color={colors.primary} />
-      </View>
-      <AppText variant="h3" align="center" style={styles.title}>
-        {title}
-      </AppText>
-      {subtitle ? (
-        <AppText variant="body" align="center" style={styles.subtitle}>
-          {subtitle}
-        </AppText>
-      ) : null}
-      {actionLabel && onAction ? (
-        <AppButton title={actionLabel} onPress={onAction} variant="secondary" size="md" fullWidth={false} style={styles.action} />
-      ) : null}
+export const EmptyState: React.FC<EmptyStateProps> = ({ icon, title, subtitle, actionLabel, onAction }) => (
+  <View style={styles.container}>
+    <View style={styles.iconWrap}>
+      <Ionicons name={icon} size={26} color={Colors.primary} />
     </View>
-  );
-};
+    <AppText variant="h3" align="center">
+      {title}
+    </AppText>
+    {subtitle ? (
+      <AppText variant="caption" align="center" style={styles.subtitle}>
+        {subtitle}
+      </AppText>
+    ) : null}
+    {actionLabel && onAction ? (
+      <AppButton
+        title={actionLabel}
+        onPress={onAction}
+        variant="glass"
+        size="sm"
+        fullWidth={false}
+        style={styles.action}
+      />
+    ) : null}
+  </View>
+);
 
 const styles = StyleSheet.create({
   container: {
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: 32,
-    paddingHorizontal: 24,
+    paddingVertical: 26,
+    paddingHorizontal: 12,
+    gap: 6,
   },
   iconWrap: {
-    width: 64,
-    height: 64,
-    borderRadius: 32,
+    width: 58,
+    height: 58,
+    borderRadius: 20,
+    backgroundColor: Colors.primarySoft,
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: 16,
-  },
-  title: {
-    marginBottom: 6,
+    marginBottom: 10,
   },
   subtitle: {
-    maxWidth: 280,
+    maxWidth: 250,
   },
   action: {
-    marginTop: 20,
+    marginTop: 16,
   },
 });

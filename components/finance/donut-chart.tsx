@@ -3,7 +3,7 @@ import { View, StyleSheet } from 'react-native';
 import Svg, { Circle, G } from 'react-native-svg';
 
 import { AppText } from '@/components/ui/app-text';
-import { useAppTheme } from '@/context/theme-context';
+import { Colors } from '@/constants/theme';
 
 export interface DonutChartDatum {
   label: string;
@@ -19,39 +19,40 @@ export interface DonutChartProps {
   centerValue?: string;
 }
 
+/** Segments are separated by a small gap and rounded, so the ring reads as
+ *  distinct arcs rather than one solid band. */
 export const DonutChart: React.FC<DonutChartProps> = ({
   data,
-  size = 180,
-  strokeWidth = 22,
+  size = 168,
+  strokeWidth = 14,
   centerLabel,
   centerValue,
 }) => {
-  const { colors } = useAppTheme();
   const radius = (size - strokeWidth) / 2;
   const circumference = 2 * Math.PI * radius;
   const total = data.reduce((sum, d) => sum + d.value, 0);
 
-  let cumulativeOffset = 0;
+  const gap = data.length > 1 ? 3 : 0;
+  let offset = 0;
 
   return (
     <View style={styles.container}>
       <Svg width={size} height={size}>
         <G transform={`rotate(-90 ${size / 2} ${size / 2})`}>
-          {total <= 0 ? (
-            <Circle
-              cx={size / 2}
-              cy={size / 2}
-              r={radius}
-              stroke={colors.border}
-              strokeWidth={strokeWidth}
-              fill="none"
-            />
-          ) : (
+          <Circle
+            cx={size / 2}
+            cy={size / 2}
+            r={radius}
+            stroke={Colors.track}
+            strokeWidth={strokeWidth}
+            fill="none"
+          />
+          {total > 0 &&
             data.map((d, index) => {
-              const fraction = d.value / total;
-              const segmentLength = fraction * circumference;
-              const offset = cumulativeOffset;
-              cumulativeOffset += segmentLength;
+              const raw = (d.value / total) * circumference;
+              const length = Math.max(raw - gap, 1);
+              const dashOffset = -offset;
+              offset += raw;
 
               return (
                 <Circle
@@ -61,24 +62,28 @@ export const DonutChart: React.FC<DonutChartProps> = ({
                   r={radius}
                   stroke={d.color}
                   strokeWidth={strokeWidth}
-                  strokeDasharray={`${segmentLength} ${circumference - segmentLength}`}
-                  strokeDashoffset={-offset}
-                  strokeLinecap="butt"
+                  strokeDasharray={`${length} ${circumference - length}`}
+                  strokeDashoffset={dashOffset}
+                  strokeLinecap="round"
                   fill="none"
                 />
               );
-            })
-          )}
+            })}
         </G>
       </Svg>
+
       {(centerLabel || centerValue) && (
         <View style={styles.center} pointerEvents="none">
           {centerValue ? (
-            <AppText variant="h3" style={{ color: colors.textPrimary }}>
+            <AppText variant="h2" align="center" numberOfLines={1} adjustsFontSizeToFit>
               {centerValue}
             </AppText>
           ) : null}
-          {centerLabel ? <AppText variant="caption">{centerLabel}</AppText> : null}
+          {centerLabel ? (
+            <AppText variant="micro" align="center">
+              {centerLabel}
+            </AppText>
+          ) : null}
         </View>
       )}
     </View>
@@ -93,5 +98,7 @@ const styles = StyleSheet.create({
   center: {
     position: 'absolute',
     alignItems: 'center',
+    gap: 1,
+    paddingHorizontal: 30,
   },
 });

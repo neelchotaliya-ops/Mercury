@@ -9,20 +9,28 @@ import { GlassCard } from '@/components/ui/glass-card';
 import { ModalHeader } from '@/components/ui/modal-header';
 import { AmountInput } from '@/components/finance/amount-input';
 import { CategoryPicker } from '@/components/finance/category-picker';
-import { useAppTheme } from '@/context/theme-context';
+import { EmptyState } from '@/components/finance/empty-state';
 import { useFinance } from '@/context/finance-context';
 import { getCurrencySymbol } from '@/utils/currency';
+import { Colors, Spacing } from '@/constants/theme';
 
 export default function AddBudgetScreen() {
   const router = useRouter();
   const params = useLocalSearchParams<{ id?: string }>();
-  const { spacing } = useAppTheme();
   const { state, addBudget, updateBudget, deleteBudget } = useFinance();
 
-  const editing = useMemo(() => state.budgets.find(b => b.id === params.id), [state.budgets, params.id]);
+  const editing = useMemo(
+    () => state.budgets.find(b => b.id === params.id),
+    [state.budgets, params.id]
+  );
 
-  const budgetedCategoryIds = new Set(state.budgets.filter(b => b.id !== editing?.id).map(b => b.categoryId));
-  const availableCategories = state.categories.filter(c => c.kind === 'expense' && !budgetedCategoryIds.has(c.id));
+  const takenIds = new Set(
+    state.budgets.filter(b => b.id !== editing?.id).map(b => b.categoryId)
+  );
+  const available = state.categories.filter(c => c.kind === 'expense' && !takenIds.has(c.id));
+  const selectable = editing
+    ? [...available, ...state.categories.filter(c => c.id === editing.categoryId)]
+    : available;
 
   const [categoryId, setCategoryId] = useState<string | undefined>(editing?.categoryId);
   const [amount, setAmount] = useState(editing ? String(editing.monthlyLimit) : '');
@@ -32,11 +40,8 @@ export default function AddBudgetScreen() {
 
   const handleSave = () => {
     if (!canSave || !categoryId) return;
-    if (editing) {
-      updateBudget({ ...editing, categoryId, monthlyLimit: numericAmount });
-    } else {
-      addBudget({ categoryId, monthlyLimit: numericAmount });
-    }
+    if (editing) updateBudget({ ...editing, categoryId, monthlyLimit: numericAmount });
+    else addBudget({ categoryId, monthlyLimit: numericAmount });
     router.back();
   };
 
@@ -56,45 +61,49 @@ export default function AddBudgetScreen() {
   };
 
   return (
-    <GradientScreen edges={['top', 'bottom']}>
+    <GradientScreen edges={['top', 'bottom']} contours="top">
       <ModalHeader
         title={editing ? 'Edit budget' : 'New budget'}
+        subtitle="Monthly limit"
         onClose={() => router.back()}
         onDelete={editing ? handleDelete : undefined}
       />
 
-      <ScrollView contentContainerStyle={styles.content}>
-        <GlassCard style={styles.formCard}>
-          <AmountInput value={amount} onChangeValue={setAmount} currencySymbol={getCurrencySymbol(state.settings.currency)} />
-          <AppText variant="caption" align="center" style={{ marginTop: -8 }}>
-            Monthly limit
-          </AppText>
+      <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
+        <GlassCard strong style={styles.amountCard} elevated>
+          <AmountInput
+            value={amount}
+            onChangeValue={setAmount}
+            currencySymbol={getCurrencySymbol(state.settings.currency)}
+            accentColor={Colors.primary}
+          />
+        </GlassCard>
 
-          <View style={styles.fieldGroup}>
-            <AppText variant="caption" style={styles.fieldLabel}>
-              Category
-            </AppText>
-            {editing && availableCategories.length === 0 ? (
-              <View style={styles.currentCategory}>
-                <AppText variant="body">{state.categories.find(c => c.id === editing.categoryId)?.name}</AppText>
-              </View>
-            ) : (
-              <CategoryPicker
-                categories={
-                  editing
-                    ? [...availableCategories, ...state.categories.filter(c => c.id === editing.categoryId)]
-                    : availableCategories
-                }
-                selectedId={categoryId}
-                onSelect={c => setCategoryId(c.id)}
-              />
-            )}
-          </View>
+        <GlassCard style={styles.formCard} padding={18}>
+          <AppText variant="label">Category</AppText>
+          {selectable.length === 0 ? (
+            <EmptyState
+              icon="checkmark-done-outline"
+              title="Every category is budgeted"
+              subtitle="Edit an existing budget instead, or add a new category first."
+            />
+          ) : (
+            <CategoryPicker
+              categories={selectable}
+              selectedId={categoryId}
+              onSelect={c => setCategoryId(c.id)}
+              onManage={() => router.push('/manage-categories?kind=expense')}
+            />
+          )}
         </GlassCard>
       </ScrollView>
 
-      <View style={[styles.footer, { paddingBottom: spacing.xl }]}>
-        <AppButton title="Save" onPress={handleSave} disabled={!canSave} />
+      <View style={styles.footer}>
+        <AppButton
+          title={editing ? 'Save changes' : 'Create budget'}
+          onPress={handleSave}
+          disabled={!canSave}
+        />
       </View>
     </GradientScreen>
   );
@@ -104,21 +113,18 @@ const styles = StyleSheet.create({
   content: {
     paddingHorizontal: 20,
     paddingBottom: 20,
+    gap: Spacing.lg,
+  },
+  amountCard: {
+    paddingVertical: 22,
+    paddingHorizontal: 12,
   },
   formCard: {
-    gap: 22,
-  },
-  fieldGroup: {
-    gap: 8,
-  },
-  fieldLabel: {
-    marginLeft: 4,
-  },
-  currentCategory: {
-    paddingVertical: 10,
+    gap: 12,
   },
   footer: {
     paddingHorizontal: 20,
-    paddingTop: 8,
+    paddingTop: 10,
+    paddingBottom: 12,
   },
 });

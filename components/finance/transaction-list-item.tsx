@@ -3,19 +3,23 @@ import { View, StyleSheet, Pressable } from 'react-native';
 
 import { AppText } from '@/components/ui/app-text';
 import { IconBadge } from '@/components/finance/icon-badge';
-import { useAppTheme } from '@/context/theme-context';
 import { useFinance } from '@/context/finance-context';
 import { Transaction } from '@/types/finance';
 import { getAccountById, getCategoryById } from '@/utils/selectors';
 import { formatCurrency } from '@/utils/currency';
+import { Colors } from '@/constants/theme';
 
 export interface TransactionListItemProps {
   transaction: Transaction;
   onPress?: () => void;
+  showDivider?: boolean;
 }
 
-export const TransactionListItem: React.FC<TransactionListItemProps> = ({ transaction, onPress }) => {
-  const { colors } = useAppTheme();
+export const TransactionListItem: React.FC<TransactionListItemProps> = ({
+  transaction,
+  onPress,
+  showDivider = false,
+}) => {
   const { state } = useFinance();
 
   const category = getCategoryById(state, transaction.categoryId);
@@ -25,26 +29,32 @@ export const TransactionListItem: React.FC<TransactionListItemProps> = ({ transa
   const isTransfer = transaction.type === 'transfer';
   const isIncome = transaction.type === 'income';
 
-  const icon = isTransfer ? 'swap-horizontal' : category?.icon ?? 'ellipsis-horizontal-circle';
-  const color = isTransfer ? colors.textSecondary : category?.color ?? colors.textMuted;
+  const icon = isTransfer ? 'swap-horizontal' : (category?.icon ?? 'ellipsis-horizontal');
+  const color = isTransfer ? Colors.primary : (category?.color ?? Colors.textMuted);
 
   const title = isTransfer
     ? `${account?.name ?? 'Account'} → ${toAccount?.name ?? 'Account'}`
-    : category?.name ?? 'Uncategorized';
+    : (category?.name ?? 'Uncategorized');
 
-  const subtitle = isTransfer ? transaction.note || 'Transfer' : [account?.name, transaction.note].filter(Boolean).join(' · ');
+  const subtitle = isTransfer
+    ? transaction.note || 'Transfer'
+    : [account?.name, transaction.note].filter(Boolean).join(' · ');
 
-  const amountColor = isTransfer ? colors.textPrimary : isIncome ? '#16A34A' : colors.textPrimary;
-  const amountPrefix = isTransfer ? '' : isIncome ? '+' : '-';
+  const amountColor = isIncome ? Colors.income : isTransfer ? Colors.textSecondary : Colors.textPrimary;
+  const prefix = isTransfer ? '' : isIncome ? '+' : '−';
 
   return (
     <Pressable
       onPress={onPress}
-      style={({ pressed }) => [styles.row, { opacity: pressed ? 0.7 : 1 }]}
+      style={({ pressed }) => [
+        styles.row,
+        showDivider && styles.divider,
+        { opacity: pressed ? 0.6 : 1 },
+      ]}
     >
       <IconBadge icon={icon} color={color} size={42} />
       <View style={styles.textCol}>
-        <AppText variant="body" weight="semibold" style={{ color: colors.textPrimary }} numberOfLines={1}>
+        <AppText variant="bodyStrong" numberOfLines={1}>
           {title}
         </AppText>
         {subtitle ? (
@@ -53,8 +63,8 @@ export const TransactionListItem: React.FC<TransactionListItemProps> = ({ transa
           </AppText>
         ) : null}
       </View>
-      <AppText variant="body" weight="bold" style={{ color: amountColor }}>
-        {amountPrefix}
+      <AppText variant="amount" color={amountColor}>
+        {prefix}
         {formatCurrency(transaction.amount, state.settings.currency)}
       </AppText>
     </Pressable>
@@ -65,11 +75,15 @@ const styles = StyleSheet.create({
   row: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: 10,
-    gap: 12,
+    paddingVertical: 13,
+    gap: 13,
+  },
+  divider: {
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.divider,
   },
   textCol: {
     flex: 1,
-    gap: 2,
+    gap: 3,
   },
 });

@@ -8,105 +8,119 @@ import { AppText } from '@/components/ui/app-text';
 import { GradientScreen } from '@/components/ui/gradient-screen';
 import { GlassCard } from '@/components/ui/glass-card';
 import { ModalHeader } from '@/components/ui/modal-header';
-import { useAppTheme } from '@/context/theme-context';
 import { useFinance } from '@/context/finance-context';
 import { CURRENCIES } from '@/utils/currency';
-import { ThemePreference } from '@/types/finance';
+import { Colors, Spacing } from '@/constants/theme';
 
-const THEME_OPTIONS: { key: ThemePreference; label: string; icon: keyof typeof Ionicons.glyphMap }[] = [
-  { key: 'light', label: 'Light', icon: 'sunny-outline' },
-  { key: 'dark', label: 'Dark', icon: 'moon-outline' },
-  { key: 'system', label: 'System', icon: 'phone-portrait-outline' },
-];
+interface RowProps {
+  icon: keyof typeof Ionicons.glyphMap;
+  label: string;
+  tint?: string;
+  onPress: () => void;
+  trailing?: React.ReactNode;
+  divider?: boolean;
+}
+
+const Row: React.FC<RowProps> = ({ icon, label, tint, onPress, trailing, divider }) => (
+  <Pressable
+    onPress={onPress}
+    style={({ pressed }) => [styles.row, divider && styles.rowDivider, { opacity: pressed ? 0.6 : 1 }]}
+  >
+    <View style={[styles.rowIcon, { backgroundColor: `${tint ?? Colors.primary}1A` }]}>
+      <Ionicons name={icon} size={16} color={tint ?? Colors.primary} />
+    </View>
+    <AppText variant="body" color={tint ?? Colors.textPrimary} style={styles.rowLabel}>
+      {label}
+    </AppText>
+    {trailing ?? <Ionicons name="chevron-forward" size={16} color={Colors.textMuted} />}
+  </Pressable>
+);
 
 export default function SettingsScreen() {
   const router = useRouter();
-  const { colors, borderRadius } = useAppTheme();
   const { state, updateSettings, resetAllData } = useFinance();
 
+  const activeCurrency = CURRENCIES.find(c => c.code === state.settings.currency);
+
+  const pickCurrency = () => {
+    Alert.alert('Currency', 'Choose the currency used across the app.', [
+      ...CURRENCIES.map(c => ({
+        text: `${c.symbol}  ${c.label}`,
+        onPress: () => updateSettings({ currency: c.code }),
+      })),
+      { text: 'Cancel', style: 'cancel' as const },
+    ]);
+  };
+
   const handleReset = () => {
-    Alert.alert('Reset all data', 'This will permanently delete every account, transaction, and budget.', [
+    Alert.alert('Reset all data', 'This permanently deletes every account, transaction, and budget.', [
       { text: 'Cancel', style: 'cancel' },
       { text: 'Reset', style: 'destructive', onPress: resetAllData },
     ]);
   };
 
   return (
-    <GradientScreen edges={['top', 'bottom']}>
+    <GradientScreen edges={['top', 'bottom']} contours="top">
       <ModalHeader title="Settings" onClose={() => router.back()} />
 
-      <ScrollView contentContainerStyle={styles.content}>
-        <AppText variant="caption" style={styles.sectionLabel}>
-          Appearance
-        </AppText>
-        <View style={[styles.segmented, { backgroundColor: colors.buttonSecondaryBg, borderRadius: borderRadius.pill }]}>
-          {THEME_OPTIONS.map(opt => {
-            const isActive = state.settings.themePreference === opt.key;
-            return (
-              <Pressable
-                key={opt.key}
-                onPress={() => updateSettings({ themePreference: opt.key })}
-                style={[styles.segment, { borderRadius: borderRadius.pill, backgroundColor: isActive ? colors.cardBackground : 'transparent' }]}
-              >
-                <Ionicons name={opt.icon} size={16} color={colors.textPrimary} />
-                <AppText variant="body" weight="semibold" style={{ color: colors.textPrimary }}>
-                  {opt.label}
-                </AppText>
-              </Pressable>
-            );
-          })}
+      <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
+        <GlassCard strong style={styles.summary} elevated>
+          <View style={styles.summaryIcon}>
+            <Ionicons name="shield-checkmark" size={22} color={Colors.primary} />
+          </View>
+          <View style={styles.summaryText}>
+            <AppText variant="h3">Everything stays on device</AppText>
+            <AppText variant="caption">
+              Your accounts and transactions are stored locally and never uploaded.
+            </AppText>
+          </View>
+        </GlassCard>
+
+        <View style={styles.section}>
+          <AppText variant="label" style={styles.sectionLabel}>
+            Preferences
+          </AppText>
+          <GlassCard padding={0} style={styles.listCard}>
+            <Row
+              icon="cash-outline"
+              label="Currency"
+              onPress={pickCurrency}
+              divider
+              trailing={
+                <View style={styles.trailing}>
+                  <AppText variant="micro">
+                    {activeCurrency?.symbol} {activeCurrency?.code}
+                  </AppText>
+                  <Ionicons name="chevron-forward" size={16} color={Colors.textMuted} />
+                </View>
+              }
+            />
+            <Row
+              icon="pricetags-outline"
+              label="Manage categories"
+              onPress={() => router.push('/manage-categories')}
+              divider
+            />
+            <Row icon="wallet-outline" label="Manage accounts" onPress={() => router.push('/accounts')} />
+          </GlassCard>
         </View>
 
-        <AppText variant="caption" style={styles.sectionLabel}>
-          Currency
-        </AppText>
-        <GlassCard padding={0} style={styles.listCard}>
-          {CURRENCIES.map((c, index) => {
-            const isActive = c.code === state.settings.currency;
-            return (
-              <Pressable
-                key={c.code}
-                onPress={() => updateSettings({ currency: c.code })}
-                style={[styles.row, index < CURRENCIES.length - 1 && { borderBottomWidth: 1, borderBottomColor: colors.border }]}
-              >
-                <View style={styles.rowLeft}>
-                  <AppText variant="body" weight="semibold" style={{ color: colors.textPrimary, width: 30 }}>
-                    {c.symbol}
-                  </AppText>
-                  <AppText variant="body" style={{ color: colors.textPrimary }}>
-                    {c.label} ({c.code})
-                  </AppText>
-                </View>
-                {isActive ? <Ionicons name="checkmark-circle" size={20} color={colors.primary} /> : null}
-              </Pressable>
-            );
-          })}
-        </GlassCard>
+        <View style={styles.section}>
+          <AppText variant="label" style={styles.sectionLabel}>
+            Data
+          </AppText>
+          <GlassCard padding={0} style={styles.listCard}>
+            <Row
+              icon="trash-outline"
+              label="Reset all data"
+              tint={Colors.expense}
+              onPress={handleReset}
+              trailing={<View />}
+            />
+          </GlassCard>
+        </View>
 
-        <AppText variant="caption" style={styles.sectionLabel}>
-          Data
-        </AppText>
-        <GlassCard padding={0} style={styles.listCard}>
-          <Pressable onPress={() => router.push('/manage-categories')} style={styles.row}>
-            <View style={styles.rowLeft}>
-              <Ionicons name="pricetags-outline" size={18} color={colors.textPrimary} />
-              <AppText variant="body" style={{ color: colors.textPrimary }}>
-                Manage categories
-              </AppText>
-            </View>
-            <Ionicons name="chevron-forward" size={18} color={colors.textMuted} />
-          </Pressable>
-          <Pressable onPress={handleReset} style={[styles.row, { borderTopWidth: 1, borderTopColor: colors.border }]}>
-            <View style={styles.rowLeft}>
-              <Ionicons name="trash-outline" size={18} color="#DC2626" />
-              <AppText variant="body" style={{ color: '#DC2626' }}>
-                Reset all data
-              </AppText>
-            </View>
-          </Pressable>
-        </GlassCard>
-
-        <AppText variant="caption" align="center" style={styles.version}>
+        <AppText variant="micro" align="center" style={styles.version}>
           Mercury v{Constants.expoConfig?.version ?? '1.0.0'}
         </AppText>
       </ScrollView>
@@ -118,25 +132,30 @@ const styles = StyleSheet.create({
   content: {
     paddingHorizontal: 20,
     paddingBottom: 40,
+    gap: Spacing.xl,
   },
-  sectionLabel: {
-    marginTop: 20,
-    marginBottom: 8,
-    marginLeft: 4,
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
-  },
-  segmented: {
-    flexDirection: 'row',
-    padding: 4,
-  },
-  segment: {
-    flex: 1,
+  summary: {
     flexDirection: 'row',
     alignItems: 'center',
+    gap: 14,
+  },
+  summaryIcon: {
+    width: 46,
+    height: 46,
+    borderRadius: 16,
+    backgroundColor: Colors.primarySoft,
+    alignItems: 'center',
     justifyContent: 'center',
-    gap: 6,
-    paddingVertical: 10,
+  },
+  summaryText: {
+    flex: 1,
+    gap: 3,
+  },
+  section: {
+    gap: 10,
+  },
+  sectionLabel: {
+    marginLeft: 4,
   },
   listCard: {
     overflow: 'hidden',
@@ -144,16 +163,30 @@ const styles = StyleSheet.create({
   row: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingVertical: 14,
+    gap: 12,
+    paddingVertical: 15,
     paddingHorizontal: 16,
   },
-  rowLeft: {
+  rowDivider: {
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.divider,
+  },
+  rowIcon: {
+    width: 32,
+    height: 32,
+    borderRadius: 11,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  rowLabel: {
+    flex: 1,
+  },
+  trailing: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 10,
+    gap: 6,
   },
   version: {
-    marginTop: 24,
+    marginTop: Spacing.sm,
   },
 });

@@ -8,83 +8,95 @@ import { GradientScreen } from '@/components/ui/gradient-screen';
 import { GlassCard } from '@/components/ui/glass-card';
 import { TransactionListItem } from '@/components/finance/transaction-list-item';
 import { EmptyState } from '@/components/finance/empty-state';
-import { useAppTheme } from '@/context/theme-context';
 import { useFinance } from '@/context/finance-context';
 import { groupTransactionsByDay, getCategoryById } from '@/utils/selectors';
 import { dayLabel } from '@/utils/date';
+import { formatCurrency } from '@/utils/currency';
 import { TransactionType } from '@/types/finance';
+import { Colors, BorderRadius, Spacing } from '@/constants/theme';
 
 type FilterType = 'all' | TransactionType;
 
 const FILTERS: { key: FilterType; label: string }[] = [
   { key: 'all', label: 'All' },
+  { key: 'expense', label: 'Spending' },
   { key: 'income', label: 'Income' },
-  { key: 'expense', label: 'Expense' },
   { key: 'transfer', label: 'Transfers' },
 ];
 
 export default function TransactionsScreen() {
   const router = useRouter();
-  const { colors, spacing, borderRadius } = useAppTheme();
   const { state } = useFinance();
   const [filter, setFilter] = useState<FilterType>('all');
   const [query, setQuery] = useState('');
 
-  const filtered = useMemo(() => {
-    return state.transactions.filter(t => {
-      if (filter !== 'all' && t.type !== filter) return false;
-      if (query.trim().length > 0) {
-        const category = getCategoryById(state, t.categoryId);
-        const haystack = `${category?.name ?? ''} ${t.note ?? ''}`.toLowerCase();
-        if (!haystack.includes(query.trim().toLowerCase())) return false;
-      }
-      return true;
-    });
-  }, [state, filter, query]);
+  const filtered = useMemo(
+    () =>
+      state.transactions.filter(t => {
+        if (filter !== 'all' && t.type !== filter) return false;
+        if (query.trim().length > 0) {
+          const category = getCategoryById(state, t.categoryId);
+          const haystack = `${category?.name ?? ''} ${t.note ?? ''}`.toLowerCase();
+          if (!haystack.includes(query.trim().toLowerCase())) return false;
+        }
+        return true;
+      }),
+    [state, filter, query]
+  );
 
   const groups = useMemo(() => groupTransactionsByDay(filtered), [filtered]);
+  const filteredTotal = filtered.reduce(
+    (sum, t) => sum + (t.type === 'income' ? t.amount : t.type === 'expense' ? -t.amount : 0),
+    0
+  );
 
   return (
     <GradientScreen>
-      <View style={styles.headerRow}>
-        <AppText variant="h2" style={{ color: colors.textPrimary }}>
-          Transactions
+      <View style={styles.header}>
+        <AppText variant="h2">Activity</AppText>
+        <AppText variant="caption">
+          {filtered.length} {filtered.length === 1 ? 'entry' : 'entries'} ·{' '}
+          {formatCurrency(filteredTotal, state.settings.currency)} net
         </AppText>
       </View>
 
-      <View
-        style={[
-          styles.searchBar,
-          { backgroundColor: colors.cardBackground, borderColor: colors.cardBorder, borderRadius: borderRadius.pill },
-        ]}
-      >
-        <Ionicons name="search" size={16} color={colors.textMuted} />
+      <View style={styles.searchWrap}>
+        <Ionicons name="search" size={16} color={Colors.textMuted} />
         <TextInput
           value={query}
           onChangeText={setQuery}
-          placeholder="Search transactions"
-          placeholderTextColor={colors.textMuted}
-          style={[styles.searchInput, { color: colors.textPrimary }]}
+          placeholder="Search by category or note"
+          placeholderTextColor={Colors.textMuted}
+          style={styles.searchInput}
         />
+        {query.length > 0 ? (
+          <Pressable onPress={() => setQuery('')} hitSlop={8}>
+            <Ionicons name="close-circle" size={17} color={Colors.textMuted} />
+          </Pressable>
+        ) : null}
       </View>
 
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.filterRow} contentContainerStyle={{ gap: 8 }}>
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        style={styles.filterRow}
+        contentContainerStyle={styles.filterContent}
+      >
         {FILTERS.map(f => {
-          const isActive = f.key === filter;
+          const active = f.key === filter;
           return (
             <Pressable
               key={f.key}
               onPress={() => setFilter(f.key)}
               style={[
-                styles.filterChip,
+                styles.chip,
                 {
-                  borderRadius: borderRadius.pill,
-                  backgroundColor: isActive ? colors.buttonPrimaryBg : colors.cardBackground,
-                  borderColor: isActive ? colors.buttonPrimaryBg : colors.cardBorder,
+                  backgroundColor: active ? Colors.ctaBg : Colors.controlBg,
+                  borderColor: active ? 'transparent' : Colors.glassBorder,
                 },
               ]}
             >
-              <AppText variant="body" weight="semibold" style={{ color: isActive ? '#FFFFFF' : colors.textPrimary }}>
+              <AppText variant="micro" color={active ? Colors.ctaText : Colors.textSecondary}>
                 {f.label}
               </AppText>
             </Pressable>
@@ -97,21 +109,28 @@ export default function TransactionsScreen() {
           <GlassCard>
             <EmptyState
               icon="search-outline"
-              title="No transactions found"
-              subtitle="Try a different filter or add a new transaction."
-              actionLabel="Add transaction"
-              onAction={() => router.push('/add-transaction')}
+              title="No matches"
+              subtitle={
+                query.length > 0
+                  ? 'Try a different search term or filter.'
+                  : 'Transactions you add will show up here.'
+              }
             />
           </GlassCard>
         ) : (
           groups.map((group, groupIndex) => (
-            <View key={group.date} style={{ marginBottom: spacing.lg }}>
-              <AppText variant="caption" style={styles.dayLabel}>
+            <View key={group.date} style={styles.group}>
+              <AppText variant="label" style={styles.dayLabel}>
                 {dayLabel(group.date)}
               </AppText>
-              <GlassCard style={styles.card} animateIndex={groupIndex}>
-                {group.transactions.map(t => (
-                  <TransactionListItem key={t.id} transaction={t} onPress={() => router.push(`/add-transaction?id=${t.id}`)} />
+              <GlassCard style={styles.groupCard} padding={18} animateIndex={groupIndex}>
+                {group.transactions.map((t, index) => (
+                  <TransactionListItem
+                    key={t.id}
+                    transaction={t}
+                    showDivider={index < group.transactions.length - 1}
+                    onPress={() => router.push(`/add-transaction?id=${t.id}`)}
+                  />
                 ))}
               </GlassCard>
             </View>
@@ -123,45 +142,57 @@ export default function TransactionsScreen() {
 }
 
 const styles = StyleSheet.create({
-  headerRow: {
+  header: {
     paddingHorizontal: 20,
-    paddingTop: 12,
-    paddingBottom: 8,
+    paddingTop: 6,
+    gap: 3,
   },
-  searchBar: {
+  searchWrap: {
     flexDirection: 'row',
     alignItems: 'center',
+    gap: 9,
     marginHorizontal: 20,
-    paddingHorizontal: 14,
-    paddingVertical: 10,
+    marginTop: Spacing.lg,
+    paddingHorizontal: 16,
+    paddingVertical: 13,
+    borderRadius: BorderRadius.pill,
+    backgroundColor: Colors.controlBg,
     borderWidth: 1,
-    gap: 8,
+    borderColor: Colors.glassBorder,
   },
   searchInput: {
     flex: 1,
     fontSize: 14,
+    fontFamily: 'Manrope_500Medium',
+    color: Colors.textPrimary,
   },
   filterRow: {
-    marginTop: 12,
-    paddingHorizontal: 20,
-    maxHeight: 44,
+    marginTop: 14,
+    maxHeight: 42,
   },
-  filterChip: {
-    paddingVertical: 8,
+  filterContent: {
+    gap: 8,
+    paddingHorizontal: 20,
+  },
+  chip: {
+    paddingVertical: 9,
     paddingHorizontal: 16,
+    borderRadius: BorderRadius.pill,
     borderWidth: 1,
   },
   content: {
     paddingHorizontal: 20,
-    paddingTop: 16,
-    paddingBottom: 140,
+    paddingTop: 18,
+    paddingBottom: 130,
+  },
+  group: {
+    marginBottom: Spacing.lg,
+    gap: 9,
   },
   dayLabel: {
-    marginBottom: 8,
     marginLeft: 4,
   },
-  card: {
-    paddingHorizontal: 14,
+  groupCard: {
     paddingVertical: 4,
   },
 });
