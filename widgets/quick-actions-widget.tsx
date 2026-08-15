@@ -40,6 +40,7 @@ interface ActionProps {
 
 /** Each action deep-links into the app, landing on the right screen directly. */
 function Action({ label, emoji, uri, tint, filled = false }: ActionProps) {
+  'use no memo';
   return (
     <FlexWidget
       clickAction="OPEN_URI"
@@ -81,6 +82,7 @@ export function QuickActionsWidget({
   spentThisMonth,
   ready,
 }: QuickActionsWidgetProps) {
+  'use no memo';
   return (
     <FlexWidget
       style={{

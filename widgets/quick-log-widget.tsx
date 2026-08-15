@@ -39,6 +39,7 @@ export interface QuickLogWidgetProps {
 
 /** Fills the tile evenly regardless of how many presets the user kept. */
 function PresetTile({ preset, currency }: { preset: QuickPreset; currency: string }) {
+  'use no memo';
   return (
     <FlexWidget
       clickAction="QUICK_LOG"
@@ -76,6 +77,7 @@ function PresetTile({ preset, currency }: { preset: QuickPreset; currency: strin
 }
 
 function EmptyState() {
+  'use no memo';
   return (
     <FlexWidget
       clickAction="OPEN_URI"
@@ -111,6 +113,7 @@ export function QuickLogWidget({
   ready,
   justLogged,
 }: QuickLogWidgetProps) {
+  'use no memo';
   const visible = presets.slice(0, 4);
 
   return (

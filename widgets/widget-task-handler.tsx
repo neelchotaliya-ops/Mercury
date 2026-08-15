@@ -22,6 +22,7 @@ function render(
   summary: WidgetSummary,
   justLogged?: string
 ): React.JSX.Element {
+  'use no memo';
   if (widgetName === WIDGETS.QuickActions) {
     return (
       <QuickActionsWidget
