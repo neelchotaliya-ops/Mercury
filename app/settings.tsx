@@ -38,7 +38,7 @@ const Row: React.FC<RowProps> = ({ icon, label, tint, onPress, trailing, divider
 
 export default function SettingsScreen() {
   const router = useRouter();
-  const { state, updateSettings, resetAllData } = useFinance();
+  const { state, updateSettings, resetAllData, seedDemoData } = useFinance();
 
   const activeCurrency = CURRENCIES.find(c => c.code === state.settings.currency);
 
@@ -49,6 +49,13 @@ export default function SettingsScreen() {
         onPress: () => updateSettings({ currency: c.code }),
       })),
       { text: 'Cancel', style: 'cancel' as const },
+    ]);
+  };
+
+  const handleSeedDemoData = () => {
+    Alert.alert('Populate 2-Year Sample Data', 'This will populate 2 full years of realistic accounts, transactions, and budgets.', [
+      { text: 'Cancel', style: 'cancel' },
+      { text: 'Populate 2-Year Data', onPress: seedDemoData },
     ]);
   };
 
@@ -110,6 +117,12 @@ export default function SettingsScreen() {
             Data
           </AppText>
           <GlassCard padding={0} style={styles.listCard}>
+            <Row
+              icon="sparkles-outline"
+              label="Populate sample data"
+              onPress={handleSeedDemoData}
+              divider
+            />
             <Row
               icon="trash-outline"
               label="Reset all data"
