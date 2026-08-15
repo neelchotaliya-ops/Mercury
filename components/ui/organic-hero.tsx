@@ -1,5 +1,5 @@
 import React, { useEffect } from 'react';
-import { View, StyleSheet, ViewStyle } from 'react-native';
+import { Pressable, View, StyleSheet, ViewStyle } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import Svg, {
   Path,
@@ -16,6 +16,7 @@ import Animated, {
   withRepeat,
   withSequence,
   withTiming,
+  withSpring,
   Easing,
   interpolate,
   Extrapolation,
@@ -26,17 +27,19 @@ import { Colors } from '@/constants/theme';
 import { BLOB_VIEWBOX, BLOB_PATH, BLOB_PATH_ALT } from '@/constants/shapes';
 
 const AnimatedPath = Animated.createAnimatedComponent(Path);
+const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
 
 export type BadgeSlot = 'topLeft' | 'topRight' | 'bottomLeft' | 'bottomRight';
 
 export interface HeroBadge {
-  id?: string;
+  id?: string | null;
   name?: string;
   balance?: number;
   icon: keyof typeof Ionicons.glyphMap;
   slot: BadgeSlot;
   color?: string;
   label?: string;
+  onPress?: () => void;
 }
 
 export interface OrganicHeroProps {
@@ -46,6 +49,7 @@ export interface OrganicHeroProps {
   badges?: HeroBadge[];
   size?: number;
   currency?: string;
+  onPressMain?: () => void;
   children?: React.ReactNode;
 }
 
@@ -134,6 +138,8 @@ const SmallFloatingBubble: React.FC<SmallFloatingBubbleProps> = ({
   currency = 'USD',
 }) => {
   const mergeProgress = useSharedValue(0);
+  const pressScale = useSharedValue(1);
+  const badgeAnim = useSharedValue(1);
 
   useEffect(() => {
     const duration = 4800 + index * 700;
@@ -147,6 +153,14 @@ const SmallFloatingBubble: React.FC<SmallFloatingBubbleProps> = ({
       true
     );
   }, [index, mergeProgress]);
+
+  useEffect(() => {
+    badgeAnim.value = 0;
+    badgeAnim.value = withSequence(
+      withTiming(0, { duration: 100 }),
+      withSpring(1, { damping: 13, stiffness: 190 })
+    );
+  }, [badge.id, badge.balance, badgeAnim]);
 
   const vector = RADIAL_VECTORS[badge.slot];
 
@@ -186,8 +200,10 @@ const SmallFloatingBubble: React.FC<SmallFloatingBubbleProps> = ({
       Extrapolation.CLAMP
     );
 
-    const scaleX = stretch * proportionalScale;
-    const scaleY = squish * proportionalScale;
+    const popupScale = interpolate(badgeAnim.value, [0, 1], [0.75, 1], Extrapolation.CLAMP);
+
+    const scaleX = stretch * proportionalScale * pressScale.value * popupScale;
+    const scaleY = squish * proportionalScale * pressScale.value * popupScale;
 
     return {
       opacity,
@@ -201,6 +217,14 @@ const SmallFloatingBubble: React.FC<SmallFloatingBubbleProps> = ({
     };
   });
 
+  const handlePressIn = () => {
+    pressScale.value = withSpring(0.88, { damping: 12, stiffness: 200 });
+  };
+
+  const handlePressOut = () => {
+    pressScale.value = withSpring(1, { damping: 12, stiffness: 200 });
+  };
+
   const displayText =
     badge.balance !== undefined
       ? formatShortCurrency(badge.balance, currency)
@@ -209,7 +233,10 @@ const SmallFloatingBubble: React.FC<SmallFloatingBubbleProps> = ({
   const bubbleSize = 64;
 
   return (
-    <Animated.View
+    <AnimatedPressable
+      onPress={badge.onPress}
+      onPressIn={handlePressIn}
+      onPressOut={handlePressOut}
       style={[
         styles.miniBlobContainer,
         SLOT_STYLES[badge.slot],
@@ -240,7 +267,7 @@ const SmallFloatingBubble: React.FC<SmallFloatingBubbleProps> = ({
           </AppText>
         ) : null}
       </View>
-    </Animated.View>
+    </AnimatedPressable>
   );
 };
 
@@ -251,6 +278,7 @@ export const OrganicHero: React.FC<OrganicHeroProps> = ({
   badges = [],
   size = 225,
   currency = 'USD',
+  onPressMain,
   children,
 }) => {
   const morphProgress = useSharedValue(0);
@@ -258,6 +286,15 @@ export const OrganicHero: React.FC<OrganicHeroProps> = ({
   const tilt = useSharedValue(0);
   const scaleX = useSharedValue(1);
   const scaleY = useSharedValue(1);
+  const swapAnim = useSharedValue(1);
+
+  useEffect(() => {
+    swapAnim.value = 0;
+    swapAnim.value = withSequence(
+      withTiming(0, { duration: 120, easing: Easing.out(Easing.quad) }),
+      withSpring(1, { damping: 14, stiffness: 180, mass: 0.8 })
+    );
+  }, [value, label, swapAnim]);
 
   useEffect(() => {
     morphProgress.value = withRepeat(
@@ -306,14 +343,34 @@ export const OrganicHero: React.FC<OrganicHeroProps> = ({
     );
   }, [morphProgress, float, tilt, scaleX, scaleY]);
 
-  const blobContainerStyle = useAnimatedStyle(() => ({
-    transform: [
-      { translateY: float.value },
-      { rotate: `${tilt.value}deg` },
-      { scaleX: scaleX.value },
-      { scaleY: scaleY.value },
-    ],
-  }));
+  const blobContainerStyle = useAnimatedStyle(() => {
+    const swapScale = interpolate(
+      swapAnim.value,
+      [0, 0.4, 1],
+      [0.86, 0.94, 1.0],
+      Extrapolation.CLAMP
+    );
+
+    return {
+      transform: [
+        { translateY: float.value },
+        { rotate: `${tilt.value}deg` },
+        { scaleX: scaleX.value * swapScale },
+        { scaleY: scaleY.value * swapScale },
+      ],
+    };
+  });
+
+  const contentAnimStyle = useAnimatedStyle(() => {
+    const opacity = interpolate(swapAnim.value, [0, 0.3, 1], [0, 0.4, 1], Extrapolation.CLAMP);
+    const translateY = interpolate(swapAnim.value, [0, 1], [8, 0], Extrapolation.CLAMP);
+    const scale = interpolate(swapAnim.value, [0, 1], [0.92, 1], Extrapolation.CLAMP);
+
+    return {
+      opacity,
+      transform: [{ translateY }, { scale }],
+    };
+  });
 
   const mainPathProps = useAnimatedProps(() => {
     'worklet';
@@ -329,7 +386,14 @@ export const OrganicHero: React.FC<OrganicHeroProps> = ({
 
   return (
     <View style={[styles.container, { width: size + 60, height: size + 30 }]}>
-      <Animated.View style={[styles.blobWrap, { width: size, height: size }, blobContainerStyle]}>
+      <AnimatedPressable
+        onPress={onPressMain}
+        style={({ pressed }) => [
+          styles.blobWrap,
+          { width: size, height: size, opacity: pressed ? 0.92 : 1 },
+          blobContainerStyle,
+        ]}
+      >
         <Svg width={size} height={size} viewBox={`0 0 ${BLOB_VIEWBOX} ${BLOB_VIEWBOX}`}>
           <Defs>
             <SvgLinearGradient id="heroBlobFill" x1="10%" y1="0%" x2="90%" y2="100%">
@@ -351,7 +415,7 @@ export const OrganicHero: React.FC<OrganicHeroProps> = ({
           />
         </Svg>
 
-        <View style={styles.content}>
+        <Animated.View style={[styles.content, contentAnimStyle]}>
           {children ?? (
             <>
               {label ? (
@@ -378,8 +442,8 @@ export const OrganicHero: React.FC<OrganicHeroProps> = ({
               ) : null}
             </>
           )}
-        </View>
-      </Animated.View>
+        </Animated.View>
+      </AnimatedPressable>
 
       {badges.slice(0, 4).map((badge, index) => {
         const absBal = badge.balance !== undefined ? Math.abs(badge.balance) : 0;

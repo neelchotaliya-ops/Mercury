@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState, useMemo } from 'react';
 import { View, StyleSheet, ScrollView, Pressable } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
@@ -7,34 +7,111 @@ import { AppText } from '@/components/ui/app-text';
 import { IconButton } from '@/components/ui/icon-button';
 import { GradientScreen } from '@/components/ui/gradient-screen';
 import { GlassCard } from '@/components/ui/glass-card';
-import { OrganicHero } from '@/components/ui/organic-hero';
+import { OrganicHero, HeroBadge, BadgeSlot } from '@/components/ui/organic-hero';
 import { StatCard } from '@/components/finance/stat-card';
 import { TransactionListItem } from '@/components/finance/transaction-list-item';
 import { EmptyState } from '@/components/finance/empty-state';
 import { useFinance } from '@/context/finance-context';
-import { getAccountBalance, getMonthlyTotals, getTotalBalance } from '@/utils/selectors';
+import { getAccountBalance, getTotalBalance } from '@/utils/selectors';
 import { formatCurrency } from '@/utils/currency';
 import { toMonthKey } from '@/utils/date';
+import { ACCOUNT_TYPE_META } from '@/constants/categories';
 import { Colors, BorderRadius, Spacing } from '@/constants/theme';
-
-function greeting(): string {
-  const hour = new Date().getHours();
-  if (hour < 12) return 'Good morning';
-  if (hour < 18) return 'Good afternoon';
-  return 'Good evening';
-}
 
 export default function HomeScreen() {
   const router = useRouter();
   const { state } = useFinance();
+  const [selectedAccountId, setSelectedAccountId] = useState<string | null>(null);
 
   const monthKey = toMonthKey(new Date());
   const currency = state.settings.currency;
-  const totalBalance = getTotalBalance(state);
-  const { income, expense } = getMonthlyTotals(state, monthKey);
-
   const accounts = state.accounts.filter(a => !a.archived);
-  const recent = [...state.transactions]
+
+  // Selected account
+  const selectedAccount = useMemo(
+    () => accounts.find(a => a.id === selectedAccountId),
+    [accounts, selectedAccountId]
+  );
+
+  // Calculate filtered transactions for the selected account (or all)
+  const filteredTransactions = useMemo(() => {
+    if (!selectedAccountId) return state.transactions;
+    return state.transactions.filter(
+      t => t.accountId === selectedAccountId || t.toAccountId === selectedAccountId
+    );
+  }, [state.transactions, selectedAccountId]);
+
+  // Calculate stats for current month for selected account / total
+  const { income, expense } = useMemo(() => {
+    let inc = 0;
+    let exp = 0;
+    filteredTransactions.forEach(t => {
+      if (t.date.startsWith(monthKey)) {
+        if (t.type === 'income') inc += t.amount;
+        if (t.type === 'expense') exp += t.amount;
+      }
+    });
+    return { income: inc, expense: exp };
+  }, [filteredTransactions, monthKey]);
+
+  // Total balance vs account balance
+  const totalBalance = getTotalBalance(state);
+  const heroValue = formatCurrency(
+    selectedAccount ? getAccountBalance(state, selectedAccount.id) : totalBalance,
+    currency
+  );
+  const heroLabel = selectedAccount ? selectedAccount.name : 'Total balance';
+  const heroSub = selectedAccount
+    ? `${ACCOUNT_TYPE_META[selectedAccount.type].label} Account · Tap to reset`
+    : `${accounts.length} ${accounts.length === 1 ? 'account' : 'accounts'}`;
+
+  // Orbit badges:
+  // If selectedAccountId === null:
+  //   Slot 0-3: Accounts 0-3
+  // If selectedAccountId === 'acc_id':
+  //   Slot 0: Total Balance (id: null, name: 'Total balance', icon: 'sparkles', balance: totalBalance)
+  //   Slot 1-3: Remaining 3 accounts
+  const orbitBadges = useMemo(() => {
+    const slots: BadgeSlot[] = ['topLeft', 'topRight', 'bottomLeft', 'bottomRight'];
+
+    if (!selectedAccountId) {
+      return accounts.slice(0, 4).map((account, idx) => ({
+        id: account.id,
+        name: account.name,
+        balance: getAccountBalance(state, account.id),
+        icon: account.icon,
+        color: account.color,
+        slot: slots[idx],
+        onPress: () => setSelectedAccountId(account.id),
+      }));
+    }
+
+    const remainingAccounts = accounts.filter(a => a.id !== selectedAccountId);
+
+    const totalBadge: HeroBadge = {
+      id: null,
+      name: 'Total balance',
+      balance: totalBalance,
+      icon: 'sparkles',
+      color: Colors.primary,
+      slot: slots[0],
+      onPress: () => setSelectedAccountId(null),
+    };
+
+    const remainingBadges = remainingAccounts.slice(0, 3).map((account, idx) => ({
+      id: account.id,
+      name: account.name,
+      balance: getAccountBalance(state, account.id),
+      icon: account.icon,
+      color: account.color,
+      slot: slots[idx + 1],
+      onPress: () => setSelectedAccountId(account.id),
+    }));
+
+    return [totalBadge, ...remainingBadges];
+  }, [accounts, selectedAccountId, state, totalBalance]);
+
+  const recent = [...filteredTransactions]
     .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
     .slice(0, 4);
 
@@ -54,19 +131,23 @@ export default function HomeScreen() {
         </View>
 
         <OrganicHero
-          label="Total balance"
-          value={formatCurrency(totalBalance, currency)}
-          sub={`${accounts.length} ${accounts.length === 1 ? 'account' : 'accounts'}`}
+          label={heroLabel}
+          value={heroValue}
+          sub={heroSub}
           currency={currency}
-          badges={accounts.slice(0, 4).map((account, idx) => ({
-            id: account.id,
-            name: account.name,
-            balance: getAccountBalance(state, account.id),
-            icon: account.icon,
-            color: account.color,
-            slot: (['topLeft', 'topRight', 'bottomLeft', 'bottomRight'] as const)[idx],
-          }))}
+          badges={orbitBadges}
+          onPressMain={() => setSelectedAccountId(null)}
         />
+
+        {selectedAccount ? (
+          <Pressable onPress={() => setSelectedAccountId(null)} style={styles.filterChip}>
+            <Ionicons name="filter" size={13} color={Colors.primary} />
+            <AppText variant="micro" color={Colors.primary} style={styles.filterText}>
+              Filtered by {selectedAccount.name}
+            </AppText>
+            <Ionicons name="close-circle" size={14} color={Colors.primary} />
+          </Pressable>
+        ) : null}
 
         <View style={styles.statsRow}>
           <StatCard
@@ -186,6 +267,23 @@ const styles = StyleSheet.create({
   brandTitle: {
     fontSize: 25,
     letterSpacing: -0.6,
+  },
+  filterChip: {
+    alignSelf: 'center',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginTop: 14,
+    marginBottom: -8,
+    paddingHorizontal: 14,
+    paddingVertical: 7,
+    borderRadius: 20,
+    backgroundColor: `${Colors.primary}18`,
+    borderWidth: 1,
+    borderColor: `${Colors.primary}33`,
+  },
+  filterText: {
+    fontWeight: '600',
   },
   statsRow: {
     flexDirection: 'row',
