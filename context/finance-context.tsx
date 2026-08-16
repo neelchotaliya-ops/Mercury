@@ -73,6 +73,18 @@ function buildDefaultCategories(): Category[] {
   }));
 }
 
+function buildFreshInstallState(): PersistedFinanceState {
+  const categories = buildDefaultCategories();
+  return {
+    accounts: [],
+    categories,
+    transactions: [],
+    budgets: [],
+    quickPresets: buildDefaultPresets(categories),
+    settings: defaultSettings,
+  };
+}
+
 function buildDefaultState(): FinanceState {
   const categories = buildDefaultCategories();
 
@@ -537,11 +549,11 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
   useEffect(() => {
     (async () => {
       const persisted = await loadFinanceState();
-      if (persisted && (persisted.accounts.length > 0 || persisted.transactions.length > 0)) {
+      if (persisted) {
         dispatch({ type: 'HYDRATE', payload: persisted });
       } else {
-        const seeded = buildDefaultState();
-        dispatch({ type: 'HYDRATE', payload: seeded });
+        const fresh = buildFreshInstallState();
+        dispatch({ type: 'HYDRATE', payload: fresh });
       }
       hasHydrated.current = true;
     })();
