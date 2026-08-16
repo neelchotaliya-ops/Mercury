@@ -3,7 +3,7 @@ import { View, StyleSheet } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 
 import { AppText } from '@/components/ui/app-text';
-import { AppButton } from '@/components/ui/app-button';
+import { AppButton, ButtonVariant } from '@/components/ui/app-button';
 import { Colors } from '@/constants/theme';
 
 export interface EmptyStateProps {
@@ -11,10 +11,18 @@ export interface EmptyStateProps {
   title: string;
   subtitle?: string;
   actionLabel?: string;
+  actionVariant?: ButtonVariant;
   onAction?: () => void;
 }
 
-export const EmptyState: React.FC<EmptyStateProps> = ({ icon, title, subtitle, actionLabel, onAction }) => (
+export const EmptyState: React.FC<EmptyStateProps> = ({
+  icon,
+  title,
+  subtitle,
+  actionLabel,
+  actionVariant = 'primary',
+  onAction,
+}) => (
   <View style={styles.container}>
     <View style={styles.iconWrap}>
       <Ionicons name={icon} size={26} color={Colors.primary} />
@@ -31,7 +39,7 @@ export const EmptyState: React.FC<EmptyStateProps> = ({ icon, title, subtitle, a
       <AppButton
         title={actionLabel}
         onPress={onAction}
-        variant="glass"
+        variant={actionVariant}
         size="sm"
         fullWidth={false}
         style={styles.action}
@@ -62,5 +70,6 @@ const styles = StyleSheet.create({
   },
   action: {
     marginTop: 16,
+    paddingHorizontal: 22,
   },
 });
