@@ -3,29 +3,32 @@ import { View, StyleSheet, Pressable } from 'react-native';
 
 import { AppText } from '@/components/ui/app-text';
 import { IconBadge } from '@/components/finance/icon-badge';
-import { useFinance } from '@/context/finance-context';
-import { Transaction } from '@/types/finance';
-import { getAccountById, getCategoryById } from '@/utils/selectors';
+import { Account, Category, Transaction } from '@/types/finance';
 import { formatCurrency } from '@/utils/currency';
 import { Colors } from '@/constants/theme';
 
 export interface TransactionListItemProps {
   transaction: Transaction;
+  /** Pre-resolved category — pass undefined for uncategorised rows. */
+  category: Category | undefined;
+  /** Source account. */
+  account: Account | undefined;
+  /** Destination account for transfers. */
+  toAccount: Account | undefined;
+  currency: string;
   onPress?: () => void;
   showDivider?: boolean;
 }
 
-export const TransactionListItem: React.FC<TransactionListItemProps> = ({
+const TransactionListItemBase: React.FC<TransactionListItemProps> = ({
   transaction,
+  category,
+  account,
+  toAccount,
+  currency,
   onPress,
   showDivider = false,
 }) => {
-  const { state } = useFinance();
-
-  const category = getCategoryById(state, transaction.categoryId);
-  const account = getAccountById(state, transaction.accountId);
-  const toAccount = getAccountById(state, transaction.toAccountId);
-
   const isTransfer = transaction.type === 'transfer';
   const isIncome = transaction.type === 'income';
 
@@ -65,11 +68,19 @@ export const TransactionListItem: React.FC<TransactionListItemProps> = ({
       </View>
       <AppText variant="amount" color={amountColor} numberOfLines={1}>
         {prefix}
-        {formatCurrency(transaction.amount, state.settings.currency)}
+        {formatCurrency(transaction.amount, currency)}
       </AppText>
     </Pressable>
   );
 };
+
+/**
+ * Memoized: only re-renders when its own props actually change.
+ * Does NOT subscribe to FinanceContext — callers pass pre-resolved
+ * category/account data, which breaks the chain of 250+ re-renders
+ * on every state update.
+ */
+export const TransactionListItem = React.memo(TransactionListItemBase);
 
 const styles = StyleSheet.create({
   row: {

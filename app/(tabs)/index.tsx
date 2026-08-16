@@ -12,7 +12,7 @@ import { StatCard } from '@/components/finance/stat-card';
 import { TransactionListItem } from '@/components/finance/transaction-list-item';
 import { EmptyState } from '@/components/finance/empty-state';
 import { useFinance } from '@/context/finance-context';
-import { getAccountBalance, getTotalBalance } from '@/utils/selectors';
+import { getAllAccountBalances } from '@/utils/selectors';
 import { formatCurrency } from '@/utils/currency';
 import { toMonthKey } from '@/utils/date';
 import { ACCOUNT_TYPE_META } from '@/constants/categories';
@@ -25,7 +25,37 @@ export default function HomeScreen() {
 
   const monthKey = toMonthKey(new Date());
   const currency = state.settings.currency;
-  const accounts = state.accounts.filter(a => !a.archived);
+
+  // Stable filtered accounts list.
+  const accounts = useMemo(
+    () => state.accounts.filter(a => !a.archived),
+    [state.accounts]
+  );
+
+  // Single O(n) pass over all transactions — reused for every balance read
+  // on this screen. Previously getAccountBalance() was called once per badge
+  // and once per chip, which was O(accounts × transactions) per render.
+  const balanceMap = useMemo(
+    () => getAllAccountBalances(state),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [state.transactions, state.accounts]
+  );
+
+  // Pre-built lookup maps so TransactionListItem rows never scan arrays.
+  const categoryById = useMemo(
+    () => new Map(state.categories.map(c => [c.id, c])),
+    [state.categories]
+  );
+  const accountById = useMemo(
+    () => new Map(state.accounts.map(a => [a.id, a])),
+    [state.accounts]
+  );
+
+  const totalBalance = useMemo(() => {
+    let total = 0;
+    for (const account of accounts) total += balanceMap.get(account.id) ?? 0;
+    return total;
+  }, [accounts, balanceMap]);
 
   // Selected account
   const selectedAccount = useMemo(
@@ -54,10 +84,8 @@ export default function HomeScreen() {
     return { income: inc, expense: exp };
   }, [filteredTransactions, monthKey]);
 
-  // Total balance vs account balance
-  const totalBalance = getTotalBalance(state);
   const heroValue = formatCurrency(
-    selectedAccount ? getAccountBalance(state, selectedAccount.id) : totalBalance,
+    selectedAccount ? (balanceMap.get(selectedAccount.id) ?? 0) : totalBalance,
     currency
   );
   const heroLabel = selectedAccount ? selectedAccount.name : 'Total balance';
@@ -78,7 +106,7 @@ export default function HomeScreen() {
       return accounts.slice(0, 4).map((account, idx) => ({
         id: account.id,
         name: account.name,
-        balance: getAccountBalance(state, account.id),
+        balance: balanceMap.get(account.id) ?? 0,
         icon: account.icon,
         color: account.color,
         slot: slots[idx],
@@ -101,7 +129,7 @@ export default function HomeScreen() {
     const remainingBadges = remainingAccounts.slice(0, 3).map((account, idx) => ({
       id: account.id,
       name: account.name,
-      balance: getAccountBalance(state, account.id),
+      balance: balanceMap.get(account.id) ?? 0,
       icon: account.icon,
       color: account.color,
       slot: slots[idx + 1],
@@ -109,11 +137,16 @@ export default function HomeScreen() {
     }));
 
     return [totalBadge, ...remainingBadges];
-  }, [accounts, selectedAccountId, state, totalBalance]);
+  }, [accounts, selectedAccountId, balanceMap, totalBalance]);
 
-  const recent = [...filteredTransactions]
-    .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
-    .slice(0, 4);
+  // ISO-8601 strings sort correctly as plain strings — no Date allocation needed.
+  const recent = useMemo(
+    () =>
+      [...filteredTransactions]
+        .sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : 0))
+        .slice(0, 4),
+    [filteredTransactions]
+  );
 
   return (
     <GradientScreen contours="top">
@@ -190,10 +223,10 @@ export default function HomeScreen() {
                     variant="h3"
                     numberOfLines={1}
                     adjustsFontSizeToFit
-                    color={getAccountBalance(state, account.id) < 0 ? Colors.expense : Colors.textPrimary}
+                    color={(balanceMap.get(account.id) ?? 0) < 0 ? Colors.expense : Colors.textPrimary}
                     style={styles.accountValue}
                   >
-                    {formatCurrency(getAccountBalance(state, account.id), currency)}
+                    {formatCurrency(balanceMap.get(account.id) ?? 0, currency)}
                   </AppText>
                 </GlassCard>
               </Pressable>
@@ -235,6 +268,10 @@ export default function HomeScreen() {
                 <TransactionListItem
                   key={t.id}
                   transaction={t}
+                  category={categoryById.get(t.categoryId ?? '')}
+                  account={accountById.get(t.accountId)}
+                  toAccount={t.toAccountId ? accountById.get(t.toAccountId) : undefined}
+                  currency={currency}
                   showDivider={index < recent.length - 1}
                   onPress={() => router.push(`/add-transaction?id=${t.id}`)}
                 />

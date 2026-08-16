@@ -12,7 +12,7 @@ import { useFinance } from '@/context/finance-context';
 import { GroupedTransactions, groupTransactionsByDay } from '@/utils/selectors';
 import { dayLabel } from '@/utils/date';
 import { formatCurrency } from '@/utils/currency';
-import { TransactionType } from '@/types/finance';
+import { Account, Category, TransactionType } from '@/types/finance';
 import { Colors, BorderRadius, Spacing } from '@/constants/theme';
 
 type FilterType = 'all' | TransactionType;
@@ -31,10 +31,16 @@ const FILTERS: { key: FilterType; label: string }[] = [
 const DayGroup = React.memo(function DayGroup({
   group,
   index,
+  categoryById,
+  accountById,
+  currency,
   onPressTransaction,
 }: {
   group: GroupedTransactions;
   index: number;
+  categoryById: Map<string, Category>;
+  accountById: Map<string, Account>;
+  currency: string;
   onPressTransaction: (id: string) => void;
 }) {
   return (
@@ -54,6 +60,10 @@ const DayGroup = React.memo(function DayGroup({
           <TransactionListItem
             key={t.id}
             transaction={t}
+            category={categoryById.get(t.categoryId ?? '')}
+            account={accountById.get(t.accountId)}
+            toAccount={t.toAccountId ? accountById.get(t.toAccountId) : undefined}
+            currency={currency}
             showDivider={i < group.transactions.length - 1}
             onPress={() => onPressTransaction(t.id)}
           />
@@ -86,6 +96,21 @@ export default function TransactionsScreen() {
     for (const c of state.categories) map.set(c.id, c.name.toLowerCase());
     return map;
   }, [state.categories]);
+
+  /**
+   * Full lookup maps for row rendering — separate from the name-only map
+   * above so TransactionListItem gets the complete Category/Account objects
+   * without scanning arrays per row.
+   */
+  const categoryById = useMemo(
+    () => new Map(state.categories.map(c => [c.id, c])),
+    [state.categories]
+  );
+  const accountById = useMemo(
+    () => new Map(state.accounts.map(a => [a.id, a])),
+    [state.accounts]
+  );
+  const currency = state.settings.currency;
 
   // Keyed on transactions rather than the whole state object, so unrelated
   // changes (settings, presets, budgets) no longer invalidate this.
@@ -125,10 +150,13 @@ export default function TransactionsScreen() {
       <DayGroup
         group={item}
         index={index}
+        categoryById={categoryById}
+        accountById={accountById}
+        currency={currency}
         onPressTransaction={openTransaction}
       />
     ),
-    [openTransaction]
+    [openTransaction, categoryById, accountById, currency]
   );
 
   const keyExtractor = useCallback((group: GroupedTransactions) => group.date, []);

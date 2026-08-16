@@ -492,6 +492,10 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
   // Set right before a REFRESH_FROM_STORAGE dispatch so the persist effect
   // below doesn't write straight back out the bytes it just read in.
   const skipNextPersist = useRef(false);
+  // Debounce handle — prevents a JSON.stringify + AsyncStorage write on every
+  // single state change. Rapid interactions (filter taps, navigation) previously
+  // stacked multiple synchronous disk writes on the JS thread.
+  const persistTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     (async () => {
@@ -530,10 +534,19 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
       skipNextPersist.current = false;
       return;
     }
-    const { isLoaded, ...persistable } = state;
-    saveFinanceState(persistable);
-    // Home screen widgets read the same store, so keep them in step with it.
-    refreshWidgets();
+    // Debounce: only write after the state has been stable for 500 ms.
+    // This collapses rapid consecutive changes (typing, filter toggles) into a
+    // single disk write instead of one per keystroke.
+    if (persistTimeoutRef.current) clearTimeout(persistTimeoutRef.current);
+    persistTimeoutRef.current = setTimeout(() => {
+      const { isLoaded, ...persistable } = state;
+      saveFinanceState(persistable);
+      // Home screen widgets read the same store, so keep them in step with it.
+      refreshWidgets();
+    }, 500);
+    return () => {
+      if (persistTimeoutRef.current) clearTimeout(persistTimeoutRef.current);
+    };
   }, [state]);
 
   /**

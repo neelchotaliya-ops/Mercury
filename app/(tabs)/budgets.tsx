@@ -21,7 +21,13 @@ export default function BudgetsScreen() {
   const { state } = useFinance();
   const [monthKey, setMonthKey] = useState(() => toMonthKey(new Date()));
 
-  const progress = useMemo(() => getBudgetProgress(state, monthKey), [state, monthKey]);
+  // Scoped to only the slices getBudgetProgress actually reads, so unrelated
+  // changes (settings, presets, accounts) don't trigger a recompute.
+  const progress = useMemo(
+    () => getBudgetProgress(state, monthKey),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [state.transactions, state.budgets, state.categories, monthKey]
+  );
   const currency = state.settings.currency;
 
   const totals = progress.reduce(

@@ -1,4 +1,4 @@
-import React, { useEffect } from 'react';
+import React, { useCallback, useEffect } from 'react';
 import { Pressable, View, StyleSheet, ViewStyle } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import Svg, {
@@ -18,10 +18,12 @@ import Animated, {
   withSequence,
   withTiming,
   withSpring,
+  cancelAnimation,
   Easing,
   interpolate,
   Extrapolation,
 } from 'react-native-reanimated';
+import { useFocusEffect } from 'expo-router';
 
 import { AppText } from '@/components/ui/app-text';
 import { Colors } from '@/constants/theme';
@@ -297,31 +299,28 @@ export const OrganicHero: React.FC<OrganicHeroProps> = ({
     );
   }, [value, label, swapAnim]);
 
-  useEffect(() => {
-    if (reducedMotion) {
-      breathe.value = 0;
-      aura.value = 0;
-      return;
-    }
-    // Two independent transform-only loops, out of phase and at different
-    // periods. Neither one alone looks like much — together, the aura layer
-    // rotating and pulsing behind the main blob makes its edge appear to
-    // bulge and recede at shifting points, which is what actually reads as
-    // "the shape keeps changing" rather than "this blob is breathing." Both
-    // are still just scale/rotate/translate, so the cost is the same order as
-    // the single loop this replaces (one more of the same, not a return to
-    // the twelve-loops-per-screen problem from before).
-    breathe.value = withRepeat(
-      withTiming(1, { duration: 5200, easing: Easing.inOut(Easing.sin) }),
-      -1,
-      true
-    );
-    aura.value = withRepeat(
-      withTiming(1, { duration: 8600, easing: Easing.inOut(Easing.sin) }),
-      -1,
-      true
-    );
-  }, [breathe, aura, reducedMotion]);
+  // Start the ambient loops when the Home tab is visible; cancel them when
+  // the user navigates away. Previously two infinite loops ran for the entire
+  // app lifetime (all four tabs stay mounted after first visit).
+  useFocusEffect(
+    useCallback(() => {
+      if (reducedMotion) return;
+      breathe.value = withRepeat(
+        withTiming(1, { duration: 5200, easing: Easing.inOut(Easing.sin) }),
+        -1,
+        true
+      );
+      aura.value = withRepeat(
+        withTiming(1, { duration: 8600, easing: Easing.inOut(Easing.sin) }),
+        -1,
+        true
+      );
+      return () => {
+        cancelAnimation(breathe);
+        cancelAnimation(aura);
+      };
+    }, [breathe, aura, reducedMotion])
+  );
 
   const blobContainerStyle = useAnimatedStyle(() => {
     const swapScale = interpolate(
