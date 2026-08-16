@@ -2,7 +2,6 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { View, StyleSheet, ScrollView, Pressable, TextInput, Alert } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
-import * as Haptics from 'expo-haptics';
 
 import { AppText } from '@/components/ui/app-text';
 import { AppButton } from '@/components/ui/app-button';
@@ -17,6 +16,7 @@ import { ScanReceiptButton } from '@/components/finance/scan-receipt-button';
 import { useFinance } from '@/context/finance-context';
 import { TransactionType } from '@/types/finance';
 import { getCurrencySymbol } from '@/utils/currency';
+import { haptics } from '@/utils/haptics';
 import { buildNote } from '@/utils/receipt-parser';
 import { guessAccount, guessCategory } from '@/utils/receipt-match';
 import {
@@ -105,9 +105,7 @@ export default function AddTransactionScreen() {
       if (matchedAccount) setAccountId(matchedAccount.id);
 
       setScanned({ merchant: receipt.merchant, confidence: receipt.confidence });
-      try {
-        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      } catch {}
+      haptics.success();
     },
     [state.accounts, state.categories]
   );
@@ -168,6 +166,7 @@ export default function AddTransactionScreen() {
 
     if (editing) updateTransaction({ ...editing, ...payload });
     else addTransaction(payload);
+    haptics.success();
     router.back();
   };
 
@@ -180,6 +179,7 @@ export default function AddTransactionScreen() {
         style: 'destructive',
         onPress: () => {
           deleteTransaction(editing.id);
+          haptics.warning();
           router.back();
         },
       },

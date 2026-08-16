@@ -12,7 +12,7 @@ import Svg, {
 import Animated, {
   useSharedValue,
   useAnimatedStyle,
-  useAnimatedProps,
+  withDelay,
   withRepeat,
   withSequence,
   withTiming,
@@ -24,9 +24,10 @@ import Animated, {
 
 import { AppText } from '@/components/ui/app-text';
 import { Colors } from '@/constants/theme';
+import { Ease } from '@/constants/motion';
+import { useReducedMotion } from '@/hooks/use-reduced-motion';
 import { BLOB_VIEWBOX, BLOB_PATH, BLOB_PATH_ALT } from '@/constants/shapes';
 
-const AnimatedPath = Animated.createAnimatedComponent(Path);
 const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
 
 export type BadgeSlot = 'topLeft' | 'topRight' | 'bottomLeft' | 'bottomRight';
@@ -82,47 +83,18 @@ function formatShortCurrency(amount: number, currency: string): string {
 }
 
 // Subtle organic bubble keyframes
-const HERO_NUMS_A = [
-  104, 8, 140, 6, 176, 28, 186, 64, 195, 98, 174, 126, 156, 150, 134, 178, 102, 194, 70, 184, 36,
-  173, 14, 144, 11, 108, 8, 70, 26, 36, 57, 20, 72, 12, 88, 9, 104, 8,
-];
-
-const HERO_NUMS_B = [
-  102, 10, 143, 8, 178, 24, 188, 62, 197, 99, 172, 129, 154, 153, 132, 180, 98, 196, 68, 186, 34,
-  175, 12, 142, 10, 106, 8, 68, 28, 34, 58, 18, 74, 10, 88, 11, 102, 10,
-];
-
-const HERO_NUMS_C = [
-  106, 6, 138, 5, 174, 30, 184, 66, 193, 96, 176, 124, 158, 148, 136, 176, 104, 192, 72, 182, 38,
-  171, 16, 146, 12, 110, 9, 72, 24, 38, 56, 22, 70, 14, 88, 7, 106, 6,
-];
-
-function interpolateHeroPath(t: number): string {
-  'worklet';
-  let p = 0;
-  let from = HERO_NUMS_A;
-  let to = HERO_NUMS_B;
-
-  if (t <= 0.5) {
-    p = t * 2;
-    from = HERO_NUMS_A;
-    to = HERO_NUMS_B;
-  } else {
-    p = (t - 0.5) * 2;
-    from = HERO_NUMS_B;
-    to = HERO_NUMS_C;
-  }
-
-  const n: number[] = [];
-  for (let i = 0; i < HERO_NUMS_A.length; i++) {
-    const f = from[i] ?? HERO_NUMS_A[i];
-    const target = to[i] ?? f;
-    const val = f + (target - f) * p;
-    n.push(Math.round(val * 10) / 10);
-  }
-
-  return `M${n[0]} ${n[1]} C${n[2]} ${n[3]} ${n[4]} ${n[5]} ${n[6]} ${n[7]} C${n[8]} ${n[9]} ${n[10]} ${n[11]} ${n[12]} ${n[13]} C${n[14]} ${n[15]} ${n[16]} ${n[17]} ${n[18]} ${n[19]} C${n[20]} ${n[21]} ${n[22]} ${n[23]} ${n[24]} ${n[25]} C${n[26]} ${n[27]} ${n[28]} ${n[29]} ${n[30]} ${n[31]} C${n[32]} ${n[33]} ${n[34]} ${n[35]} ${n[36]} ${n[37]} Z`;
-}
+/**
+ * The hero silhouette, resolved once.
+ *
+ * This was three sets of 38 control-point numbers interpolated into a fresh
+ * path string inside a worklet on every frame. Handing react-native-svg a new
+ * `d` 60 times a second makes it re-parse and re-tessellate the path natively
+ * each time — by far the most expensive thing on the Home screen. The organic
+ * silhouette is what mattered; animating it was not worth that cost, and the
+ * blob still feels alive through the transform-driven breathe loop below.
+ */
+const HERO_PATH =
+  'M104 8 C147 5 183 30 192 68 C200 104 178 132 158 156 C135 184 101 200 68 189 C33 177 12 146 9 109 C6 68 25 33 58 18 C72 11 89 9 104 8 Z';
 
 interface SmallFloatingBubbleProps {
   badge: HeroBadge;
@@ -140,19 +112,23 @@ const SmallFloatingBubble: React.FC<SmallFloatingBubbleProps> = ({
   const mergeProgress = useSharedValue(0);
   const pressScale = useSharedValue(1);
   const badgeAnim = useSharedValue(1);
+  const reducedMotion = useReducedMotion();
 
   useEffect(() => {
-    const duration = 4800 + index * 700;
-
-    mergeProgress.value = withRepeat(
-      withSequence(
-        withTiming(1, { duration, easing: Easing.inOut(Easing.cubic) }),
-        withTiming(0, { duration: duration + 300, easing: Easing.inOut(Easing.cubic) })
-      ),
-      -1,
-      true
+    if (reducedMotion) {
+      mergeProgress.value = 1;
+      return;
+    }
+    // The liquid "budding" read is worth keeping, but as an entrance that
+    // settles — not a loop. Running it forever meant one perpetual animation
+    // per badge with nothing driving it, which is exactly the ambient motion
+    // that made the app feel busy and drop frames.
+    mergeProgress.value = 0;
+    mergeProgress.value = withDelay(
+      60 + index * 70,
+      withTiming(1, { duration: 620, easing: Ease.out })
     );
-  }, [index, mergeProgress]);
+  }, [index, mergeProgress, reducedMotion]);
 
   useEffect(() => {
     badgeAnim.value = 0;
@@ -281,12 +257,9 @@ export const OrganicHero: React.FC<OrganicHeroProps> = ({
   onPressMain,
   children,
 }) => {
-  const morphProgress = useSharedValue(0);
-  const float = useSharedValue(0);
-  const tilt = useSharedValue(0);
-  const scaleX = useSharedValue(1);
-  const scaleY = useSharedValue(1);
+  const breathe = useSharedValue(0);
   const swapAnim = useSharedValue(1);
+  const reducedMotion = useReducedMotion();
 
   useEffect(() => {
     swapAnim.value = 0;
@@ -297,51 +270,23 @@ export const OrganicHero: React.FC<OrganicHeroProps> = ({
   }, [value, label, swapAnim]);
 
   useEffect(() => {
-    morphProgress.value = withRepeat(
-      withSequence(
-        withTiming(1, { duration: 5200, easing: Easing.inOut(Easing.sin) }),
-        withTiming(0, { duration: 5200, easing: Easing.inOut(Easing.sin) })
-      ),
+    if (reducedMotion) {
+      breathe.value = 0;
+      return;
+    }
+    // One slow loop drives the whole "living blob" read. It used to be five:
+    // a morph that rebuilt the SVG path string every frame (forcing
+    // react-native-svg to re-parse and re-tessellate the path 60x a second),
+    // plus separate float, tilt, scaleX and scaleY loops. This is a single
+    // shared value the style worklet derives all of that from, and it only
+    // ever touches transforms, which stay on the UI thread and never
+    // re-rasterise.
+    breathe.value = withRepeat(
+      withTiming(1, { duration: 5200, easing: Easing.inOut(Easing.sin) }),
       -1,
       true
     );
-
-    float.value = withRepeat(
-      withSequence(
-        withTiming(-6, { duration: 3800, easing: Easing.inOut(Easing.sin) }),
-        withTiming(4, { duration: 3800, easing: Easing.inOut(Easing.sin) })
-      ),
-      -1,
-      true
-    );
-
-    tilt.value = withRepeat(
-      withSequence(
-        withTiming(1.5, { duration: 4800, easing: Easing.inOut(Easing.sin) }),
-        withTiming(-1.5, { duration: 4800, easing: Easing.inOut(Easing.sin) })
-      ),
-      -1,
-      true
-    );
-
-    scaleX.value = withRepeat(
-      withSequence(
-        withTiming(1.025, { duration: 4200, easing: Easing.inOut(Easing.sin) }),
-        withTiming(0.975, { duration: 4200, easing: Easing.inOut(Easing.sin) })
-      ),
-      -1,
-      true
-    );
-
-    scaleY.value = withRepeat(
-      withSequence(
-        withTiming(0.975, { duration: 4200, easing: Easing.inOut(Easing.sin) }),
-        withTiming(1.025, { duration: 4200, easing: Easing.inOut(Easing.sin) })
-      ),
-      -1,
-      true
-    );
-  }, [morphProgress, float, tilt, scaleX, scaleY]);
+  }, [breathe, reducedMotion]);
 
   const blobContainerStyle = useAnimatedStyle(() => {
     const swapScale = interpolate(
@@ -351,12 +296,21 @@ export const OrganicHero: React.FC<OrganicHeroProps> = ({
       Extrapolation.CLAMP
     );
 
+    // All four of the old loops, derived from one value. The slight
+    // counter-phase between scaleX and scaleY is what reads as "breathing"
+    // rather than a plain pulse.
+    const b = breathe.value;
+    const floatY = interpolate(b, [0, 1], [-5, 4]);
+    const tiltDeg = interpolate(b, [0, 1], [-1.2, 1.2]);
+    const stretchX = interpolate(b, [0, 1], [0.978, 1.022]);
+    const stretchY = interpolate(b, [0, 1], [1.022, 0.978]);
+
     return {
       transform: [
-        { translateY: float.value },
-        { rotate: `${tilt.value}deg` },
-        { scaleX: scaleX.value * swapScale },
-        { scaleY: scaleY.value * swapScale },
+        { translateY: floatY },
+        { rotate: `${tiltDeg}deg` },
+        { scaleX: stretchX * swapScale },
+        { scaleY: stretchY * swapScale },
       ],
     };
   });
@@ -369,13 +323,6 @@ export const OrganicHero: React.FC<OrganicHeroProps> = ({
     return {
       opacity,
       transform: [{ translateY }, { scale }],
-    };
-  });
-
-  const mainPathProps = useAnimatedProps(() => {
-    'worklet';
-    return {
-      d: interpolateHeroPath(morphProgress.value),
     };
   });
 
@@ -407,8 +354,8 @@ export const OrganicHero: React.FC<OrganicHeroProps> = ({
           </Defs>
 
           <Ellipse cx={100} cy={108} rx={99} ry={92} fill="url(#heroBlobGlow)" />
-          <AnimatedPath
-            animatedProps={mainPathProps}
+          <Path
+            d={HERO_PATH}
             fill="url(#heroBlobFill)"
             stroke="rgba(255,255,255,0.95)"
             strokeWidth={1.6}

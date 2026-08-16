@@ -1,11 +1,11 @@
 import React from 'react';
 import { View, StyleSheet, Pressable } from 'react-native';
-import * as Haptics from 'expo-haptics';
 import { Ionicons } from '@expo/vector-icons';
 import Animated, { useSharedValue, useAnimatedStyle, withSpring } from 'react-native-reanimated';
 
 import { AppText } from '@/components/ui/app-text';
 import { Colors } from '@/constants/theme';
+import { haptics } from '@/utils/haptics';
 
 export interface AmountDisplayProps {
   value: string;
@@ -95,9 +95,7 @@ export interface NumpadProps {
 
 export const Numpad: React.FC<NumpadProps> = ({ value, onChangeValue }) => {
   const handleKey = (key: KeyValue) => {
-    try {
-      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    } catch {}
+    haptics.selection();
 
     if (key === 'back') {
       onChangeValue(value.length > 0 ? value.slice(0, -1) : value);

@@ -4,122 +4,227 @@ import { View, StyleSheet, ScrollView } from 'react-native';
 import { AppText } from '@/components/ui/app-text';
 import { GradientScreen } from '@/components/ui/gradient-screen';
 import { GlassCard } from '@/components/ui/glass-card';
-import { MonthStepper } from '@/components/ui/month-stepper';
 import { SegmentedControl } from '@/components/ui/segmented-control';
-import { DonutChart } from '@/components/finance/donut-chart';
-import { TrendBarChart } from '@/components/finance/trend-bar-chart';
-import { ProgressBar } from '@/components/finance/progress-bar';
-import { IconBadge } from '@/components/finance/icon-badge';
 import { EmptyState } from '@/components/finance/empty-state';
+import { InsightFilters } from '@/components/finance/insight-filters';
+import { TrendAreaChart } from '@/components/charts/trend-area-chart';
+import { CategoryDonut } from '@/components/charts/category-donut';
+import { WeekdayBars } from '@/components/charts/weekday-bars';
 import { useFinance } from '@/context/finance-context';
-import { getCategorySpend, getMonthlyTotals } from '@/utils/selectors';
-import { lastNMonthKeys, monthShortLabel, toMonthKey } from '@/utils/date';
+import {
+  DEFAULT_INSIGHT_FILTER,
+  InsightFilter,
+  compareWithPreviousPeriod,
+  computeCategoryBreakdown,
+  computeMonthlySeries,
+  computeTopNotes,
+  computeTotals,
+  computeWeekdayPattern,
+  resolveRange,
+  selectTransactions,
+} from '@/utils/insights';
 import { formatCurrency } from '@/utils/currency';
+import { monthKeyLabel } from '@/utils/date';
 import { Colors, Spacing } from '@/constants/theme';
 
-type Mode = 'expense' | 'income';
+type Kind = 'expense' | 'income';
 
 export default function ReportsScreen() {
   const { state } = useFinance();
-  const [monthKey, setMonthKey] = useState(() => toMonthKey(new Date()));
-  const [mode, setMode] = useState<Mode>('expense');
+  const [filter, setFilter] = useState<InsightFilter>(DEFAULT_INSIGHT_FILTER);
+  const [selectedCategory, setSelectedCategory] = useState<string | undefined>();
+  const [selectedMonth, setSelectedMonth] = useState<number | undefined>();
 
   const currency = state.settings.currency;
-  const breakdown = useMemo(() => getCategorySpend(state, monthKey, mode), [state, monthKey, mode]);
-  const total = breakdown.reduce((sum, c) => sum + c.amount, 0);
 
-  const trend = useMemo(
-    () =>
-      lastNMonthKeys(6).map(key => {
-        const totals = getMonthlyTotals(state, key);
-        return { label: monthShortLabel(key), income: totals.income, expense: totals.expense };
-      }),
-    [state]
+  // The ledger is scanned once here; every chart below reads this array.
+  const transactions = useMemo(() => selectTransactions(state, filter), [state, filter]);
+  const totals = useMemo(() => computeTotals(transactions), [transactions]);
+  const breakdown = useMemo(
+    () => computeCategoryBreakdown(transactions, state.categories),
+    [transactions, state.categories]
   );
+  const series = useMemo(
+    () => computeMonthlySeries(transactions, resolveRange(filter.range)),
+    [transactions, filter.range]
+  );
+  const weekdays = useMemo(() => computeWeekdayPattern(transactions), [transactions]);
+  const topNotes = useMemo(() => computeTopNotes(transactions), [transactions]);
+  const comparison = useMemo(() => compareWithPreviousPeriod(state, filter), [state, filter]);
+
+  const isEmpty = transactions.length === 0;
+  const changePercent =
+    comparison.change !== undefined ? Math.round(comparison.change * 100) : undefined;
+  const spendingUp = (comparison.change ?? 0) > 0;
 
   return (
     <GradientScreen contours="top">
       <View style={styles.header}>
         <AppText variant="h2">Insights</AppText>
-        <AppText variant="caption">Where your money went</AppText>
+        <AppText variant="caption">Where your money actually goes</AppText>
       </View>
 
       <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
-        <MonthStepper monthKey={monthKey} onChange={setMonthKey} />
+        <View style={styles.kindWrap}>
+          <SegmentedControl<Kind>
+            options={[
+              { key: 'expense', label: 'Spending', activeColor: Colors.expense },
+              { key: 'income', label: 'Income', activeColor: Colors.income },
+            ]}
+            value={filter.kind}
+            onChange={kind => {
+              // Category ids belong to one kind, so they cannot carry over.
+              setFilter({ ...filter, kind, categoryIds: [] });
+              setSelectedCategory(undefined);
+            }}
+          />
+        </View>
 
-        <SegmentedControl<Mode>
-          options={[
-            { key: 'expense', label: 'Spending', activeColor: Colors.expense },
-            { key: 'income', label: 'Income', activeColor: Colors.income },
-          ]}
-          value={mode}
-          onChange={setMode}
-          style={styles.modeSwitch}
+        <InsightFilters
+          filter={filter}
+          accounts={state.accounts}
+          categories={state.categories}
+          onChange={next => {
+            setFilter(next);
+            setSelectedCategory(undefined);
+          }}
         />
 
-        {breakdown.length === 0 ? (
-          <GlassCard>
-            <EmptyState
-              icon="analytics-outline"
-              title={`No ${mode === 'expense' ? 'spending' : 'income'} this month`}
-              subtitle="Add a transaction to see the breakdown here."
-            />
-          </GlassCard>
-        ) : (
-          <>
-            <GlassCard strong style={styles.chartCard} elevated>
-              <DonutChart
-                data={breakdown.map(c => ({
-                  label: c.category.name,
-                  value: c.amount,
-                  color: c.category.color,
-                }))}
-                centerLabel={mode === 'expense' ? 'Total spent' : 'Total earned'}
-                centerValue={formatCurrency(total, currency)}
+        {isEmpty ? (
+          <View style={styles.section}>
+            <GlassCard>
+              <EmptyState
+                icon="analytics-outline"
+                title="Nothing in this range"
+                subtitle="Widen the date range or clear a filter to see your numbers."
               />
             </GlassCard>
-
-            <GlassCard style={styles.breakdownCard} padding={18}>
-              {breakdown.map((c, index) => {
-                const share = total > 0 ? c.amount / total : 0;
-                return (
-                  <View
-                    key={c.category.id}
-                    style={[styles.breakdownRow, index < breakdown.length - 1 && styles.rowDivider]}
+          </View>
+        ) : (
+          <>
+            {/* The headline is one number, so it gets a stat tile rather than a chart. */}
+            <View style={styles.section}>
+              <GlassCard strong elevated style={styles.heroCard}>
+                <AppText variant="micro">
+                  {filter.kind === 'expense' ? 'Total spent' : 'Total received'}
+                </AppText>
+                <AppText variant="display" numberOfLines={1} adjustsFontSizeToFit>
+                  {formatCurrency(totals.total, currency)}
+                </AppText>
+                {changePercent !== undefined ? (
+                  <AppText
+                    variant="micro"
+                    color={
+                      filter.kind === 'expense'
+                        ? spendingUp
+                          ? Colors.expense
+                          : Colors.income
+                        : spendingUp
+                          ? Colors.income
+                          : Colors.expense
+                    }
                   >
-                    <IconBadge icon={c.category.icon} color={c.category.color} size={38} />
-                    <View style={styles.breakdownText}>
-                      <View style={styles.breakdownTop}>
-                        <AppText variant="bodyStrong" numberOfLines={1} style={styles.breakdownName}>
-                          {c.category.name}
-                        </AppText>
-                        <AppText variant="amount">{formatCurrency(c.amount, currency)}</AppText>
-                      </View>
-                      <View style={styles.breakdownBottom}>
-                        <ProgressBar
-                          progress={share}
-                          height={5}
-                          color={c.category.color}
-                          style={styles.breakdownBar}
-                        />
-                        <AppText variant="micro">{Math.round(share * 100)}%</AppText>
-                      </View>
-                    </View>
+                    {spendingUp ? '▲' : '▼'} {Math.abs(changePercent)}% vs previous period
+                  </AppText>
+                ) : (
+                  <AppText variant="micro">No earlier period to compare against</AppText>
+                )}
+
+                <View style={styles.statRow}>
+                  <View style={styles.stat}>
+                    <AppText variant="micro">Per active day</AppText>
+                    <AppText variant="bodyStrong">
+                      {formatCurrency(totals.dailyAverage, currency)}
+                    </AppText>
                   </View>
-                );
-              })}
-            </GlassCard>
+                  <View style={styles.stat}>
+                    <AppText variant="micro">Entries</AppText>
+                    <AppText variant="bodyStrong">{totals.count}</AppText>
+                  </View>
+                  <View style={styles.stat}>
+                    <AppText variant="micro">Largest</AppText>
+                    <AppText variant="bodyStrong">
+                      {totals.largest ? formatCurrency(totals.largest.amount, currency) : '—'}
+                    </AppText>
+                  </View>
+                </View>
+              </GlassCard>
+            </View>
+
+            <View style={styles.section}>
+              <AppText variant="label" style={styles.sectionLabel}>
+                Trend by month
+              </AppText>
+              <GlassCard style={styles.chartCard}>
+                <TrendAreaChart
+                  points={series}
+                  currency={currency}
+                  selectedIndex={selectedMonth}
+                  onSelect={setSelectedMonth}
+                />
+                {selectedMonth !== undefined && series[selectedMonth] ? (
+                  <View style={styles.selection}>
+                    <AppText variant="micro">{monthKeyLabel(series[selectedMonth].monthKey)}</AppText>
+                    <AppText variant="bodyStrong">
+                      {formatCurrency(series[selectedMonth].amount, currency)}
+                    </AppText>
+                  </View>
+                ) : null}
+              </GlassCard>
+            </View>
+
+            <View style={styles.section}>
+              <AppText variant="label" style={styles.sectionLabel}>
+                By category
+              </AppText>
+              <GlassCard style={styles.chartCard}>
+                <CategoryDonut
+                  slices={breakdown}
+                  currency={currency}
+                  centerLabel={filter.kind === 'expense' ? 'Spent' : 'Received'}
+                  total={totals.total}
+                  selectedId={selectedCategory}
+                  onSelect={setSelectedCategory}
+                />
+              </GlassCard>
+            </View>
+
+            <View style={styles.section}>
+              <AppText variant="label" style={styles.sectionLabel}>
+                Busiest days
+              </AppText>
+              <GlassCard style={styles.chartCard}>
+                <WeekdayBars buckets={weekdays} currency={currency} />
+              </GlassCard>
+            </View>
+
+            {topNotes.length > 0 ? (
+              <View style={styles.section}>
+                <AppText variant="label" style={styles.sectionLabel}>
+                  Most frequent
+                </AppText>
+                <GlassCard padding={18}>
+                  {topNotes.map((note, index) => (
+                    <View
+                      key={note.label}
+                      style={[styles.noteRow, index < topNotes.length - 1 && styles.noteDivider]}
+                    >
+                      <View style={styles.noteText}>
+                        <AppText variant="bodyStrong" numberOfLines={1}>
+                          {note.label}
+                        </AppText>
+                        <AppText variant="micro">
+                          {note.count} {note.count === 1 ? 'time' : 'times'}
+                        </AppText>
+                      </View>
+                      <AppText variant="amount">{formatCurrency(note.amount, currency)}</AppText>
+                    </View>
+                  ))}
+                </GlassCard>
+              </View>
+            ) : null}
           </>
         )}
-
-        <View style={styles.trendSection}>
-          <AppText variant="label" style={styles.trendLabel}>
-            Last 6 months
-          </AppText>
-          <GlassCard style={styles.trendCard}>
-            <TrendBarChart data={trend} />
-          </GlassCard>
-        </View>
       </ScrollView>
     </GradientScreen>
   );
@@ -132,60 +237,53 @@ const styles = StyleSheet.create({
     gap: 3,
   },
   content: {
-    paddingHorizontal: 20,
     paddingTop: Spacing.lg,
     paddingBottom: 130,
     gap: Spacing.lg,
   },
-  modeSwitch: {
-    marginTop: 2,
+  kindWrap: {
+    paddingHorizontal: 20,
   },
-  chartCard: {
-    alignItems: 'center',
-    paddingVertical: 26,
+  section: {
+    paddingHorizontal: 20,
+    gap: 10,
   },
-  breakdownCard: {
+  sectionLabel: {
+    marginLeft: 4,
+  },
+  heroCard: {
+    gap: 4,
+    paddingVertical: 20,
+  },
+  statRow: {
+    flexDirection: 'row',
+    marginTop: 14,
+    gap: 10,
+  },
+  stat: {
+    flex: 1,
     gap: 2,
   },
-  breakdownRow: {
+  chartCard: {
+    paddingVertical: 20,
+    gap: 12,
+  },
+  selection: {
+    alignItems: 'center',
+    gap: 1,
+  },
+  noteRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 12,
-    paddingVertical: 13,
+    paddingVertical: 12,
   },
-  rowDivider: {
+  noteDivider: {
     borderBottomWidth: 1,
     borderBottomColor: Colors.divider,
   },
-  breakdownText: {
+  noteText: {
     flex: 1,
-    gap: 7,
-  },
-  breakdownTop: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: 10,
-  },
-  breakdownName: {
-    flex: 1,
-  },
-  breakdownBottom: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-  },
-  breakdownBar: {
-    flex: 1,
-  },
-  trendSection: {
-    gap: 10,
-    marginTop: Spacing.sm,
-  },
-  trendLabel: {
-    marginLeft: 4,
-  },
-  trendCard: {
-    paddingVertical: 22,
+    gap: 2,
   },
 });

@@ -1,10 +1,10 @@
 import React from 'react';
 import { View, StyleSheet, Pressable, ViewStyle, StyleProp } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import * as Haptics from 'expo-haptics';
 
 import { AppText } from '@/components/ui/app-text';
 import { Colors, BorderRadius, Shadows } from '@/constants/theme';
+import { haptics } from '@/utils/haptics';
 
 export interface SegmentOption<T extends string> {
   key: T;
@@ -34,9 +34,7 @@ export function SegmentedControl<T extends string>({
           <Pressable
             key={option.key}
             onPress={() => {
-              try {
-                Haptics.selectionAsync();
-              } catch {}
+              haptics.selection();
               onChange(option.key);
             }}
             style={[styles.segment, active && styles.segmentActive]}

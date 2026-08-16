@@ -2,11 +2,11 @@ import React from 'react';
 import { View, StyleSheet, Pressable, ActivityIndicator } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
-import * as Haptics from 'expo-haptics';
 import Animated, { useSharedValue, useAnimatedStyle, withSpring } from 'react-native-reanimated';
 
 import { AppText } from '@/components/ui/app-text';
 import { Colors, BorderRadius, Shadows } from '@/constants/theme';
+import { haptics } from '@/utils/haptics';
 
 export interface ScanReceiptButtonProps {
   onPickImage: () => void;
@@ -28,9 +28,7 @@ export const ScanReceiptButton: React.FC<ScanReceiptButtonProps> = ({
 
   const press = (action?: () => void) => () => {
     if (scanning || !action) return;
-    try {
-      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-    } catch {}
+    haptics.press();
     action();
   };
 

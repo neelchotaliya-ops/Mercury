@@ -16,7 +16,7 @@ import { getAccountBalance, getTotalBalance } from '@/utils/selectors';
 import { formatCurrency } from '@/utils/currency';
 import { toMonthKey } from '@/utils/date';
 import { ACCOUNT_TYPE_META } from '@/constants/categories';
-import { Colors, BorderRadius, Spacing } from '@/constants/theme';
+import { Colors, BorderRadius } from '@/constants/theme';
 
 export default function HomeScreen() {
   const router = useRouter();

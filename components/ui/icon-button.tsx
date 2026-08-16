@@ -2,10 +2,10 @@ import React from 'react';
 import { Pressable, StyleSheet, ViewStyle, StyleProp, Platform } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { BlurView } from 'expo-blur';
-import * as Haptics from 'expo-haptics';
 import Animated, { useSharedValue, useAnimatedStyle, withSpring } from 'react-native-reanimated';
 
 import { Colors, Shadows } from '@/constants/theme';
+import { haptics } from '@/utils/haptics';
 
 export interface IconButtonProps {
   iconName: keyof typeof Ionicons.glyphMap;
@@ -33,9 +33,7 @@ export const IconButton: React.FC<IconButtonProps> = ({
   const iconColor = color ?? (solid ? Colors.ctaText : Colors.textPrimary);
 
   const handlePress = () => {
-    try {
-      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    } catch {}
+    haptics.toggle();
     onPress();
   };
 

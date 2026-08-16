@@ -2,11 +2,11 @@ import React from 'react';
 import { Pressable, StyleSheet, ViewStyle, TextStyle, ActivityIndicator, StyleProp } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
-import * as Haptics from 'expo-haptics';
 import Animated, { useSharedValue, useAnimatedStyle, withSpring } from 'react-native-reanimated';
 
 import { AppText } from '@/components/ui/app-text';
 import { Colors, Gradients, BorderRadius, Shadows, Spacing } from '@/constants/theme';
+import { haptics } from '@/utils/haptics';
 
 export type ButtonVariant = 'primary' | 'glass' | 'ghost' | 'text';
 export type ButtonSize = 'sm' | 'md' | 'lg';
@@ -57,9 +57,7 @@ export const AppButton: React.FC<AppButtonProps> = ({
 
   const handlePress = () => {
     if (isDisabled) return;
-    try {
-      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    } catch {}
+    haptics.press();
     onPress();
   };
 
