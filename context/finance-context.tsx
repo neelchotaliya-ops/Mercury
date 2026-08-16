@@ -350,6 +350,34 @@ const initialState: FinanceState = {
   isLoaded: false,
 };
 
+/**
+ * Comparator: newest-first (ISO-8601 strings sort lexicographically).
+ * Keeps state.transactions sorted so consumers never need to sort.
+ */
+function cmpDateDesc(a: Transaction, b: Transaction): number {
+  return a.date < b.date ? 1 : a.date > b.date ? -1 : 0;
+}
+
+/**
+ * Binary-insert a single transaction into an already-sorted (newest-first)
+ * array. O(log n) search + O(n) splice — far cheaper than a full re-sort
+ * after every ADD_TRANSACTION action.
+ */
+function insertSortedDesc(transactions: Transaction[], tx: Transaction): Transaction[] {
+  const target = tx.date;
+  let lo = 0;
+  let hi = transactions.length;
+  while (lo < hi) {
+    const mid = (lo + hi) >>> 1;
+    // If this slot is older-or-equal to target, the new entry belongs here.
+    if (transactions[mid].date <= target) hi = mid;
+    else lo = mid + 1;
+  }
+  const result = [...transactions];
+  result.splice(lo, 0, tx);
+  return result;
+}
+
 function reducer(state: FinanceState, action: Action): FinanceState {
   switch (action.type) {
     case 'HYDRATE':
@@ -360,6 +388,10 @@ function reducer(state: FinanceState, action: Action): FinanceState {
         // Saved before quick presets existed; seed them from the categories
         // this user already has rather than leaving the widget empty.
         quickPresets: action.payload.quickPresets ?? buildDefaultPresets(action.payload.categories),
+        // Sort on load — data from older builds may not be sorted yet, and
+        // keeping a single guaranteed ordering lets every consumer skip the
+        // O(n log n) sort step on every render.
+        transactions: [...action.payload.transactions].sort(cmpDateDesc),
         isLoaded: true,
       };
 
@@ -394,12 +426,14 @@ function reducer(state: FinanceState, action: Action): FinanceState {
       };
 
     case 'ADD_TRANSACTION':
-      return { ...state, transactions: [...state.transactions, action.payload] };
-    case 'UPDATE_TRANSACTION':
-      return {
-        ...state,
-        transactions: state.transactions.map(t => (t.id === action.payload.id ? action.payload : t)),
-      };
+      // Binary-insert preserves newest-first order without a full sort.
+      return { ...state, transactions: insertSortedDesc(state.transactions, action.payload) };
+    case 'UPDATE_TRANSACTION': {
+      // The transaction's date may have changed, so remove-then-reinsert
+      // rather than a map() to keep the array sorted.
+      const without = state.transactions.filter(t => t.id !== action.payload.id);
+      return { ...state, transactions: insertSortedDesc(without, action.payload) };
+    }
     case 'DELETE_TRANSACTION':
       return { ...state, transactions: state.transactions.filter(t => t.id !== action.payload.id) };
 
@@ -433,6 +467,7 @@ function reducer(state: FinanceState, action: Action): FinanceState {
         ...action.payload,
         settings: { ...defaultSettings, ...action.payload.settings },
         quickPresets: action.payload.quickPresets ?? buildDefaultPresets(action.payload.categories),
+        transactions: [...action.payload.transactions].sort(cmpDateDesc),
         isLoaded: true,
       };
 
@@ -449,8 +484,10 @@ function reducer(state: FinanceState, action: Action): FinanceState {
       };
     }
 
-    case 'SEED_DEMO_DATA':
-      return buildDefaultState();
+    case 'SEED_DEMO_DATA': {
+      const seeded = buildDefaultState();
+      return { ...seeded, transactions: [...seeded.transactions].sort(cmpDateDesc) };
+    }
 
     default:
       return state;

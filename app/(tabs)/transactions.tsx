@@ -116,7 +116,13 @@ export default function TransactionsScreen() {
   // changes (settings, presets, budgets) no longer invalidate this.
   const filtered = useMemo(() => {
     const needle = deferredQuery.trim().toLowerCase();
-    const out = [];
+    // Fast path: when nothing is filtered, return state.transactions directly.
+    // This preserves the reference identity so groupTransactionsByDay sees the
+    // same pre-sorted array and its isSortedDesc check short-circuits instantly
+    // — no O(n) copy and no O(n log n) sort on every render.
+    if (filter === 'all' && needle.length === 0) return state.transactions;
+
+    const out: typeof state.transactions = [];
     for (const t of state.transactions) {
       if (filter !== 'all' && t.type !== filter) continue;
       if (needle.length > 0) {
@@ -221,12 +227,16 @@ export default function TransactionsScreen() {
         keyExtractor={keyExtractor}
         contentContainerStyle={styles.content}
         showsVerticalScrollIndicator={false}
-        // The ledger grows without bound and every row used to be mounted at
-        // once; these keep the mounted window small on low-end devices.
-        initialNumToRender={8}
-        maxToRenderPerBatch={6}
-        windowSize={7}
-        removeClippedSubviews
+        // state.transactions is kept sorted newest-first by the reducer, so
+        // groups are also in order. These batch settings balance initial render
+        // speed with smooth scroll for large ledgers (1000+ transactions).
+        initialNumToRender={10}
+        maxToRenderPerBatch={8}
+        updateCellsBatchingPeriod={25}
+        windowSize={9}
+        // removeClippedSubviews is intentionally omitted on Android: it causes
+        // blank-frame jank when scrolling back to previously-detached views,
+        // which is worse than the small memory saving it provides.
         ListEmptyComponent={
           <GlassCard>
             <EmptyState

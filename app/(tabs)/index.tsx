@@ -139,12 +139,11 @@ export default function HomeScreen() {
     return [totalBadge, ...remainingBadges];
   }, [accounts, selectedAccountId, balanceMap, totalBalance]);
 
-  // ISO-8601 strings sort correctly as plain strings — no Date allocation needed.
+  // state.transactions is kept sorted newest-first by the reducer and
+  // filteredTransactions preserves that order, so just slice — no copy+sort
+  // of 1,000 items needed to find the top 4.
   const recent = useMemo(
-    () =>
-      [...filteredTransactions]
-        .sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : 0))
-        .slice(0, 4),
+    () => filteredTransactions.slice(0, 4),
     [filteredTransactions]
   );
 
