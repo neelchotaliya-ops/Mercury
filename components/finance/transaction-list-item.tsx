@@ -3,7 +3,7 @@ import { View, StyleSheet, Pressable } from 'react-native';
 
 import { AppText } from '@/components/ui/app-text';
 import { IconBadge } from '@/components/finance/icon-badge';
-import { Account, Category, Transaction } from '@/types/finance';
+import { Account, Category, NumberFormat, Transaction } from '@/types/finance';
 import { formatCurrency } from '@/utils/currency';
 import { Colors } from '@/constants/theme';
 
@@ -16,6 +16,7 @@ export interface TransactionListItemProps {
   /** Destination account for transfers. */
   toAccount: Account | undefined;
   currency: string;
+  numberFormat?: NumberFormat;
   onPress?: () => void;
   showDivider?: boolean;
 }
@@ -26,6 +27,7 @@ const TransactionListItemBase: React.FC<TransactionListItemProps> = ({
   account,
   toAccount,
   currency,
+  numberFormat,
   onPress,
   showDivider = false,
 }) => {
@@ -68,7 +70,7 @@ const TransactionListItemBase: React.FC<TransactionListItemProps> = ({
       </View>
       <AppText variant="amount" color={amountColor} numberOfLines={1}>
         {prefix}
-        {formatCurrency(transaction.amount, currency)}
+        {formatCurrency(transaction.amount, currency, numberFormat)}
       </AppText>
     </Pressable>
   );

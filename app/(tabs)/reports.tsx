@@ -42,6 +42,7 @@ export default function ReportsScreen() {
 
   const isReady = useScreenReady(180);
   const currency = state.settings.currency;
+  const numberFormat = state.settings.numberFormat;
 
   // The ledger is scanned once here; every chart below reads this array.
   const transactions = useMemo(() => selectTransactions(state, filter), [state, filter]);
@@ -120,7 +121,7 @@ export default function ReportsScreen() {
                   {filter.kind === 'expense' ? 'Total spent' : 'Total received'}
                 </AppText>
                 <AppText variant="display" numberOfLines={1} adjustsFontSizeToFit>
-                  {formatCurrency(totals.total, currency)}
+                  {formatCurrency(totals.total, currency, numberFormat)}
                 </AppText>
                 {changePercent !== undefined ? (
                   <AppText
@@ -145,7 +146,7 @@ export default function ReportsScreen() {
                   <View style={styles.stat}>
                     <AppText variant="micro">Per active day</AppText>
                     <AppText variant="bodyStrong">
-                      {formatCurrency(totals.dailyAverage, currency)}
+                      {formatCurrency(totals.dailyAverage, currency, numberFormat)}
                     </AppText>
                   </View>
                   <View style={styles.stat}>
@@ -155,7 +156,7 @@ export default function ReportsScreen() {
                   <View style={styles.stat}>
                     <AppText variant="micro">Largest</AppText>
                     <AppText variant="bodyStrong">
-                      {totals.largest ? formatCurrency(totals.largest.amount, currency) : '—'}
+                      {totals.largest ? formatCurrency(totals.largest.amount, currency, numberFormat) : '—'}
                     </AppText>
                   </View>
                 </View>
@@ -177,7 +178,7 @@ export default function ReportsScreen() {
                   <View style={styles.selection}>
                     <AppText variant="micro">{monthKeyLabel(series[selectedMonth].monthKey)}</AppText>
                     <AppText variant="bodyStrong">
-                      {formatCurrency(series[selectedMonth].amount, currency)}
+                      {formatCurrency(series[selectedMonth].amount, currency, numberFormat)}
                     </AppText>
                   </View>
                 ) : null}
@@ -225,7 +226,8 @@ export default function ReportsScreen() {
                         heatmapWeeks
                           .flatMap(w => w.days)
                           .find(d => d?.dateKey === selectedDay)?.amount ?? 0,
-                        currency
+                        currency,
+                        numberFormat
                       )}
                     </AppText>
                   </View>
@@ -261,7 +263,7 @@ export default function ReportsScreen() {
                           {note.count} {note.count === 1 ? 'time' : 'times'}
                         </AppText>
                       </View>
-                      <AppText variant="amount">{formatCurrency(note.amount, currency)}</AppText>
+                      <AppText variant="amount">{formatCurrency(note.amount, currency, numberFormat)}</AppText>
                     </View>
                   ))}
                 </GlassCard>

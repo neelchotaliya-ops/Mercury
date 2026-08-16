@@ -21,6 +21,7 @@ export const BudgetRow: React.FC<BudgetRowProps> = ({ progress, onPress, animate
   const { category, spent, percent, remaining, budget } = progress;
   const isOver = remaining < 0;
   const currency = state.settings.currency;
+  const numberFormat = state.settings.numberFormat;
 
   return (
     <Pressable onPress={onPress}>
@@ -33,7 +34,7 @@ export const BudgetRow: React.FC<BudgetRowProps> = ({ progress, onPress, animate
                 {category?.name ?? 'Category'}
               </AppText>
               <AppText variant="caption">
-                {formatCurrency(spent, currency)} of {formatCurrency(budget.monthlyLimit, currency)}
+                {formatCurrency(spent, currency, numberFormat)} of {formatCurrency(budget.monthlyLimit, currency, numberFormat)}
               </AppText>
             </View>
             <View style={styles.percentPill}>
@@ -47,8 +48,8 @@ export const BudgetRow: React.FC<BudgetRowProps> = ({ progress, onPress, animate
 
           <AppText variant="caption" color={isOver ? Colors.expense : Colors.textMuted}>
             {isOver
-              ? `${formatCurrency(Math.abs(remaining), currency)} over budget`
-              : `${formatCurrency(remaining, currency)} left this month`}
+              ? `${formatCurrency(Math.abs(remaining), currency, numberFormat)} over budget`
+              : `${formatCurrency(remaining, currency, numberFormat)} left this month`}
           </AppText>
         </GlassCard>
       )}

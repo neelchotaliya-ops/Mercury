@@ -36,6 +36,7 @@ const DayGroup = React.memo(function DayGroup({
   categoryById,
   accountById,
   currency,
+  numberFormat,
   onPressTransaction,
 }: {
   group: GroupedTransactions;
@@ -43,6 +44,7 @@ const DayGroup = React.memo(function DayGroup({
   categoryById: Map<string, Category>;
   accountById: Map<string, Account>;
   currency: string;
+  numberFormat?: NumberFormat;
   onPressTransaction: (id: string) => void;
 }) {
   return (
@@ -66,6 +68,7 @@ const DayGroup = React.memo(function DayGroup({
             account={accountById.get(t.accountId)}
             toAccount={t.toAccountId ? accountById.get(t.toAccountId) : undefined}
             currency={currency}
+            numberFormat={numberFormat}
             showDivider={i < group.transactions.length - 1}
             onPress={() => onPressTransaction(t.id)}
           />
@@ -114,6 +117,7 @@ export default function TransactionsScreen() {
     [state.accounts]
   );
   const currency = state.settings.currency;
+  const numberFormat = state.settings.numberFormat;
 
   // Keyed on transactions rather than the whole state object, so unrelated
   // changes (settings, presets, budgets) no longer invalidate this.
@@ -162,10 +166,11 @@ export default function TransactionsScreen() {
         categoryById={categoryById}
         accountById={accountById}
         currency={currency}
+        numberFormat={numberFormat}
         onPressTransaction={openTransaction}
       />
     ),
-    [openTransaction, categoryById, accountById, currency]
+    [openTransaction, categoryById, accountById, currency, numberFormat]
   );
 
   const keyExtractor = useCallback((group: GroupedTransactions) => group.date, []);
@@ -176,7 +181,7 @@ export default function TransactionsScreen() {
         <AppText variant="h2">Activity</AppText>
         <AppText variant="caption">
           {filtered.length} {filtered.length === 1 ? 'entry' : 'entries'} ·{' '}
-          {formatCurrency(filteredTotal, state.settings.currency)} net
+          {formatCurrency(filteredTotal, currency, numberFormat)} net
         </AppText>
       </View>
 

@@ -47,8 +47,11 @@ export interface Budget {
   createdAt: string;
 }
 
+export type NumberFormat = 'international' | 'indian';
+
 export interface AppSettings {
   currency: string;
+  numberFormat?: NumberFormat;
   hasOnboarded: boolean;
 }
 

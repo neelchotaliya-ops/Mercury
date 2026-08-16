@@ -45,6 +45,8 @@ export default function SettingsScreen() {
   const [busy, setBusy] = useState<'export' | 'import' | null>(null);
 
   const activeCurrency = CURRENCIES.find(c => c.code === state.settings.currency);
+  const currentNumberFormat =
+    state.settings.numberFormat ?? (state.settings.currency === 'INR' ? 'indian' : 'international');
 
   const pickCurrency = () => {
     Alert.alert('Currency', 'Choose the currency used across the app.', [
@@ -52,6 +54,20 @@ export default function SettingsScreen() {
         text: `${c.symbol}  ${c.label}`,
         onPress: () => updateSettings({ currency: c.code }),
       })),
+      { text: 'Cancel', style: 'cancel' as const },
+    ]);
+  };
+
+  const pickNumberFormat = () => {
+    Alert.alert('Digit Grouping', 'Choose how numbers and amounts are grouped across the app.', [
+      {
+        text: 'Indian (10,00,00,000 / Lakhs & Crores)',
+        onPress: () => updateSettings({ numberFormat: 'indian' }),
+      },
+      {
+        text: 'International (100,000,000 / Millions)',
+        onPress: () => updateSettings({ numberFormat: 'international' }),
+      },
       { text: 'Cancel', style: 'cancel' as const },
     ]);
   };
@@ -174,6 +190,20 @@ export default function SettingsScreen() {
                 <View style={styles.trailing}>
                   <AppText variant="micro">
                     {activeCurrency?.symbol} {activeCurrency?.code}
+                  </AppText>
+                  <Ionicons name="chevron-forward" size={16} color={Colors.textMuted} />
+                </View>
+              }
+            />
+            <Row
+              icon="calculator-outline"
+              label="Digit grouping"
+              onPress={pickNumberFormat}
+              divider
+              trailing={
+                <View style={styles.trailing}>
+                  <AppText variant="micro">
+                    {currentNumberFormat === 'indian' ? '1,00,00,000' : '100,000,000'}
                   </AppText>
                   <Ionicons name="chevron-forward" size={16} color={Colors.textMuted} />
                 </View>

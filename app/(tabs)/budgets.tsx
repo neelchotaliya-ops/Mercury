@@ -32,6 +32,7 @@ export default function BudgetsScreen() {
     [state.transactions, state.budgets, state.categories, monthKey]
   );
   const currency = state.settings.currency;
+  const numberFormat = state.settings.numberFormat;
 
   const totals = progress.reduce(
     (acc, p) => ({ limit: acc.limit + p.budget.monthlyLimit, spent: acc.spent + p.spent }),
@@ -73,8 +74,8 @@ export default function BudgetsScreen() {
               <View style={styles.summaryTop}>
                 <View style={styles.summaryText}>
                   <AppText variant="label">Total budgeted</AppText>
-                  <AppText variant="h1">{formatCurrency(totals.spent, currency)}</AppText>
-                  <AppText variant="caption">of {formatCurrency(totals.limit, currency)}</AppText>
+                  <AppText variant="h1">{formatCurrency(totals.spent, currency, numberFormat)}</AppText>
+                  <AppText variant="caption">of {formatCurrency(totals.limit, currency, numberFormat)}</AppText>
                 </View>
                 <View style={styles.summaryPill}>
                   <AppText variant="h3" color={overallOver ? Colors.expense : Colors.primary}>

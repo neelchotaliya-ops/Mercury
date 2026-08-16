@@ -25,6 +25,7 @@ export default function HomeScreen() {
 
   const monthKey = toMonthKey(new Date());
   const currency = state.settings.currency;
+  const numberFormat = state.settings.numberFormat;
 
   // Stable filtered accounts list.
   const accounts = useMemo(
@@ -86,7 +87,8 @@ export default function HomeScreen() {
 
   const heroValue = formatCurrency(
     selectedAccount ? (balanceMap.get(selectedAccount.id) ?? 0) : totalBalance,
-    currency
+    currency,
+    numberFormat
   );
   const heroLabel = selectedAccount ? selectedAccount.name : 'Total balance';
   const heroSub = selectedAccount
@@ -184,14 +186,14 @@ export default function HomeScreen() {
         <View style={styles.statsRow}>
           <StatCard
             label="Income"
-            value={formatCurrency(income, currency)}
+            value={formatCurrency(income, currency, numberFormat)}
             icon="arrow-down"
             tint={Colors.income}
             animateIndex={0}
           />
           <StatCard
             label="Spent"
-            value={formatCurrency(expense, currency)}
+            value={formatCurrency(expense, currency, numberFormat)}
             icon="arrow-up"
             tint={Colors.expense}
             animateIndex={1}
@@ -225,7 +227,7 @@ export default function HomeScreen() {
                     color={(balanceMap.get(account.id) ?? 0) < 0 ? Colors.expense : Colors.textPrimary}
                     style={styles.accountValue}
                   >
-                    {formatCurrency(balanceMap.get(account.id) ?? 0, currency)}
+                    {formatCurrency(balanceMap.get(account.id) ?? 0, currency, numberFormat)}
                   </AppText>
                 </GlassCard>
               </Pressable>
@@ -271,6 +273,7 @@ export default function HomeScreen() {
                   account={accountById.get(t.accountId)}
                   toAccount={t.toAccountId ? accountById.get(t.toAccountId) : undefined}
                   currency={currency}
+                  numberFormat={numberFormat}
                   showDivider={index < recent.length - 1}
                   onPress={() => router.push(`/add-transaction?id=${t.id}`)}
                 />
