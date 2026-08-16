@@ -7,7 +7,9 @@ import { AppText } from '@/components/ui/app-text';
 import { GradientScreen } from '@/components/ui/gradient-screen';
 import { GlassCard } from '@/components/ui/glass-card';
 import { TransactionListItem } from '@/components/finance/transaction-list-item';
+import { TransactionsSkeleton } from '@/components/finance/transactions-skeleton';
 import { EmptyState } from '@/components/finance/empty-state';
+import { useScreenReady } from '@/hooks/use-screen-ready';
 import { useFinance } from '@/context/finance-context';
 import { GroupedTransactions, groupTransactionsByDay } from '@/utils/selectors';
 import { dayLabel } from '@/utils/date';
@@ -78,6 +80,7 @@ export default function TransactionsScreen() {
   const { state } = useFinance();
   const [filter, setFilter] = useState<FilterType>('all');
   const [query, setQuery] = useState('');
+  const isReady = useScreenReady(180);
 
   /**
    * Search is deferred so typing stays responsive: React keeps the previous
@@ -221,12 +224,17 @@ export default function TransactionsScreen() {
         })}
       </ScrollView>
 
-      <FlatList
-        data={groups}
-        renderItem={renderGroup}
-        keyExtractor={keyExtractor}
-        contentContainerStyle={styles.content}
-        showsVerticalScrollIndicator={false}
+      {!isReady ? (
+        <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
+          <TransactionsSkeleton />
+        </ScrollView>
+      ) : (
+        <FlatList
+          data={groups}
+          renderItem={renderGroup}
+          keyExtractor={keyExtractor}
+          contentContainerStyle={styles.content}
+          showsVerticalScrollIndicator={false}
         // state.transactions is kept sorted newest-first by the reducer, so
         // groups are also in order. These batch settings balance initial render
         // speed with smooth scroll for large ledgers (1000+ transactions).
@@ -237,20 +245,21 @@ export default function TransactionsScreen() {
         // removeClippedSubviews is intentionally omitted on Android: it causes
         // blank-frame jank when scrolling back to previously-detached views,
         // which is worse than the small memory saving it provides.
-        ListEmptyComponent={
-          <GlassCard>
-            <EmptyState
-              icon="search-outline"
-              title="No matches"
-              subtitle={
-                query.length > 0
-                  ? 'Try a different search term or filter.'
-                  : 'Transactions you add will show up here.'
-              }
-            />
-          </GlassCard>
-        }
-      />
+          ListEmptyComponent={
+            <GlassCard>
+              <EmptyState
+                icon="search-outline"
+                title="No matches"
+                subtitle={
+                  query.length > 0
+                    ? 'Try a different search term or filter.'
+                    : 'Transactions you add will show up here.'
+                }
+              />
+            </GlassCard>
+          }
+        />
+      )}
 
     </GradientScreen>
   );

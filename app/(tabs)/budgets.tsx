@@ -9,7 +9,9 @@ import { IconButton } from '@/components/ui/icon-button';
 import { MonthStepper } from '@/components/ui/month-stepper';
 import { ProgressBar } from '@/components/finance/progress-bar';
 import { BudgetRow } from '@/components/finance/budget-row';
+import { BudgetsSkeleton } from '@/components/finance/budgets-skeleton';
 import { EmptyState } from '@/components/finance/empty-state';
+import { useScreenReady } from '@/hooks/use-screen-ready';
 import { useFinance } from '@/context/finance-context';
 import { getBudgetProgress } from '@/utils/selectors';
 import { formatCurrency } from '@/utils/currency';
@@ -20,6 +22,7 @@ export default function BudgetsScreen() {
   const router = useRouter();
   const { state } = useFinance();
   const [monthKey, setMonthKey] = useState(() => toMonthKey(new Date()));
+  const isReady = useScreenReady(180);
 
   // Scoped to only the slices getBudgetProgress actually reads, so unrelated
   // changes (settings, presets, accounts) don't trigger a recompute.
@@ -52,7 +55,9 @@ export default function BudgetsScreen() {
       </View>
 
       <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
-        {progress.length === 0 ? (
+        {!isReady ? (
+          <BudgetsSkeleton />
+        ) : progress.length === 0 ? (
           <GlassCard>
             <EmptyState
               icon="pie-chart-outline"

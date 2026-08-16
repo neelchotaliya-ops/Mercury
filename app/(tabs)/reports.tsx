@@ -11,6 +11,8 @@ import { TrendAreaChart } from '@/components/charts/trend-area-chart';
 import { CategoryDonut } from '@/components/charts/category-donut';
 import { WeekdayBars } from '@/components/charts/weekday-bars';
 import { CalendarHeatmap } from '@/components/charts/calendar-heatmap';
+import { ReportsSkeleton } from '@/components/finance/reports-skeleton';
+import { useScreenReady } from '@/hooks/use-screen-ready';
 import { useFinance } from '@/context/finance-context';
 import {
   DEFAULT_INSIGHT_FILTER,
@@ -38,6 +40,7 @@ export default function ReportsScreen() {
   const [selectedMonth, setSelectedMonth] = useState<number | undefined>();
   const [selectedDay, setSelectedDay] = useState<string | undefined>();
 
+  const isReady = useScreenReady(180);
   const currency = state.settings.currency;
 
   // The ledger is scanned once here; every chart below reads this array.
@@ -96,7 +99,9 @@ export default function ReportsScreen() {
           }}
         />
 
-        {isEmpty ? (
+        {!isReady ? (
+          <ReportsSkeleton />
+        ) : isEmpty ? (
           <View style={styles.section}>
             <GlassCard>
               <EmptyState
