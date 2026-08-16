@@ -12,6 +12,7 @@ import { SegmentedControl } from '@/components/ui/segmented-control';
 import { AmountDisplay, Numpad } from '@/components/finance/amount-input';
 import { CategoryPicker } from '@/components/finance/category-picker';
 import { AccountPicker } from '@/components/finance/account-picker';
+import { DatePickerModal } from '@/components/finance/date-picker-modal';
 import { ScanReceiptButton } from '@/components/finance/scan-receipt-button';
 import { useFinance } from '@/context/finance-context';
 import { TransactionType } from '@/types/finance';
@@ -64,6 +65,7 @@ export default function AddTransactionScreen() {
   const [categoryId, setCategoryId] = useState<string | undefined>(editing?.categoryId);
   const [note, setNote] = useState(editing?.note ?? '');
   const [date, setDate] = useState<Date>(editing ? new Date(editing.date) : new Date());
+  const [showDatePicker, setShowDatePicker] = useState(false);
 
   const [scanning, setScanning] = useState(false);
   const [scanned, setScanned] = useState<{ merchant?: string; confidence: number } | null>(null);
@@ -289,17 +291,31 @@ export default function AddTransactionScreen() {
                 <Pressable onPress={() => shiftDay(-1)} hitSlop={10} style={styles.dateArrow}>
                   <Ionicons name="chevron-back" size={17} color={Colors.textSecondary} />
                 </Pressable>
-                <View style={styles.dateLabel}>
-                  <AppText variant="bodyStrong" align="center">
+                <Pressable
+                  onPress={() => {
+                    haptics.press();
+                    setShowDatePicker(true);
+                  }}
+                  style={({ pressed }) => [
+                    styles.dateButton,
+                    { opacity: pressed ? 0.75 : 1 },
+                  ]}
+                >
+                  <Ionicons name="calendar-outline" size={16} color={Colors.primary} />
+                  <AppText variant="bodyStrong">
                     {isToday
                       ? 'Today'
                       : date.toLocaleDateString(undefined, {
                           weekday: 'short',
                           day: 'numeric',
                           month: 'short',
+                          year:
+                            date.getFullYear() !== new Date().getFullYear()
+                              ? 'numeric'
+                              : undefined,
                         })}
                   </AppText>
-                </View>
+                </Pressable>
                 <Pressable
                   onPress={() => shiftDay(1)}
                   hitSlop={10}
@@ -335,6 +351,13 @@ export default function AddTransactionScreen() {
           />
         </View>
       </View>
+
+      <DatePickerModal
+        visible={showDatePicker}
+        selectedDate={date}
+        onSelectDate={setDate}
+        onClose={() => setShowDatePicker(false)}
+      />
     </GradientScreen>
   );
 }
@@ -394,8 +417,17 @@ const styles = StyleSheet.create({
   dateArrowDisabled: {
     opacity: 0.35,
   },
-  dateLabel: {
+  dateButton: {
     flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    height: 38,
+    borderRadius: BorderRadius.pill,
+    backgroundColor: Colors.controlBg,
+    borderWidth: 1,
+    borderColor: Colors.glassBorderSoft,
   },
   input: {
     paddingHorizontal: 16,
