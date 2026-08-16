@@ -1,5 +1,5 @@
-import React, { useMemo, useState } from 'react';
-import { View, StyleSheet, ScrollView, Pressable, TextInput } from 'react-native';
+import React, { useCallback, useDeferredValue, useMemo, useState } from 'react';
+import { View, StyleSheet, ScrollView, Pressable, TextInput, FlatList } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 
@@ -9,7 +9,7 @@ import { GlassCard } from '@/components/ui/glass-card';
 import { TransactionListItem } from '@/components/finance/transaction-list-item';
 import { EmptyState } from '@/components/finance/empty-state';
 import { useFinance } from '@/context/finance-context';
-import { groupTransactionsByDay, getCategoryById } from '@/utils/selectors';
+import { GroupedTransactions, groupTransactionsByDay } from '@/utils/selectors';
 import { dayLabel } from '@/utils/date';
 import { formatCurrency } from '@/utils/currency';
 import { TransactionType } from '@/types/finance';
@@ -24,31 +24,107 @@ const FILTERS: { key: FilterType; label: string }[] = [
   { key: 'transfer', label: 'Transfers' },
 ];
 
+/**
+ * One day's transactions. Memoized so scrolling only re-renders rows whose
+ * data actually changed, rather than the whole list on every parent render.
+ */
+const DayGroup = React.memo(function DayGroup({
+  group,
+  index,
+  onPressTransaction,
+}: {
+  group: GroupedTransactions;
+  index: number;
+  onPressTransaction: (id: string) => void;
+}) {
+  return (
+    <View style={styles.group}>
+      <AppText variant="label" style={styles.dayLabel}>
+        {dayLabel(group.date)}
+      </AppText>
+      <GlassCard style={styles.groupCard} padding={18} animateIndex={index}>
+        {group.transactions.map((t, i) => (
+          <TransactionListItem
+            key={t.id}
+            transaction={t}
+            showDivider={i < group.transactions.length - 1}
+            onPress={() => onPressTransaction(t.id)}
+          />
+        ))}
+      </GlassCard>
+    </View>
+  );
+});
+
 export default function TransactionsScreen() {
   const router = useRouter();
   const { state } = useFinance();
   const [filter, setFilter] = useState<FilterType>('all');
   const [query, setQuery] = useState('');
 
-  const filtered = useMemo(
-    () =>
-      state.transactions.filter(t => {
-        if (filter !== 'all' && t.type !== filter) return false;
-        if (query.trim().length > 0) {
-          const category = getCategoryById(state, t.categoryId);
-          const haystack = `${category?.name ?? ''} ${t.note ?? ''}`.toLowerCase();
-          if (!haystack.includes(query.trim().toLowerCase())) return false;
-        }
-        return true;
-      }),
-    [state, filter, query]
-  );
+  /**
+   * Search is deferred so typing stays responsive: React keeps the previous
+   * results on screen while the new ones are computed, instead of refiltering
+   * the whole ledger synchronously on every keystroke.
+   */
+  const deferredQuery = useDeferredValue(query);
+
+  /**
+   * Category names, resolved once. The filter below used to call
+   * getCategoryById per transaction, which is a linear scan inside a linear
+   * scan — O(transactions x categories) on every keystroke.
+   */
+  const categoryNameById = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const c of state.categories) map.set(c.id, c.name.toLowerCase());
+    return map;
+  }, [state.categories]);
+
+  // Keyed on transactions rather than the whole state object, so unrelated
+  // changes (settings, presets, budgets) no longer invalidate this.
+  const filtered = useMemo(() => {
+    const needle = deferredQuery.trim().toLowerCase();
+    const out = [];
+    for (const t of state.transactions) {
+      if (filter !== 'all' && t.type !== filter) continue;
+      if (needle.length > 0) {
+        const categoryName = t.categoryId ? categoryNameById.get(t.categoryId) ?? '' : '';
+        const note = t.note ? t.note.toLowerCase() : '';
+        if (!categoryName.includes(needle) && !note.includes(needle)) continue;
+      }
+      out.push(t);
+    }
+    return out;
+  }, [state.transactions, categoryNameById, filter, deferredQuery]);
 
   const groups = useMemo(() => groupTransactionsByDay(filtered), [filtered]);
-  const filteredTotal = filtered.reduce(
-    (sum, t) => sum + (t.type === 'income' ? t.amount : t.type === 'expense' ? -t.amount : 0),
-    0
+
+  const filteredTotal = useMemo(
+    () =>
+      filtered.reduce(
+        (sum, t) => sum + (t.type === 'income' ? t.amount : t.type === 'expense' ? -t.amount : 0),
+        0
+      ),
+    [filtered]
   );
+
+  const openTransaction = useCallback(
+    (id: string) => router.push(`/add-transaction?id=${id}`),
+    [router]
+  );
+
+  const renderGroup = useCallback(
+    ({ item, index }: { item: GroupedTransactions; index: number }) => (
+      <DayGroup
+        group={item}
+        index={index}
+        onPressTransaction={openTransaction}
+      />
+    ),
+    [openTransaction]
+  );
+
+  const keyExtractor = useCallback((group: GroupedTransactions) => group.date, []);
 
   return (
     <GradientScreen>
@@ -104,8 +180,19 @@ export default function TransactionsScreen() {
         })}
       </ScrollView>
 
-      <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
-        {groups.length === 0 ? (
+      <FlatList
+        data={groups}
+        renderItem={renderGroup}
+        keyExtractor={keyExtractor}
+        contentContainerStyle={styles.content}
+        showsVerticalScrollIndicator={false}
+        // The ledger grows without bound and every row used to be mounted at
+        // once; these keep the mounted window small on low-end devices.
+        initialNumToRender={8}
+        maxToRenderPerBatch={6}
+        windowSize={7}
+        removeClippedSubviews
+        ListEmptyComponent={
           <GlassCard>
             <EmptyState
               icon="search-outline"
@@ -117,26 +204,9 @@ export default function TransactionsScreen() {
               }
             />
           </GlassCard>
-        ) : (
-          groups.map((group, groupIndex) => (
-            <View key={group.date} style={styles.group}>
-              <AppText variant="label" style={styles.dayLabel}>
-                {dayLabel(group.date)}
-              </AppText>
-              <GlassCard style={styles.groupCard} padding={18} animateIndex={groupIndex}>
-                {group.transactions.map((t, index) => (
-                  <TransactionListItem
-                    key={t.id}
-                    transaction={t}
-                    showDivider={index < group.transactions.length - 1}
-                    onPress={() => router.push(`/add-transaction?id=${t.id}`)}
-                  />
-                ))}
-              </GlassCard>
-            </View>
-          ))
-        )}
-      </ScrollView>
+        }
+      />
+
     </GradientScreen>
   );
 }

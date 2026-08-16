@@ -1,11 +1,11 @@
 import React from 'react';
 import { View, StyleSheet, Pressable } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import * as Haptics from 'expo-haptics';
 
 import { AppText } from '@/components/ui/app-text';
 import { Colors, BorderRadius } from '@/constants/theme';
 import { monthKeyLabel, shiftMonthKey } from '@/utils/date';
+import { haptics } from '@/utils/haptics';
 
 export interface MonthStepperProps {
   monthKey: string;
@@ -14,9 +14,7 @@ export interface MonthStepperProps {
 
 export const MonthStepper: React.FC<MonthStepperProps> = ({ monthKey, onChange }) => {
   const step = (delta: number) => {
-    try {
-      Haptics.selectionAsync();
-    } catch {}
+    haptics.selection();
     onChange(shiftMonthKey(monthKey, delta));
   };
 

@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useEffect, useReducer, useRef } from 'react';
+import React, { createContext, useContext, useEffect, useMemo, useReducer, useRef } from 'react';
 import { AppState, AppStateStatus } from 'react-native';
 
 import {
@@ -34,6 +34,7 @@ type Action =
   | { type: 'UPDATE_PRESET'; payload: QuickPreset }
   | { type: 'DELETE_PRESET'; payload: { id: string } }
   | { type: 'UPDATE_SETTINGS'; payload: Partial<AppSettings> }
+  | { type: 'REPLACE_ALL_DATA'; payload: PersistedFinanceState }
   | { type: 'RESET_ALL_DATA' }
   | { type: 'SEED_DEMO_DATA' };
 
@@ -425,6 +426,16 @@ function reducer(state: FinanceState, action: Action): FinanceState {
     case 'UPDATE_SETTINGS':
       return { ...state, settings: { ...state.settings, ...action.payload } };
 
+    // Wholesale swap, used by data import. Goes through the same normalisation
+    // as HYDRATE so an older export without newer fields still lands valid.
+    case 'REPLACE_ALL_DATA':
+      return {
+        ...action.payload,
+        settings: { ...defaultSettings, ...action.payload.settings },
+        quickPresets: action.payload.quickPresets ?? buildDefaultPresets(action.payload.categories),
+        isLoaded: true,
+      };
+
     case 'RESET_ALL_DATA': {
       const categories = buildDefaultCategories();
       return {
@@ -446,8 +457,7 @@ function reducer(state: FinanceState, action: Action): FinanceState {
   }
 }
 
-interface FinanceContextValue {
-  state: FinanceState;
+interface FinanceActions {
   addAccount: (input: Omit<Account, 'id' | 'createdAt'>) => Account;
   updateAccount: (account: Account) => void;
   deleteAccount: (id: string) => void;
@@ -463,10 +473,15 @@ interface FinanceContextValue {
   addPreset: (input: Omit<QuickPreset, 'id'>) => QuickPreset;
   updatePreset: (preset: QuickPreset) => void;
   deletePreset: (id: string) => void;
+  replaceAllData: (next: PersistedFinanceState) => void;
   updateSettings: (settings: Partial<AppSettings>) => void;
   completeOnboarding: () => void;
   resetAllData: () => void;
   seedDemoData: () => void;
+}
+
+interface FinanceContextValue extends FinanceActions {
+  state: FinanceState;
 }
 
 const FinanceContext = createContext<FinanceContextValue | undefined>(undefined);
@@ -521,53 +536,69 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
     refreshWidgets();
   }, [state]);
 
-  const value: FinanceContextValue = {
-    state,
-    addAccount: input => {
-      const account: Account = { ...input, id: generateId(), createdAt: new Date().toISOString() };
-      dispatch({ type: 'ADD_ACCOUNT', payload: account });
-      return account;
-    },
-    updateAccount: account => dispatch({ type: 'UPDATE_ACCOUNT', payload: account }),
-    deleteAccount: id => dispatch({ type: 'DELETE_ACCOUNT', payload: { id } }),
+  /**
+   * Actions depend only on `dispatch`, which useReducer guarantees is stable,
+   * so this object is built once for the lifetime of the provider. Previously
+   * it was rebuilt on every render, which changed the context value's identity
+   * on every state change and re-rendered every consumer — including screens
+   * that only ever dispatch and never read state.
+   */
+  const actions = useMemo<FinanceActions>(
+    () => ({
+      addAccount: input => {
+        const account: Account = { ...input, id: generateId(), createdAt: new Date().toISOString() };
+        dispatch({ type: 'ADD_ACCOUNT', payload: account });
+        return account;
+      },
+      updateAccount: account => dispatch({ type: 'UPDATE_ACCOUNT', payload: account }),
+      deleteAccount: id => dispatch({ type: 'DELETE_ACCOUNT', payload: { id } }),
 
-    addCategory: input => {
-      const category: Category = { ...input, id: generateId() };
-      dispatch({ type: 'ADD_CATEGORY', payload: category });
-      return category;
-    },
-    updateCategory: category => dispatch({ type: 'UPDATE_CATEGORY', payload: category }),
-    deleteCategory: id => dispatch({ type: 'DELETE_CATEGORY', payload: { id } }),
+      addCategory: input => {
+        const category: Category = { ...input, id: generateId() };
+        dispatch({ type: 'ADD_CATEGORY', payload: category });
+        return category;
+      },
+      updateCategory: category => dispatch({ type: 'UPDATE_CATEGORY', payload: category }),
+      deleteCategory: id => dispatch({ type: 'DELETE_CATEGORY', payload: { id } }),
 
-    addTransaction: input => {
-      const transaction: Transaction = { ...input, id: generateId(), createdAt: new Date().toISOString() };
-      dispatch({ type: 'ADD_TRANSACTION', payload: transaction });
-      return transaction;
-    },
-    updateTransaction: transaction => dispatch({ type: 'UPDATE_TRANSACTION', payload: transaction }),
-    deleteTransaction: id => dispatch({ type: 'DELETE_TRANSACTION', payload: { id } }),
+      addTransaction: input => {
+        const transaction: Transaction = {
+          ...input,
+          id: generateId(),
+          createdAt: new Date().toISOString(),
+        };
+        dispatch({ type: 'ADD_TRANSACTION', payload: transaction });
+        return transaction;
+      },
+      updateTransaction: transaction => dispatch({ type: 'UPDATE_TRANSACTION', payload: transaction }),
+      deleteTransaction: id => dispatch({ type: 'DELETE_TRANSACTION', payload: { id } }),
 
-    addBudget: input => {
-      const budget: Budget = { ...input, id: generateId(), createdAt: new Date().toISOString() };
-      dispatch({ type: 'ADD_BUDGET', payload: budget });
-      return budget;
-    },
-    updateBudget: budget => dispatch({ type: 'UPDATE_BUDGET', payload: budget }),
-    deleteBudget: id => dispatch({ type: 'DELETE_BUDGET', payload: { id } }),
+      addBudget: input => {
+        const budget: Budget = { ...input, id: generateId(), createdAt: new Date().toISOString() };
+        dispatch({ type: 'ADD_BUDGET', payload: budget });
+        return budget;
+      },
+      updateBudget: budget => dispatch({ type: 'UPDATE_BUDGET', payload: budget }),
+      deleteBudget: id => dispatch({ type: 'DELETE_BUDGET', payload: { id } }),
 
-    addPreset: input => {
-      const preset: QuickPreset = { ...input, id: generateId() };
-      dispatch({ type: 'ADD_PRESET', payload: preset });
-      return preset;
-    },
-    updatePreset: preset => dispatch({ type: 'UPDATE_PRESET', payload: preset }),
-    deletePreset: id => dispatch({ type: 'DELETE_PRESET', payload: { id } }),
+      addPreset: input => {
+        const preset: QuickPreset = { ...input, id: generateId() };
+        dispatch({ type: 'ADD_PRESET', payload: preset });
+        return preset;
+      },
+      updatePreset: preset => dispatch({ type: 'UPDATE_PRESET', payload: preset }),
+      deletePreset: id => dispatch({ type: 'DELETE_PRESET', payload: { id } }),
 
-    updateSettings: settings => dispatch({ type: 'UPDATE_SETTINGS', payload: settings }),
-    completeOnboarding: () => dispatch({ type: 'UPDATE_SETTINGS', payload: { hasOnboarded: true } }),
-    resetAllData: () => dispatch({ type: 'RESET_ALL_DATA' }),
-    seedDemoData: () => dispatch({ type: 'SEED_DEMO_DATA' }),
-  };
+      replaceAllData: next => dispatch({ type: 'REPLACE_ALL_DATA', payload: next }),
+      updateSettings: settings => dispatch({ type: 'UPDATE_SETTINGS', payload: settings }),
+      completeOnboarding: () => dispatch({ type: 'UPDATE_SETTINGS', payload: { hasOnboarded: true } }),
+      resetAllData: () => dispatch({ type: 'RESET_ALL_DATA' }),
+      seedDemoData: () => dispatch({ type: 'SEED_DEMO_DATA' }),
+    }),
+    []
+  );
+
+  const value = useMemo<FinanceContextValue>(() => ({ state, ...actions }), [state, actions]);
 
   return <FinanceContext.Provider value={value}>{children}</FinanceContext.Provider>;
 };

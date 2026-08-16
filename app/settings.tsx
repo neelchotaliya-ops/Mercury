@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { View, StyleSheet, ScrollView, Pressable, Alert } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
@@ -9,6 +9,9 @@ import { GradientScreen } from '@/components/ui/gradient-screen';
 import { GlassCard } from '@/components/ui/glass-card';
 import { ModalHeader } from '@/components/ui/modal-header';
 import { useFinance } from '@/context/finance-context';
+import { haptics } from '@/utils/haptics';
+import { mergeData, summarize } from '@/utils/data-transfer';
+import { exportData, pickAndParseImport } from '@/utils/data-transfer-io';
 import { CURRENCIES } from '@/utils/currency';
 import { Colors, Spacing } from '@/constants/theme';
 
@@ -38,7 +41,8 @@ const Row: React.FC<RowProps> = ({ icon, label, tint, onPress, trailing, divider
 
 export default function SettingsScreen() {
   const router = useRouter();
-  const { state, updateSettings, resetAllData, seedDemoData } = useFinance();
+  const { state, updateSettings, resetAllData, seedDemoData, replaceAllData } = useFinance();
+  const [busy, setBusy] = useState<'export' | 'import' | null>(null);
 
   const activeCurrency = CURRENCIES.find(c => c.code === state.settings.currency);
 
@@ -57,6 +61,79 @@ export default function SettingsScreen() {
       { text: 'Cancel', style: 'cancel' },
       { text: 'Populate 2-Year Data', onPress: seedDemoData },
     ]);
+  };
+
+
+  const handleExport = async () => {
+    if (busy) return;
+    setBusy('export');
+    try {
+      const { isLoaded, ...persistable } = state;
+      const result = await exportData(persistable);
+      if (result.ok) {
+        haptics.success();
+      } else {
+        haptics.error();
+        Alert.alert('Export failed', result.reason);
+      }
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const handleImport = async () => {
+    if (busy) return;
+    setBusy('import');
+    try {
+      const result = await pickAndParseImport();
+
+      if (!result.ok) {
+        if (!('cancelled' in result)) {
+          haptics.error();
+          Alert.alert('Import failed', result.reason);
+        }
+        return;
+      }
+
+      const { summary, data: incoming } = result;
+      const current = (() => {
+        const { isLoaded, ...persistable } = state;
+        return persistable;
+      })();
+
+      // Replacing is destructive and unrecoverable, so it is never the default
+      // and always states what is about to be lost.
+      Alert.alert(
+        'Import data',
+        `This backup has ${summary.accounts} accounts, ${summary.transactions} transactions ` +
+          `and ${summary.budgets} budgets.\n\nMerge keeps what you already have and adds ` +
+          `anything new. Replace deletes your current data first.`,
+        [
+          { text: 'Cancel', style: 'cancel' },
+          {
+            text: 'Merge',
+            onPress: () => {
+              const merged = mergeData(current, incoming);
+              replaceAllData(merged);
+              haptics.success();
+              const after = summarize(merged);
+              Alert.alert('Imported', `You now have ${after.transactions} transactions.`);
+            },
+          },
+          {
+            text: 'Replace',
+            style: 'destructive',
+            onPress: () => {
+              replaceAllData(incoming);
+              haptics.warning();
+              Alert.alert('Imported', `Replaced with ${summary.transactions} transactions.`);
+            },
+          },
+        ]
+      );
+    } finally {
+      setBusy(null);
+    }
   };
 
   const handleReset = () => {
@@ -127,6 +204,18 @@ export default function SettingsScreen() {
             Data
           </AppText>
           <GlassCard padding={0} style={styles.listCard}>
+            <Row
+              icon="share-outline"
+              label={busy === 'export' ? 'Preparing export…' : 'Export data'}
+              onPress={handleExport}
+              divider
+            />
+            <Row
+              icon="download-outline"
+              label={busy === 'import' ? 'Reading file…' : 'Import data'}
+              onPress={handleImport}
+              divider
+            />
             <Row
               icon="sparkles-outline"
               label="Populate sample data"

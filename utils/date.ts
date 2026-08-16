@@ -1,6 +1,47 @@
+/**
+ * Month/day keys for a stored timestamp, in the user's LOCAL timezone.
+ *
+ * Timestamps are persisted as UTC ISO strings, so the calendar month cannot be
+ * read off the string directly: east of UTC, a transaction logged just after
+ * local midnight carries the previous UTC day and would land in the wrong month.
+ * We therefore still go through Date, but memoize per timestamp — the same
+ * strings get re-keyed constantly across renders and across selectors, and the
+ * cache turns all of those into a hash lookup.
+ */
+const monthKeyCache = new Map<string, string>();
+const dayKeyCache = new Map<string, string>();
+
+/** Keeps the caches from growing without bound over a long-lived session. */
+const KEY_CACHE_LIMIT = 5000;
+
+function cached(cache: Map<string, string>, key: string, compute: () => string): string {
+  const hit = cache.get(key);
+  if (hit !== undefined) return hit;
+  const value = compute();
+  if (cache.size >= KEY_CACHE_LIMIT) cache.clear();
+  cache.set(key, value);
+  return value;
+}
+
+export function monthKeyOf(isoDate: string): string {
+  return cached(monthKeyCache, isoDate, () => {
+    const d = new Date(isoDate);
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+  });
+}
+
+export function dayKeyOf(isoDate: string): string {
+  return cached(dayKeyCache, isoDate, () => {
+    const d = new Date(isoDate);
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(
+      d.getDate()
+    ).padStart(2, '0')}`;
+  });
+}
+
 export function toMonthKey(date: Date | string): string {
-  const d = typeof date === 'string' ? new Date(date) : date;
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+  if (typeof date === 'string') return monthKeyOf(date);
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
 }
 
 export function monthKeyLabel(monthKey: string): string {

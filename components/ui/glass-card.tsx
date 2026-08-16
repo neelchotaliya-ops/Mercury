@@ -5,6 +5,7 @@ import { BlurView } from 'expo-blur';
 import Animated, { FadeInDown } from 'react-native-reanimated';
 
 import { Colors, Gradients, BorderRadius, Shadows, Spacing } from '@/constants/theme';
+import { Duration, staggerDelay } from '@/constants/motion';
 
 export interface GlassCardProps {
   children: React.ReactNode;
@@ -15,7 +16,11 @@ export interface GlassCardProps {
   strong?: boolean;
   /** Blur strength; lower reads lighter and airier. */
   intensity?: number;
-  /** Stagger index for the entrance animation. Omit to render statically. */
+  /**
+   * Stagger index for the entrance animation. Omit to render statically.
+   * The delay is capped (see `staggerDelay`) so long lists do not turn into a
+   * multi-second cascade of scheduled animations.
+   */
   animateIndex?: number;
   elevated?: boolean;
 }
@@ -67,7 +72,7 @@ function splitCardStyles(style: StyleProp<ViewStyle> | undefined, paddingProp: n
   return { containerStyle, contentStyle };
 }
 
-export const GlassCard: React.FC<GlassCardProps> = ({
+const GlassCardBase: React.FC<GlassCardProps> = ({
   children,
   style,
   padding,
@@ -93,10 +98,7 @@ export const GlassCard: React.FC<GlassCardProps> = ({
     <Animated.View
       entering={
         animateIndex !== undefined
-          ? FadeInDown.delay(animateIndex * 70)
-              .duration(420)
-              .springify()
-              .damping(18)
+          ? FadeInDown.delay(staggerDelay(animateIndex)).duration(Duration.base)
           : undefined
       }
       style={cardContainerStyle}
@@ -122,3 +124,5 @@ const styles = StyleSheet.create({
   },
 });
 
+/** Rendered once per row in long lists, so identity-stable props matter. */
+export const GlassCard = React.memo(GlassCardBase);

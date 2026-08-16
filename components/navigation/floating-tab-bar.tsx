@@ -6,7 +6,6 @@ import { BlurView } from 'expo-blur';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
-import * as Haptics from 'expo-haptics';
 import Animated, {
   useSharedValue,
   useAnimatedStyle,
@@ -15,6 +14,7 @@ import Animated, {
 } from 'react-native-reanimated';
 
 import { Colors, Gradients, BorderRadius, Shadows } from '@/constants/theme';
+import { haptics } from '@/utils/haptics';
 
 interface TabItemProps {
   focused: boolean;
@@ -37,9 +37,7 @@ const TabItem: React.FC<TabItemProps> = ({ focused, onPress, renderIcon }) => {
   }));
 
   const handlePress = () => {
-    try {
-      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    } catch {}
+    haptics.selection();
     onPress();
   };
 
@@ -68,9 +66,7 @@ const CenterAction: React.FC<{ onPress: () => void }> = ({ onPress }) => {
   const animatedStyle = useAnimatedStyle(() => ({ transform: [{ scale: scale.value }] }));
 
   const handlePress = () => {
-    try {
-      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-    } catch {}
+    haptics.press();
     onPress();
   };
 
