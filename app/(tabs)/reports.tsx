@@ -10,12 +10,14 @@ import { InsightFilters } from '@/components/finance/insight-filters';
 import { TrendAreaChart } from '@/components/charts/trend-area-chart';
 import { CategoryDonut } from '@/components/charts/category-donut';
 import { WeekdayBars } from '@/components/charts/weekday-bars';
+import { CalendarHeatmap } from '@/components/charts/calendar-heatmap';
 import { useFinance } from '@/context/finance-context';
 import {
   DEFAULT_INSIGHT_FILTER,
   InsightFilter,
   compareWithPreviousPeriod,
   computeCategoryBreakdown,
+  computeDailyHeatmap,
   computeMonthlySeries,
   computeTopNotes,
   computeTotals,
@@ -34,6 +36,7 @@ export default function ReportsScreen() {
   const [filter, setFilter] = useState<InsightFilter>(DEFAULT_INSIGHT_FILTER);
   const [selectedCategory, setSelectedCategory] = useState<string | undefined>();
   const [selectedMonth, setSelectedMonth] = useState<number | undefined>();
+  const [selectedDay, setSelectedDay] = useState<string | undefined>();
 
   const currency = state.settings.currency;
 
@@ -44,9 +47,11 @@ export default function ReportsScreen() {
     () => computeCategoryBreakdown(transactions, state.categories),
     [transactions, state.categories]
   );
-  const series = useMemo(
-    () => computeMonthlySeries(transactions, resolveRange(filter.range)),
-    [transactions, filter.range]
+  const range = useMemo(() => resolveRange(filter.range), [filter.range]);
+  const series = useMemo(() => computeMonthlySeries(transactions, range), [transactions, range]);
+  const heatmapWeeks = useMemo(
+    () => computeDailyHeatmap(transactions, range),
+    [transactions, range]
   );
   const weekdays = useMemo(() => computeWeekdayPattern(transactions), [transactions]);
   const topNotes = useMemo(() => computeTopNotes(transactions), [transactions]);
@@ -87,6 +92,7 @@ export default function ReportsScreen() {
           onChange={next => {
             setFilter(next);
             setSelectedCategory(undefined);
+            setSelectedDay(undefined);
           }}
         />
 
@@ -104,7 +110,7 @@ export default function ReportsScreen() {
           <>
             {/* The headline is one number, so it gets a stat tile rather than a chart. */}
             <View style={styles.section}>
-              <GlassCard strong elevated style={styles.heroCard}>
+              <GlassCard strong elevated style={styles.heroCard} animateIndex={0}>
                 <AppText variant="micro">
                   {filter.kind === 'expense' ? 'Total spent' : 'Total received'}
                 </AppText>
@@ -155,7 +161,7 @@ export default function ReportsScreen() {
               <AppText variant="label" style={styles.sectionLabel}>
                 Trend by month
               </AppText>
-              <GlassCard style={styles.chartCard}>
+              <GlassCard style={styles.chartCard} animateIndex={1}>
                 <TrendAreaChart
                   points={series}
                   currency={currency}
@@ -177,7 +183,7 @@ export default function ReportsScreen() {
               <AppText variant="label" style={styles.sectionLabel}>
                 By category
               </AppText>
-              <GlassCard style={styles.chartCard}>
+              <GlassCard style={styles.chartCard} animateIndex={2}>
                 <CategoryDonut
                   slices={breakdown}
                   currency={currency}
@@ -191,9 +197,42 @@ export default function ReportsScreen() {
 
             <View style={styles.section}>
               <AppText variant="label" style={styles.sectionLabel}>
+                Daily activity
+              </AppText>
+              <GlassCard style={styles.chartCard} animateIndex={3}>
+                <CalendarHeatmap
+                  weeks={heatmapWeeks}
+                  currency={currency}
+                  selectedKey={selectedDay}
+                  onSelect={setSelectedDay}
+                />
+                {selectedDay ? (
+                  <View style={styles.selection}>
+                    <AppText variant="micro">
+                      {new Date(selectedDay).toLocaleDateString(undefined, {
+                        weekday: 'long',
+                        month: 'short',
+                        day: 'numeric',
+                      })}
+                    </AppText>
+                    <AppText variant="bodyStrong">
+                      {formatCurrency(
+                        heatmapWeeks
+                          .flatMap(w => w.days)
+                          .find(d => d?.dateKey === selectedDay)?.amount ?? 0,
+                        currency
+                      )}
+                    </AppText>
+                  </View>
+                ) : null}
+              </GlassCard>
+            </View>
+
+            <View style={styles.section}>
+              <AppText variant="label" style={styles.sectionLabel}>
                 Busiest days
               </AppText>
-              <GlassCard style={styles.chartCard}>
+              <GlassCard style={styles.chartCard} animateIndex={4}>
                 <WeekdayBars buckets={weekdays} currency={currency} />
               </GlassCard>
             </View>
@@ -203,7 +242,7 @@ export default function ReportsScreen() {
                 <AppText variant="label" style={styles.sectionLabel}>
                   Most frequent
                 </AppText>
-                <GlassCard padding={18}>
+                <GlassCard padding={18} animateIndex={5}>
                   {topNotes.map((note, index) => (
                     <View
                       key={note.label}

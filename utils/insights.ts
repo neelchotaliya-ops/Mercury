@@ -9,7 +9,7 @@
  */
 
 import { Category, FinanceState, Transaction, TransactionType } from '@/types/finance';
-import { monthKeyOf } from '@/utils/date';
+import { dayKeyOf, monthKeyOf } from '@/utils/date';
 
 export type DateRangePreset = '30d' | '3m' | '6m' | '12m' | 'ytd' | 'all';
 
@@ -217,6 +217,104 @@ function earliest(transactions: Transaction[]): Date | undefined {
     if (min === undefined || t.date < min) min = t.date;
   }
   return min ? new Date(min) : undefined;
+}
+
+export interface HeatmapDay {
+  /** YYYY-MM-DD, local time. */
+  dateKey: string;
+  date: Date;
+  amount: number;
+  /** 0-4: 0 is always "no activity"; 1-4 are quartered against the range's own max. */
+  level: number;
+  inRange: boolean;
+}
+
+export interface HeatmapWeek {
+  days: (HeatmapDay | null)[];
+}
+
+const HEATMAP_MAX_DAYS = 371; // a little over 52 weeks, so a full year still fits one grid
+
+/**
+ * Daily totals laid out as calendar weeks (Sunday-start), the shape a
+ * GitHub-style contribution grid needs. Capped like the monthly series is, so
+ * an "all time" range on an old ledger can't produce an unbounded grid.
+ *
+ * Levels are quartered against this range's own busiest day rather than a
+ * fixed currency threshold — a student's ledger and a business's should each
+ * light up their own heaviest days, not be judged against the other's scale.
+ */
+export function computeDailyHeatmap(
+  transactions: Transaction[],
+  range: DateRange,
+  now: Date = new Date()
+): HeatmapWeek[] {
+  const rangeStart = range.start.getTime() === 0 ? earliest(transactions) ?? now : range.start;
+
+  const start = new Date(rangeStart);
+  start.setHours(0, 0, 0, 0);
+  const end = new Date(Math.min(range.end.getTime(), now.getTime()));
+  end.setHours(0, 0, 0, 0);
+
+  const totalDaySpan = Math.round((end.getTime() - start.getTime()) / 86400000) + 1;
+  const clampedStart =
+    totalDaySpan > HEATMAP_MAX_DAYS
+      ? new Date(end.getTime() - (HEATMAP_MAX_DAYS - 1) * 86400000)
+      : start;
+
+  // Sunday-align so the grid always reads as complete weeks.
+  const gridStart = new Date(clampedStart);
+  gridStart.setDate(gridStart.getDate() - gridStart.getDay());
+
+  const totals = new Map<string, number>();
+  for (const t of transactions) {
+    const key = dayKeyOf(t.date);
+    totals.set(key, (totals.get(key) ?? 0) + t.amount);
+  }
+
+  const maxAmount = Math.max(...totals.values(), 0);
+
+  const levelFor = (amount: number): number => {
+    if (amount <= 0 || maxAmount <= 0) return 0;
+    const ratio = amount / maxAmount;
+    if (ratio > 0.75) return 4;
+    if (ratio > 0.5) return 3;
+    if (ratio > 0.25) return 2;
+    return 1;
+  };
+
+  const weeks: HeatmapWeek[] = [];
+  let cursor = new Date(gridStart);
+  let currentWeek: (HeatmapDay | null)[] = [];
+
+  while (cursor <= end) {
+    const key = `${cursor.getFullYear()}-${String(cursor.getMonth() + 1).padStart(2, '0')}-${String(
+      cursor.getDate()
+    ).padStart(2, '0')}`;
+    const inRange = cursor >= clampedStart;
+    const amount = totals.get(key) ?? 0;
+
+    currentWeek.push({
+      dateKey: key,
+      date: new Date(cursor),
+      amount,
+      level: inRange ? levelFor(amount) : 0,
+      inRange,
+    });
+
+    if (currentWeek.length === 7) {
+      weeks.push({ days: currentWeek });
+      currentWeek = [];
+    }
+    cursor = new Date(cursor.getTime() + 86400000);
+  }
+
+  if (currentWeek.length > 0) {
+    while (currentWeek.length < 7) currentWeek.push(null);
+    weeks.push({ days: currentWeek });
+  }
+
+  return weeks;
 }
 
 /** Spend by day of week, 0 = Sunday. Reveals weekend-vs-weekday habits. */

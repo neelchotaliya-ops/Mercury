@@ -7,6 +7,7 @@ import Animated, { useSharedValue, useAnimatedStyle, withSpring } from 'react-na
 import { AppText } from '@/components/ui/app-text';
 import { Colors, BorderRadius, Shadows } from '@/constants/theme';
 import { haptics } from '@/utils/haptics';
+import { PressScale, Spring } from '@/constants/motion';
 
 export interface ScanReceiptButtonProps {
   onPickImage: () => void;
@@ -37,10 +38,10 @@ export const ScanReceiptButton: React.FC<ScanReceiptButtonProps> = ({
       <Pressable
         onPress={press(onPickImage)}
         onPressIn={() => {
-          scale.value = withSpring(0.98, { damping: 18, stiffness: 260 });
+          scale.value = withSpring(PressScale.card, Spring.press);
         }}
         onPressOut={() => {
-          scale.value = withSpring(1, { damping: 18, stiffness: 260 });
+          scale.value = withSpring(1, Spring.settle);
         }}
         disabled={scanning}
         style={styles.pressable}

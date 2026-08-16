@@ -1,8 +1,10 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { View, StyleSheet } from 'react-native';
+import Animated, { useSharedValue, useAnimatedStyle, withDelay, withTiming } from 'react-native-reanimated';
 
 import { AppText } from '@/components/ui/app-text';
 import { Colors } from '@/constants/theme';
+import { Duration, Ease, STAGGER_STEP } from '@/constants/motion';
 import { formatCompact } from '@/utils/currency';
 
 export interface WeekdayBarsProps {
@@ -13,6 +15,52 @@ export interface WeekdayBarsProps {
 }
 
 const DAYS = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
+
+function Bar({
+  value,
+  max,
+  isPeak,
+  index,
+}: {
+  value: number;
+  max: number;
+  isPeak: boolean;
+  index: number;
+}) {
+  const reveal = useSharedValue(0);
+
+  useEffect(() => {
+    reveal.value = withDelay(
+      index * STAGGER_STEP,
+      withTiming(1, { duration: Duration.emphasis, easing: Ease.out })
+    );
+  }, [reveal, value, index]);
+
+  // Grown in via scale, anchored visually by the track's own bottom-aligned
+  // layout rather than an animated height — height is a layout property and
+  // would re-flow every frame of the animation, where transform stays on the
+  // UI thread. Bounded to one pass on mount, so either would be cheap here,
+  // but this keeps the same technique used everywhere else in the app.
+  const style = useAnimatedStyle(() => ({
+    opacity: reveal.value,
+    transform: [{ scaleY: 0.2 + reveal.value * 0.8 }],
+  }));
+
+  return (
+    <View style={styles.track}>
+      <Animated.View
+        style={[
+          styles.bar,
+          {
+            height: `${Math.max((value / max) * 100, value > 0 ? 4 : 0)}%`,
+            backgroundColor: isPeak ? Colors.primaryDeep : Colors.primarySoft,
+          },
+          style,
+        ]}
+      />
+    </View>
+  );
+}
 
 /**
  * Spend by day of week.
@@ -40,17 +88,7 @@ export const WeekdayBars: React.FC<WeekdayBarsProps> = ({ buckets, currency, hei
                   {formatCompact(value, currency)}
                 </AppText>
               ) : null}
-              <View style={styles.track}>
-                <View
-                  style={[
-                    styles.bar,
-                    {
-                      height: `${Math.max((value / max) * 100, value > 0 ? 4 : 0)}%`,
-                      backgroundColor: isPeak ? Colors.primaryDeep : Colors.primarySoft,
-                    },
-                  ]}
-                />
-              </View>
+              <Bar value={value} max={max} isPeak={isPeak} index={index} />
               <AppText
                 variant="micro"
                 align="center"

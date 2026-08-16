@@ -6,6 +6,7 @@ import Animated, { useSharedValue, useAnimatedStyle, withSpring } from 'react-na
 import { AppText } from '@/components/ui/app-text';
 import { Colors } from '@/constants/theme';
 import { haptics } from '@/utils/haptics';
+import { PressScale, Spring } from '@/constants/motion';
 
 export interface AmountDisplayProps {
   value: string;
@@ -66,11 +67,11 @@ const KeypadKey: React.FC<{ keyValue: KeyValue; onPress: () => void }> = ({ keyV
     <Pressable
       onPress={onPress}
       onPressIn={() => {
-        scale.value = withSpring(0.9, { damping: 14, stiffness: 380 });
+        scale.value = withSpring(PressScale.control, Spring.press);
         bg.value = withSpring(1, { damping: 18, stiffness: 260 });
       }}
       onPressOut={() => {
-        scale.value = withSpring(1, { damping: 10, stiffness: 250 });
+        scale.value = withSpring(1, Spring.settle);
         bg.value = withSpring(0, { damping: 18, stiffness: 200 });
       }}
       style={styles.keySlot}

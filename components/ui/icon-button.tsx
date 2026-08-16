@@ -5,6 +5,7 @@ import { BlurView } from 'expo-blur';
 import Animated, { useSharedValue, useAnimatedStyle, withSpring } from 'react-native-reanimated';
 
 import { Colors, Shadows } from '@/constants/theme';
+import { PressScale, Spring } from '@/constants/motion';
 import { haptics } from '@/utils/haptics';
 
 export interface IconButtonProps {
@@ -41,10 +42,10 @@ export const IconButton: React.FC<IconButtonProps> = ({
     <Pressable
       onPress={handlePress}
       onPressIn={() => {
-        scale.value = withSpring(0.9, { damping: 14, stiffness: 340 });
+        scale.value = withSpring(PressScale.control, Spring.press);
       }}
       onPressOut={() => {
-        scale.value = withSpring(1, { damping: 11, stiffness: 240 });
+        scale.value = withSpring(1, Spring.settle);
       }}
       hitSlop={6}
     >

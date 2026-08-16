@@ -12,6 +12,7 @@ import Svg, {
 import Animated, {
   useSharedValue,
   useAnimatedStyle,
+  useAnimatedProps,
   withDelay,
   withRepeat,
   withSequence,
@@ -24,11 +25,15 @@ import Animated, {
 
 import { AppText } from '@/components/ui/app-text';
 import { Colors } from '@/constants/theme';
-import { Ease } from '@/constants/motion';
+import { Ease, Spring } from '@/constants/motion';
+import { useMountPop } from '@/hooks/use-mount-pop';
+import { haptics } from '@/utils/haptics';
 import { useReducedMotion } from '@/hooks/use-reduced-motion';
 import { BLOB_VIEWBOX, BLOB_PATH, BLOB_PATH_ALT } from '@/constants/shapes';
 
+const AnimatedPath = Animated.createAnimatedComponent(Path);
 const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
+const AnimatedEllipse = Animated.createAnimatedComponent(Ellipse);
 
 export type BadgeSlot = 'topLeft' | 'topRight' | 'bottomLeft' | 'bottomRight';
 
@@ -82,19 +87,28 @@ function formatShortCurrency(amount: number, currency: string): string {
   return `${sign}${sym}${abs.toFixed(0)}`;
 }
 
-// Subtle organic bubble keyframes
 /**
- * The hero silhouette, resolved once.
+ * The blob geometry, resolved once into flat number arrays rather than
+ * re-parsed on every touch.
  *
- * This was three sets of 38 control-point numbers interpolated into a fresh
- * path string inside a worklet on every frame. Handing react-native-svg a new
- * `d` 60 times a second makes it re-parse and re-tessellate the path natively
- * each time — by far the most expensive thing on the Home screen. The organic
- * silhouette is what mattered; animating it was not worth that cost, and the
- * blob still feels alive through the transform-driven breathe loop below.
+ * `BLOB_PATH` and `BLOB_PATH_ALT` (constants/shapes.ts) are both authored as
+ * "M x y" + six "C x y x y x y" segments — the same 38-number shape — so any
+ * point in either array lines up with the matching point in the other. That
+ * is what makes numeric interpolation between them valid: mismatched control
+ * points would produce a path that self-intersects rather than a shape that
+ * reads as one blob turning into another.
  */
-const HERO_PATH =
-  'M104 8 C147 5 183 30 192 68 C200 104 178 132 158 156 C135 184 101 200 68 189 C33 177 12 146 9 109 C6 68 25 33 58 18 C72 11 89 9 104 8 Z';
+function extractNumbers(path: string): number[] {
+  return (path.match(/-?\d+(?:\.\d+)?/g) ?? []).map(Number);
+}
+
+const RESTING_NUMS = extractNumbers(BLOB_PATH);
+const ALT_NUMS = extractNumbers(BLOB_PATH_ALT);
+
+function pathFromNumbers(n: number[]): string {
+  'worklet';
+  return `M${n[0]} ${n[1]} C${n[2]} ${n[3]} ${n[4]} ${n[5]} ${n[6]} ${n[7]} C${n[8]} ${n[9]} ${n[10]} ${n[11]} ${n[12]} ${n[13]} C${n[14]} ${n[15]} ${n[16]} ${n[17]} ${n[18]} ${n[19]} C${n[20]} ${n[21]} ${n[22]} ${n[23]} ${n[24]} ${n[25]} C${n[26]} ${n[27]} ${n[28]} ${n[29]} ${n[30]} ${n[31]} C${n[32]} ${n[33]} ${n[34]} ${n[35]} ${n[36]} ${n[37]} Z`;
+}
 
 interface SmallFloatingBubbleProps {
   badge: HeroBadge;
@@ -125,7 +139,7 @@ const SmallFloatingBubble: React.FC<SmallFloatingBubbleProps> = ({
     // that made the app feel busy and drop frames.
     mergeProgress.value = 0;
     mergeProgress.value = withDelay(
-      60 + index * 70,
+      120 + index * 70,
       withTiming(1, { duration: 620, easing: Ease.out })
     );
   }, [index, mergeProgress, reducedMotion]);
@@ -258,8 +272,22 @@ export const OrganicHero: React.FC<OrganicHeroProps> = ({
   children,
 }) => {
   const breathe = useSharedValue(0);
+  // A second, independent loop for the aura layer behind the main blob — see
+  // the styles/render comment below for why two cheap loops read as one
+  // continuously morphing shape.
+  const aura = useSharedValue(0);
   const swapAnim = useSharedValue(1);
   const reducedMotion = useReducedMotion();
+
+  // 0 = resting shape, 1 = fully turned into the alternate lobe. Only ever
+  // touched by a press, and only for the ~0.5s the sequence below takes —
+  // this is the one place a path's `d` gets recomputed per frame, and it is
+  // bounded to a direct response to touch rather than running forever.
+  const morph = useSharedValue(0);
+  const squashX = useSharedValue(1);
+  const squashY = useSharedValue(1);
+  const ripple = useSharedValue(0);
+  const mountStyle = useMountPop();
 
   useEffect(() => {
     swapAnim.value = 0;
@@ -272,21 +300,28 @@ export const OrganicHero: React.FC<OrganicHeroProps> = ({
   useEffect(() => {
     if (reducedMotion) {
       breathe.value = 0;
+      aura.value = 0;
       return;
     }
-    // One slow loop drives the whole "living blob" read. It used to be five:
-    // a morph that rebuilt the SVG path string every frame (forcing
-    // react-native-svg to re-parse and re-tessellate the path 60x a second),
-    // plus separate float, tilt, scaleX and scaleY loops. This is a single
-    // shared value the style worklet derives all of that from, and it only
-    // ever touches transforms, which stay on the UI thread and never
-    // re-rasterise.
+    // Two independent transform-only loops, out of phase and at different
+    // periods. Neither one alone looks like much — together, the aura layer
+    // rotating and pulsing behind the main blob makes its edge appear to
+    // bulge and recede at shifting points, which is what actually reads as
+    // "the shape keeps changing" rather than "this blob is breathing." Both
+    // are still just scale/rotate/translate, so the cost is the same order as
+    // the single loop this replaces (one more of the same, not a return to
+    // the twelve-loops-per-screen problem from before).
     breathe.value = withRepeat(
       withTiming(1, { duration: 5200, easing: Easing.inOut(Easing.sin) }),
       -1,
       true
     );
-  }, [breathe, reducedMotion]);
+    aura.value = withRepeat(
+      withTiming(1, { duration: 8600, easing: Easing.inOut(Easing.sin) }),
+      -1,
+      true
+    );
+  }, [breathe, aura, reducedMotion]);
 
   const blobContainerStyle = useAnimatedStyle(() => {
     const swapScale = interpolate(
@@ -296,9 +331,9 @@ export const OrganicHero: React.FC<OrganicHeroProps> = ({
       Extrapolation.CLAMP
     );
 
-    // All four of the old loops, derived from one value. The slight
-    // counter-phase between scaleX and scaleY is what reads as "breathing"
-    // rather than a plain pulse.
+    // All four of the old ambient loops, derived from one value, plus the
+    // press-triggered squash on top. The slight counter-phase between scaleX
+    // and scaleY is what reads as "breathing" rather than a plain pulse.
     const b = breathe.value;
     const floatY = interpolate(b, [0, 1], [-5, 4]);
     const tiltDeg = interpolate(b, [0, 1], [-1.2, 1.2]);
@@ -309,11 +344,38 @@ export const OrganicHero: React.FC<OrganicHeroProps> = ({
       transform: [
         { translateY: floatY },
         { rotate: `${tiltDeg}deg` },
-        { scaleX: stretchX * swapScale },
-        { scaleY: stretchY * swapScale },
+        { scaleX: stretchX * swapScale * squashX.value },
+        { scaleY: stretchY * swapScale * squashY.value },
       ],
     };
   });
+
+  /** The aura: a second lobe, faint, rotating slowly behind the main blob. */
+  const auraStyle = useAnimatedStyle(() => {
+    const a = aura.value;
+    const rotateDeg = interpolate(a, [0, 1], [-9, 11]);
+    const scale = interpolate(a, [0, 1], [1.05, 0.97]);
+    return {
+      transform: [{ rotate: `${rotateDeg}deg` }, { scale }],
+    };
+  });
+
+  const mainPathProps = useAnimatedProps(() => {
+    'worklet';
+    const t = morph.value;
+    if (t === 0) return { d: BLOB_PATH };
+    const n: number[] = new Array(38);
+    for (let i = 0; i < 38; i++) {
+      n[i] = RESTING_NUMS[i] + (ALT_NUMS[i] - RESTING_NUMS[i]) * t;
+    }
+    return { d: pathFromNumbers(n) };
+  });
+
+  const rippleProps = useAnimatedProps(() => ({
+    opacity: interpolate(ripple.value, [0, 0.15, 1], [0, 0.35, 0], Extrapolation.CLAMP),
+    rx: interpolate(ripple.value, [0, 1], [90, 118]),
+    ry: interpolate(ripple.value, [0, 1], [84, 110]),
+  }));
 
   const contentAnimStyle = useAnimatedStyle(() => {
     const opacity = interpolate(swapAnim.value, [0, 0.3, 1], [0, 0.4, 1], Extrapolation.CLAMP);
@@ -331,16 +393,57 @@ export const OrganicHero: React.FC<OrganicHeroProps> = ({
     1
   );
 
+  /**
+   * The "poke a bubble" reaction: an asymmetric squash-and-overshoot on the
+   * whole blob, a real (bounded) shape change via the path morph above, a
+   * ripple ring, and a light haptic — everything a tap on the balance figure
+   * gets, and none of it runs before or after the ~0.6s it takes.
+   */
+  const handlePressIn = () => {
+    if (reducedMotion) return;
+    haptics.selection();
+    squashX.value = withSpring(1.09, Spring.pop);
+    squashY.value = withSpring(0.88, Spring.pop);
+    morph.value = withTiming(1, { duration: 220, easing: Ease.out });
+    ripple.value = 0;
+    ripple.value = withTiming(1, { duration: 560, easing: Ease.out });
+  };
+
+  const handlePressOut = () => {
+    squashX.value = withSpring(1, Spring.settle);
+    squashY.value = withSpring(1, Spring.settle);
+    morph.value = withTiming(0, { duration: 360, easing: Ease.emphasis });
+  };
+
   return (
-    <View style={[styles.container, { width: size + 60, height: size + 30 }]}>
+    <Animated.View
+      style={[styles.container, { width: size + 60, height: size + 30 }, mountStyle]}
+    >
       <AnimatedPressable
         onPress={onPressMain}
+        onPressIn={handlePressIn}
+        onPressOut={handlePressOut}
         style={({ pressed }) => [
           styles.blobWrap,
-          { width: size, height: size, opacity: pressed ? 0.92 : 1 },
+          { width: size, height: size, opacity: pressed ? 0.96 : 1 },
           blobContainerStyle,
         ]}
       >
+        {/* The aura is its own Svg wrapped in an Animated.View that carries the
+            transform — Svg only accepts SVG children, so the rotate/scale
+            loop cannot live on a View nested inside it. */}
+        <Animated.View style={[styles.auraLayer, { width: size * 1.16, height: size * 1.16 }, auraStyle]}>
+          <Svg width="100%" height="100%" viewBox={`0 0 ${BLOB_VIEWBOX} ${BLOB_VIEWBOX}`}>
+            <Defs>
+              <SvgLinearGradient id="heroAuraFill" x1="10%" y1="0%" x2="90%" y2="100%">
+                <Stop offset="0%" stopColor="#F5D9EC" stopOpacity="0.55" />
+                <Stop offset="100%" stopColor="#DCE4FB" stopOpacity="0.4" />
+              </SvgLinearGradient>
+            </Defs>
+            <Path d={BLOB_PATH_ALT} fill="url(#heroAuraFill)" />
+          </Svg>
+        </Animated.View>
+
         <Svg width={size} height={size} viewBox={`0 0 ${BLOB_VIEWBOX} ${BLOB_VIEWBOX}`}>
           <Defs>
             <SvgLinearGradient id="heroBlobFill" x1="10%" y1="0%" x2="90%" y2="100%">
@@ -354,8 +457,17 @@ export const OrganicHero: React.FC<OrganicHeroProps> = ({
           </Defs>
 
           <Ellipse cx={100} cy={108} rx={99} ry={92} fill="url(#heroBlobGlow)" />
-          <Path
-            d={HERO_PATH}
+          {/* Expanding ring on press — a bubble's "pop" response. */}
+          <AnimatedEllipse
+            cx={100}
+            cy={108}
+            animatedProps={rippleProps}
+            fill="none"
+            stroke={Colors.primary}
+            strokeWidth={1.4}
+          />
+          <AnimatedPath
+            animatedProps={mainPathProps}
             fill="url(#heroBlobFill)"
             stroke="rgba(255,255,255,0.95)"
             strokeWidth={1.6}
@@ -407,7 +519,7 @@ export const OrganicHero: React.FC<OrganicHeroProps> = ({
           />
         );
       })}
-    </View>
+    </Animated.View>
   );
 };
 
@@ -420,6 +532,11 @@ const styles = StyleSheet.create({
   blobWrap: {
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  auraLayer: {
+    position: 'absolute',
+    top: '-8%',
+    left: '-8%',
   },
   content: {
     ...StyleSheet.absoluteFillObject,
@@ -458,4 +575,3 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
 });
-

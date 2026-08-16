@@ -15,6 +15,7 @@ import Animated, {
 
 import { Colors, Gradients, BorderRadius, Shadows } from '@/constants/theme';
 import { haptics } from '@/utils/haptics';
+import { PressScale, Spring } from '@/constants/motion';
 
 interface TabItemProps {
   focused: boolean;
@@ -45,10 +46,10 @@ const TabItem: React.FC<TabItemProps> = ({ focused, onPress, renderIcon }) => {
     <Pressable
       onPress={handlePress}
       onPressIn={() => {
-        scale.value = withSpring(0.84, { damping: 14, stiffness: 340 });
+        scale.value = withSpring(PressScale.control, Spring.press);
       }}
       onPressOut={() => {
-        scale.value = withSpring(1, { damping: 11, stiffness: 240 });
+        scale.value = withSpring(1, Spring.settle);
       }}
       style={styles.tabItem}
       hitSlop={8}
@@ -74,10 +75,10 @@ const CenterAction: React.FC<{ onPress: () => void }> = ({ onPress }) => {
     <Pressable
       onPress={handlePress}
       onPressIn={() => {
-        scale.value = withSpring(0.9, { damping: 14, stiffness: 320 });
+        scale.value = withSpring(0.88, Spring.press);
       }}
       onPressOut={() => {
-        scale.value = withSpring(1, { damping: 10, stiffness: 220 });
+        scale.value = withSpring(1, Spring.settle);
       }}
       style={styles.centerSlot}
     >

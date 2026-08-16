@@ -9,6 +9,7 @@
 
 import {
   compareWithPreviousPeriod,
+  computeDailyHeatmap,
   computeCategoryBreakdown,
   computeMonthlySeries,
   computeTopNotes,
@@ -211,8 +212,73 @@ const CASES: Case[] = [
       return eq('change', result.change, undefined);
     },
   },
-];
+  {
+    name: 'heatmap grid is Sunday-aligned and covers every week in range',
+    run: () => {
+      const range = resolveRange('30d', NOW);
+      const weeks = computeDailyHeatmap(selectTransactions(state, { ...base, range: '30d' }, NOW), range, NOW);
+      for (const week of weeks) {
+        for (let i = 0; i < week.days.length; i++) {
+          const day = week.days[i];
+          if (day && day.date.getDay() !== i) return `day at column ${i} has weekday ${day.date.getDay()}`;
+        }
+      }
+      return weeks.length > 0 ? null : 'expected at least one week';
+    },
+  },
+  {
+    name: 'heatmap totals each day exactly once even with multiple transactions',
+    run: () => {
+      const range = resolveRange('30d', NOW);
+      const picked = selectTransactions(state, { ...base, range: '30d' }, NOW);
+      const weeks = computeDailyHeatmap(picked, range, NOW);
+      const cellFor = (key: string) =>
+        weeks.flatMap(w => w.days).find(d => d?.dateKey === key);
 
+      // t7 (75) and t8 (25) both fall 3-4 days ago on different days; spot-check
+      // the day carrying t1 (100, 1 day ago) sums correctly on its own.
+      const oneDayAgo = new Date(NOW);
+      oneDayAgo.setDate(oneDayAgo.getDate() - 1);
+      const key = `${oneDayAgo.getFullYear()}-${String(oneDayAgo.getMonth() + 1).padStart(2, '0')}-${String(oneDayAgo.getDate()).padStart(2, '0')}`;
+      return eq('t1 day amount', cellFor(key)?.amount, 100);
+    },
+  },
+  {
+    name: 'heatmap marks the busiest day at the top level',
+    run: () => {
+      const range = resolveRange('30d', NOW);
+      const picked = selectTransactions(state, { ...base, range: '30d' }, NOW);
+      const weeks = computeDailyHeatmap(picked, range, NOW);
+      const cells = weeks.flatMap(w => w.days).filter((d): d is NonNullable<typeof d> => d !== null);
+      const busiest = cells.reduce((best, d) => (d.amount > best.amount ? d : best), cells[0]);
+      return eq('busiest level', busiest.level, 4);
+    },
+  },
+  {
+    name: 'heatmap days before the range start are dimmed to level 0',
+    run: () => {
+      const range = resolveRange('30d', NOW);
+      const picked = selectTransactions(state, { ...base, range: '30d' }, NOW);
+      const weeks = computeDailyHeatmap(picked, range, NOW);
+      const padding = weeks[0].days.find(d => d && !d.inRange);
+      if (!padding) return null; // no leading padding this particular week alignment — fine
+      return eq('padded level', padding.level, 0);
+    },
+  },
+  {
+    name: 'heatmap caps at just over a year even for an all-time range',
+    run: () => {
+      const longLedger: FinanceState = {
+        ...state,
+        transactions: [tx('old', 10, 900)], // ~2.5 years ago
+      };
+      const range = resolveRange('all', NOW);
+      const weeks = computeDailyHeatmap(selectTransactions(longLedger, { ...base, range: 'all' }, NOW), range, NOW);
+      const totalDays = weeks.reduce((n, w) => n + w.days.filter(d => d !== null).length, 0);
+      return totalDays <= 371 + 6 ? null : `grid has ${totalDays} days, expected <= ~377`;
+    },
+  },
+];
 let failures = 0;
 for (const c of CASES) {
   const f = c.run();

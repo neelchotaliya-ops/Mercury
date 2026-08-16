@@ -42,7 +42,14 @@ const DayGroup = React.memo(function DayGroup({
       <AppText variant="label" style={styles.dayLabel}>
         {dayLabel(group.date)}
       </AppText>
-      <GlassCard style={styles.groupCard} padding={18} animateIndex={index}>
+      {/* No mount entrance here on purpose: this row lives inside a FlatList,
+          where Reanimated's web layout-animation shim has a real bug measuring
+          rows as they mount/recycle during scroll (it reproducibly throws
+          Cannot read properties of undefined (reading 'top')). Virtualized rows
+          popping in individually as they scroll into view would also just look
+          chaotic, so this is the right behaviour on native too, not only a web
+          workaround. */}
+      <GlassCard style={styles.groupCard} padding={18} animate={false}>
         {group.transactions.map((t, i) => (
           <TransactionListItem
             key={t.id}

@@ -1,9 +1,11 @@
-import React, { useMemo } from 'react';
+import React, { useEffect, useMemo } from 'react';
 import { View, StyleSheet, Pressable } from 'react-native';
+import Animated, { useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
 import Svg, { Path, Defs, LinearGradient as SvgGradient, Stop, Line, Circle } from 'react-native-svg';
 
 import { AppText } from '@/components/ui/app-text';
 import { Colors } from '@/constants/theme';
+import { Duration, Ease } from '@/constants/motion';
 import { MonthPoint } from '@/utils/insights';
 import { monthShortLabel } from '@/utils/date';
 import { formatCompact } from '@/utils/currency';
@@ -37,6 +39,11 @@ export const TrendAreaChart: React.FC<TrendAreaChartProps> = ({
   height = 150,
 }) => {
   const [width, setWidth] = React.useState(0);
+  // 0 = nothing revealed, 1 = the full plot showing. Wipes left to right on
+  // mount and whenever the data itself changes (a range or filter edit),
+  // which is what makes a redrawn chart read as "these are new numbers"
+  // rather than the old picture silently being swapped out underneath you.
+  const reveal = useSharedValue(0);
 
   const geometry = useMemo(() => {
     if (points.length === 0 || width === 0) return null;
@@ -72,57 +79,73 @@ export const TrendAreaChart: React.FC<TrendAreaChartProps> = ({
     return { coords, line, area, max, plotH, peakIndex };
   }, [points, width, height]);
 
+  useEffect(() => {
+    if (!geometry) return;
+    reveal.value = 0;
+    reveal.value = withTiming(1, { duration: Duration.emphasis + 220, easing: Ease.out });
+  }, [points, geometry, reveal]);
+
+  // The curtain that opens over the (otherwise static, unanimated) plot —
+  // cheaper than redrawing the path every frame, since the geometry itself
+  // never changes during the reveal, only how much of it is visible.
+  const wipeStyle = useAnimatedStyle(() => ({ width: reveal.value * width }));
+  const chromeStyle = useAnimatedStyle(() => ({
+    opacity: Math.max((reveal.value - 0.65) / 0.35, 0),
+  }));
+
   return (
     <View onLayout={e => setWidth(e.nativeEvent.layout.width)} style={{ height }}>
       {geometry ? (
         <>
-          <Svg width={width} height={height}>
-            <Defs>
-              <SvgGradient id="trendFill" x1="0" y1="0" x2="0" y2="1">
-                <Stop offset="0%" stopColor={Colors.primary} stopOpacity="0.28" />
-                <Stop offset="100%" stopColor={Colors.primary} stopOpacity="0.02" />
-              </SvgGradient>
-            </Defs>
+          <Animated.View style={[styles.wipeMask, wipeStyle]}>
+            <Svg width={width} height={height}>
+              <Defs>
+                <SvgGradient id="trendFill" x1="0" y1="0" x2="0" y2="1">
+                  <Stop offset="0%" stopColor={Colors.primary} stopOpacity="0.28" />
+                  <Stop offset="100%" stopColor={Colors.primary} stopOpacity="0.02" />
+                </SvgGradient>
+              </Defs>
 
-            <Line
-              x1={PAD_X}
-              y1={PAD_TOP + geometry.plotH}
-              x2={width - PAD_X}
-              y2={PAD_TOP + geometry.plotH}
-              stroke={Colors.divider}
-              strokeWidth={1}
-            />
+              <Line
+                x1={PAD_X}
+                y1={PAD_TOP + geometry.plotH}
+                x2={width - PAD_X}
+                y2={PAD_TOP + geometry.plotH}
+                stroke={Colors.divider}
+                strokeWidth={1}
+              />
 
-            <Path d={geometry.area} fill="url(#trendFill)" />
-            <Path
-              d={geometry.line}
-              stroke={Colors.primaryDeep}
-              strokeWidth={2}
-              fill="none"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            />
+              <Path d={geometry.area} fill="url(#trendFill)" />
+              <Path
+                d={geometry.line}
+                stroke={Colors.primaryDeep}
+                strokeWidth={2}
+                fill="none"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
 
-            {geometry.coords.map(c => {
-              const emphasised =
-                c.index === selectedIndex ||
-                c.index === geometry.coords.length - 1 ||
-                c.index === geometry.peakIndex;
-              if (!emphasised) return null;
-              return (
-                <Circle
-                  key={c.index}
-                  cx={c.x}
-                  cy={c.y}
-                  r={c.index === selectedIndex ? 5 : 4}
-                  fill={Colors.primaryDeep}
-                  // A surface ring keeps the marker legible where it sits on the line.
-                  stroke="#FFFFFF"
-                  strokeWidth={2}
-                />
-              );
-            })}
-          </Svg>
+              {geometry.coords.map(c => {
+                const emphasised =
+                  c.index === selectedIndex ||
+                  c.index === geometry.coords.length - 1 ||
+                  c.index === geometry.peakIndex;
+                if (!emphasised) return null;
+                return (
+                  <Circle
+                    key={c.index}
+                    cx={c.x}
+                    cy={c.y}
+                    r={c.index === selectedIndex ? 5 : 4}
+                    fill={Colors.primaryDeep}
+                    // A surface ring keeps the marker legible where it sits on the line.
+                    stroke="#FFFFFF"
+                    strokeWidth={2}
+                  />
+                );
+              })}
+            </Svg>
+          </Animated.View>
 
           {/* Touch targets are separate from the marks so they can be finger-sized. */}
           <View style={StyleSheet.absoluteFill} pointerEvents="box-none">
@@ -138,7 +161,7 @@ export const TrendAreaChart: React.FC<TrendAreaChartProps> = ({
             </View>
           </View>
 
-          <View style={styles.axis} pointerEvents="none">
+          <Animated.View style={[styles.axis, chromeStyle]} pointerEvents="none">
             {geometry.coords.map(c => {
               // Thin the axis labels rather than let them collide.
               const stride = Math.ceil(geometry.coords.length / 6);
@@ -153,13 +176,13 @@ export const TrendAreaChart: React.FC<TrendAreaChartProps> = ({
                 </AppText>
               );
             })}
-          </View>
+          </Animated.View>
 
-          <View style={styles.peakLabel} pointerEvents="none">
+          <Animated.View style={[styles.peakLabel, chromeStyle]} pointerEvents="none">
             <AppText variant="micro" color={Colors.textSecondary}>
               peak {formatCompact(geometry.coords[geometry.peakIndex].point.amount, currency)}
             </AppText>
-          </View>
+          </Animated.View>
         </>
       ) : null}
     </View>
@@ -167,6 +190,13 @@ export const TrendAreaChart: React.FC<TrendAreaChartProps> = ({
 };
 
 const styles = StyleSheet.create({
+  wipeMask: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    height: '100%',
+    overflow: 'hidden',
+  },
   hitRow: {
     flexDirection: 'row',
     flex: 1,

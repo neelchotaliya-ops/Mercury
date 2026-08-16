@@ -76,3 +76,13 @@ export const STAGGER_MAX_ITEMS = 6;
 export function staggerDelay(index: number): number {
   return Math.min(index, STAGGER_MAX_ITEMS) * STAGGER_STEP;
 }
+
+/**
+ * The app's one entrance signature — a soft pop, not a slide — lives in
+ * `hooks/use-mount-pop.ts`, not here. It's driven by a plain
+ * `useSharedValue`/`useAnimatedStyle` rather than Reanimated's `entering=`
+ * prop, because any transform inside `withInitialValues()` on an `entering`
+ * animation has a reproducible layout-measurement bug on react-native-web
+ * (see that file for the full explanation). It reuses `Duration.base` and
+ * `Ease.emphasis` from this file, which is why they stay exported here.
+ */

@@ -6,6 +6,7 @@ import Animated, { useSharedValue, useAnimatedStyle, withSpring } from 'react-na
 
 import { AppText } from '@/components/ui/app-text';
 import { Colors, Gradients, BorderRadius, Shadows, Spacing } from '@/constants/theme';
+import { PressScale, Spring } from '@/constants/motion';
 import { haptics } from '@/utils/haptics';
 
 export type ButtonVariant = 'primary' | 'glass' | 'ghost' | 'text';
@@ -86,10 +87,10 @@ export const AppButton: React.FC<AppButtonProps> = ({
       onPress={handlePress}
       disabled={isDisabled}
       onPressIn={() => {
-        scale.value = withSpring(0.97, { damping: 15, stiffness: 320 });
+        scale.value = withSpring(PressScale.button, Spring.press);
       }}
       onPressOut={() => {
-        scale.value = withSpring(1, { damping: 12, stiffness: 240 });
+        scale.value = withSpring(1, Spring.settle);
       }}
       style={fullWidth ? styles.fullWidth : undefined}
     >
