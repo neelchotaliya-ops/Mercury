@@ -77,6 +77,23 @@ function splitCardStyles(style: StyleProp<ViewStyle> | undefined, paddingProp: n
     contentStyle.padding = paddingProp;
   } else if (!hasPaddingInStyle) {
     contentStyle.padding = Spacing.xl;
+  } else {
+    if (
+      contentStyle.padding === undefined &&
+      contentStyle.paddingHorizontal === undefined &&
+      contentStyle.paddingLeft === undefined &&
+      contentStyle.paddingRight === undefined
+    ) {
+      contentStyle.paddingHorizontal = Spacing.lg;
+    }
+    if (
+      contentStyle.padding === undefined &&
+      contentStyle.paddingVertical === undefined &&
+      contentStyle.paddingTop === undefined &&
+      contentStyle.paddingBottom === undefined
+    ) {
+      contentStyle.paddingVertical = Spacing.lg;
+    }
   }
 
   return { containerStyle, contentStyle };

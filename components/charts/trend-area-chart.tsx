@@ -19,7 +19,7 @@ export interface TrendAreaChartProps {
   height?: number;
 }
 
-const PAD_X = 6;
+const PAD_X = 18;
 const PAD_TOP = 18;
 const PAD_BOTTOM = 22;
 
@@ -166,11 +166,12 @@ export const TrendAreaChart: React.FC<TrendAreaChartProps> = ({
               // Thin the axis labels rather than let them collide.
               const stride = Math.ceil(geometry.coords.length / 6);
               if (c.index % stride !== 0 && c.index !== geometry.coords.length - 1) return null;
+              const leftPos = Math.max(0, Math.min(width - 36, c.x - 18));
               return (
                 <AppText
                   key={c.index}
                   variant="micro"
-                  style={[styles.axisLabel, { left: c.x - 18 }]}
+                  style={[styles.axisLabel, { left: leftPos }]}
                 >
                   {monthShortLabel(c.point.monthKey)}
                 </AppText>

@@ -277,7 +277,7 @@ const styles = StyleSheet.create({
   },
   content: {
     paddingTop: Spacing.lg,
-    paddingBottom: 130,
+    paddingBottom: 150,
     gap: Spacing.lg,
   },
   kindWrap: {
@@ -293,6 +293,7 @@ const styles = StyleSheet.create({
   heroCard: {
     gap: 4,
     paddingVertical: 20,
+    paddingHorizontal: 20,
   },
   statRow: {
     flexDirection: 'row',
@@ -305,6 +306,7 @@ const styles = StyleSheet.create({
   },
   chartCard: {
     paddingVertical: 20,
+    paddingHorizontal: 20,
     gap: 12,
   },
   selection: {
