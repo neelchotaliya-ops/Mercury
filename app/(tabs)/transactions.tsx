@@ -233,7 +233,11 @@ export default function TransactionsScreen() {
           data={groups}
           renderItem={renderGroup}
           keyExtractor={keyExtractor}
-          contentContainerStyle={styles.content}
+          style={styles.list}
+          contentContainerStyle={[
+            styles.content,
+            groups.length === 0 && styles.emptyContent,
+          ]}
           showsVerticalScrollIndicator={false}
         // state.transactions is kept sorted newest-first by the reducer, so
         // groups are also in order. These batch settings balance initial render
@@ -276,9 +280,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 9,
     marginHorizontal: 20,
-    marginTop: Spacing.lg,
-    paddingHorizontal: 16,
-    paddingVertical: 13,
+    marginTop: 10,
+    paddingHorizontal: 14,
+    height: 42,
     borderRadius: BorderRadius.pill,
     backgroundColor: Colors.controlBg,
     borderWidth: 1,
@@ -286,28 +290,42 @@ const styles = StyleSheet.create({
   },
   searchInput: {
     flex: 1,
+    height: '100%',
+    paddingVertical: 0,
     fontSize: 14,
     fontFamily: 'Manrope_500Medium',
     color: Colors.textPrimary,
   },
   filterRow: {
-    marginTop: 14,
-    maxHeight: 42,
+    flexGrow: 0,
+    flexShrink: 0,
+    height: 40,
+    marginTop: 10,
+    marginBottom: 2,
   },
   filterContent: {
     gap: 8,
     paddingHorizontal: 20,
+    alignItems: 'center',
   },
   chip: {
-    paddingVertical: 9,
+    height: 34,
     paddingHorizontal: 16,
     borderRadius: BorderRadius.pill,
     borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  list: {
+    flex: 1,
   },
   content: {
     paddingHorizontal: 20,
-    paddingTop: 18,
+    paddingTop: 12,
     paddingBottom: 130,
+  },
+  emptyContent: {
+    paddingTop: 16,
   },
   group: {
     marginBottom: Spacing.lg,
