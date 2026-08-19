@@ -14,7 +14,7 @@ import { useFinance } from '@/context/finance-context';
 import { GroupedTransactions, groupTransactionsByDay } from '@/utils/selectors';
 import { dayLabel } from '@/utils/date';
 import { formatCurrency } from '@/utils/currency';
-import { Account, Category, TransactionType } from '@/types/finance';
+import { Account, Category, NumberFormat, TransactionType } from '@/types/finance';
 import { Colors, BorderRadius, Spacing } from '@/constants/theme';
 
 type FilterType = 'all' | TransactionType;

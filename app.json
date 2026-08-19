@@ -99,7 +99,8 @@
             }
           ]
         }
-      ]
+      ],
+      "./plugins/with-async-storage-size"
     ],
     "experiments": {
       "typedRoutes": true,

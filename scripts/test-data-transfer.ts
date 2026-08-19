@@ -219,6 +219,54 @@ const CASES: Case[] = [
       return eq('currency', merged.settings.currency, 'INR');
     },
   },
+  {
+    name: 'import preserves numberFormat instead of silently dropping it',
+    run: () => {
+      // Regression: parseExport used to rebuild settings as
+      // `{ currency, hasOnboarded: true }`, so every backup round-trip reset
+      // the user's digit grouping back to the default.
+      const file = {
+        format: 'mercury-finance-export',
+        version: 1,
+        exportedAt: new Date().toISOString(),
+        data: { ...baseData, settings: { currency: 'USD', numberFormat: 'indian', hasOnboarded: true } },
+      };
+      const parsed = parseExport(JSON.stringify(file));
+      if (!parsed.ok) return `expected ok, got ${parsed.reason}`;
+      return (
+        eq('currency', parsed.data.settings.currency, 'USD') ??
+        eq('numberFormat', parsed.data.settings.numberFormat, 'indian')
+      );
+    },
+  },
+  {
+    name: 'import ignores a numberFormat value outside the allowed union',
+    run: () => {
+      const file = {
+        format: 'mercury-finance-export',
+        version: 1,
+        exportedAt: new Date().toISOString(),
+        data: { ...baseData, settings: { currency: 'USD', numberFormat: 'martian', hasOnboarded: true } },
+      };
+      const parsed = parseExport(JSON.stringify(file));
+      if (!parsed.ok) return `expected ok, got ${parsed.reason}`;
+      return eq('numberFormat', parsed.data.settings.numberFormat, undefined);
+    },
+  },
+  {
+    name: 'import respects an explicit hasOnboarded false rather than hardcoding true',
+    run: () => {
+      const file = {
+        format: 'mercury-finance-export',
+        version: 1,
+        exportedAt: new Date().toISOString(),
+        data: { ...baseData, settings: { currency: 'USD', hasOnboarded: false } },
+      };
+      const parsed = parseExport(JSON.stringify(file));
+      if (!parsed.ok) return `expected ok, got ${parsed.reason}`;
+      return eq('hasOnboarded', parsed.data.settings.hasOnboarded, false);
+    },
+  },
 ];
 
 let failures = 0;

@@ -1,4 +1,12 @@
 import { Account, Budget, Category, FinanceState, Transaction } from '@/types/finance';
+
+/**
+ * The parts of the store balance maths actually reads.
+ *
+ * Narrower than `FinanceState` so callers can memoize on just these two arrays
+ * instead of the whole state object, whose identity changes on any mutation.
+ */
+export type BalanceSlice = Pick<FinanceState, 'accounts' | 'transactions'>;
 import { dayKeyOf, monthKeyOf } from '@/utils/date';
 
 /**
@@ -24,7 +32,7 @@ function compareDateDesc(a: { date: string }, b: { date: string }): number {
  * Callers that need more than one account should use this rather than calling
  * `getAccountBalance` in a loop, which is O(accounts x transactions).
  */
-export function getAllAccountBalances(state: FinanceState): Map<string, number> {
+export function getAllAccountBalances(state: BalanceSlice): Map<string, number> {
   const balances = new Map<string, number>();
   for (const account of state.accounts) {
     balances.set(account.id, account.initialBalance);

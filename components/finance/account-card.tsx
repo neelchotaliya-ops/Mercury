@@ -5,23 +5,34 @@ import { Ionicons } from '@expo/vector-icons';
 import { AppText } from '@/components/ui/app-text';
 import { GlassCard } from '@/components/ui/glass-card';
 import { IconBadge } from '@/components/finance/icon-badge';
-import { useFinance } from '@/context/finance-context';
 import { Account } from '@/types/finance';
-import { getAccountBalance } from '@/utils/selectors';
 import { formatCurrency } from '@/utils/currency';
 import { ACCOUNT_TYPE_META } from '@/constants/categories';
 import { Colors } from '@/constants/theme';
 
 export interface AccountCardProps {
   account: Account;
+  /**
+   * Passed in rather than derived here on purpose. This card used to call
+   * `useFinance()` and run `getAccountBalance` itself, which is a full scan of
+   * every transaction — once per card, on every render, unmemoized. A screen
+   * with N accounts therefore cost O(accounts x transactions) per render. The
+   * parent now computes every balance in a single pass and hands each card its
+   * number, which also makes this component purely presentational.
+   */
+  balance: number;
+  currency: string;
   onPress?: () => void;
   animateIndex?: number;
 }
 
-export const AccountCard: React.FC<AccountCardProps> = ({ account, onPress, animateIndex }) => {
-  const { state } = useFinance();
-  const balance = getAccountBalance(state, account.id);
-
+export const AccountCard: React.FC<AccountCardProps> = ({
+  account,
+  balance,
+  currency,
+  onPress,
+  animateIndex,
+}) => {
   return (
     <Pressable onPress={onPress}>
       {({ pressed }) => (
@@ -44,7 +55,7 @@ export const AccountCard: React.FC<AccountCardProps> = ({ account, onPress, anim
               numberOfLines={1}
               adjustsFontSizeToFit
             >
-              {formatCurrency(balance, state.settings.currency)}
+              {formatCurrency(balance, currency)}
             </AppText>
             <Ionicons name="chevron-forward" size={15} color={Colors.textMuted} />
           </View>

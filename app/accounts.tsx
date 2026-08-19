@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { View, StyleSheet, ScrollView, Pressable } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
@@ -10,7 +10,7 @@ import { ModalHeader } from '@/components/ui/modal-header';
 import { AccountCard } from '@/components/finance/account-card';
 import { EmptyState } from '@/components/finance/empty-state';
 import { useFinance } from '@/context/finance-context';
-import { getTotalBalance } from '@/utils/selectors';
+import { getAllAccountBalances } from '@/utils/selectors';
 import { formatCurrency } from '@/utils/currency';
 import { Colors, BorderRadius, Spacing } from '@/constants/theme';
 
@@ -18,8 +18,23 @@ export default function AccountsScreen() {
   const router = useRouter();
   const { state } = useFinance();
 
-  const accounts = state.accounts.filter(a => !a.archived);
-  const totalBalance = getTotalBalance(state);
+  // One pass over the ledger for every account, instead of the previous
+  // getAccountBalance-per-card (O(accounts x transactions)) plus a separate
+  // unmemoized getTotalBalance scan. Net worth is then a sum over the map.
+  const balanceMap = useMemo(
+    () => getAllAccountBalances({ accounts: state.accounts, transactions: state.transactions }),
+    [state.accounts, state.transactions]
+  );
+
+  const accounts = useMemo(
+    () => state.accounts.filter(a => !a.archived),
+    [state.accounts]
+  );
+
+  const totalBalance = useMemo(
+    () => accounts.reduce((sum, a) => sum + (balanceMap.get(a.id) ?? 0), 0),
+    [accounts, balanceMap]
+  );
 
   return (
     <GradientScreen contours="top">
@@ -56,6 +71,8 @@ export default function AccountsScreen() {
               <AccountCard
                 key={account.id}
                 account={account}
+                balance={balanceMap.get(account.id) ?? 0}
+                currency={state.settings.currency}
                 animateIndex={index}
                 onPress={() => router.push(`/add-account?id=${account.id}`)}
               />

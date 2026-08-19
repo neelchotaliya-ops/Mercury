@@ -45,7 +45,16 @@ export default function ReportsScreen() {
   const numberFormat = state.settings.numberFormat;
 
   // The ledger is scanned once here; every chart below reads this array.
-  const transactions = useMemo(() => selectTransactions(state, filter), [state, filter]);
+  //
+  // Keyed on `state.transactions`, not `state`. Both this and the comparison
+  // below only read the transactions array, but depending on the whole state
+  // object meant its identity changed on *any* mutation — a settings toggle, a
+  // budget edit, a widget-triggered refresh — and re-ran both full scans plus
+  // every chart computation below them. Insights stays mounted as a tab, so
+  // that fired constantly.
+  const ledger = useMemo(() => ({ transactions: state.transactions }), [state.transactions]);
+
+  const transactions = useMemo(() => selectTransactions(ledger, filter), [ledger, filter]);
   const totals = useMemo(() => computeTotals(transactions), [transactions]);
   const breakdown = useMemo(
     () => computeCategoryBreakdown(transactions, state.categories),
@@ -59,7 +68,10 @@ export default function ReportsScreen() {
   );
   const weekdays = useMemo(() => computeWeekdayPattern(transactions), [transactions]);
   const topNotes = useMemo(() => computeTopNotes(transactions), [transactions]);
-  const comparison = useMemo(() => compareWithPreviousPeriod(state, filter), [state, filter]);
+  const comparison = useMemo(
+    () => compareWithPreviousPeriod(ledger, filter),
+    [ledger, filter]
+  );
 
   const isEmpty = transactions.length === 0;
   const changePercent =

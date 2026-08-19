@@ -248,7 +248,16 @@ export function parseExport(rawText: string): ImportResult {
     quickPresets,
     settings: {
       currency: str(settings.currency) ?? 'INR',
-      hasOnboarded: true,
+      // `numberFormat` used to be dropped here, so every backup round-trip
+      // silently reset the user's digit grouping (Indian vs International).
+      // Only carry a value the type actually allows.
+      numberFormat:
+        settings.numberFormat === 'indian' || settings.numberFormat === 'international'
+          ? settings.numberFormat
+          : undefined,
+      // A file that contains data came from an onboarded install; but respect
+      // an explicit `false` rather than hardcoding past it.
+      hasOnboarded: typeof settings.hasOnboarded === 'boolean' ? settings.hasOnboarded : true,
     },
   };
 

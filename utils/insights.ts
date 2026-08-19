@@ -11,6 +11,17 @@
 import { Category, FinanceState, Transaction, TransactionType } from '@/types/finance';
 import { dayKeyOf, monthKeyOf } from '@/utils/date';
 
+/**
+ * The only part of the store these functions actually read.
+ *
+ * Taking the whole `FinanceState` meant callers had to depend on the entire
+ * state object, whose identity changes on any mutation — so an unrelated
+ * settings toggle re-ran a full ledger scan. Narrowing the parameter lets the
+ * Insights screen memoize on `state.transactions` alone, and makes that
+ * dependency structural rather than something asserted in a dep array.
+ */
+export type LedgerSlice = Pick<FinanceState, 'transactions'>;
+
 export type DateRangePreset = '30d' | '3m' | '6m' | '12m' | 'ytd' | 'all';
 
 export interface InsightFilter {
@@ -74,7 +85,7 @@ export const RANGE_LABELS: Record<DateRangePreset, string> = {
  * the ledger is scanned a single time per render regardless of chart count.
  */
 export function selectTransactions(
-  state: FinanceState,
+  state: LedgerSlice,
   filter: InsightFilter,
   now: Date = new Date()
 ): Transaction[] {
@@ -366,7 +377,7 @@ export interface ComparisonResult {
 
 /** Compares the selected window against the one immediately before it. */
 export function compareWithPreviousPeriod(
-  state: FinanceState,
+  state: LedgerSlice,
   filter: InsightFilter,
   now: Date = new Date()
 ): ComparisonResult {

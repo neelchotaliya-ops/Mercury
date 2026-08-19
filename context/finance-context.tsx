@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useEffect, useMemo, useReducer, useRef } from 'react';
+import React, { createContext, useContext, useEffect, useMemo, useReducer, useRef, useState } from 'react';
 import { AppState, AppStateStatus } from 'react-native';
 
 import {
@@ -531,12 +531,19 @@ interface FinanceActions {
 
 interface FinanceContextValue extends FinanceActions {
   state: FinanceState;
+  /**
+   * Set when the last attempted save failed. Non-null means the in-memory
+   * ledger is ahead of what is on disk and will be lost if the process dies —
+   * screens surface this rather than letting it pass unnoticed.
+   */
+  persistError: string | null;
 }
 
 const FinanceContext = createContext<FinanceContextValue | undefined>(undefined);
 
 export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [state, dispatch] = useReducer(reducer, initialState);
+  const [persistError, setPersistError] = useState<string | null>(null);
   const hasHydrated = useRef(false);
   // Set right before a REFRESH_FROM_STORAGE dispatch so the persist effect
   // below doesn't write straight back out the bytes it just read in.
@@ -589,9 +596,19 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
     if (persistTimeoutRef.current) clearTimeout(persistTimeoutRef.current);
     persistTimeoutRef.current = setTimeout(() => {
       const { isLoaded, ...persistable } = state;
-      saveFinanceState(persistable);
-      // Home screen widgets read the same store, so keep them in step with it.
-      refreshWidgets();
+      saveFinanceState(persistable)
+        .then(() => {
+          setPersistError(null);
+          // Home screen widgets read the same store, so keep them in step with it.
+          refreshWidgets();
+        })
+        .catch((e: unknown) => {
+          // A failed write means everything entered since the last successful
+          // one exists only in memory and dies with the process. The user has
+          // to be told while they can still act on it (export a backup), so
+          // this is surfaced in the UI rather than logged and forgotten.
+          setPersistError(e instanceof Error ? e.message : 'Could not save your data.');
+        });
     }, 500);
     return () => {
       if (persistTimeoutRef.current) clearTimeout(persistTimeoutRef.current);
@@ -660,7 +677,10 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
     []
   );
 
-  const value = useMemo<FinanceContextValue>(() => ({ state, ...actions }), [state, actions]);
+  const value = useMemo<FinanceContextValue>(
+    () => ({ state, persistError, ...actions }),
+    [state, persistError, actions]
+  );
 
   return <FinanceContext.Provider value={value}>{children}</FinanceContext.Provider>;
 };

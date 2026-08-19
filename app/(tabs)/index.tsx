@@ -14,7 +14,7 @@ import { EmptyState } from '@/components/finance/empty-state';
 import { useFinance } from '@/context/finance-context';
 import { getAllAccountBalances } from '@/utils/selectors';
 import { formatCurrency } from '@/utils/currency';
-import { toMonthKey } from '@/utils/date';
+import { toMonthKey, monthKeyOf } from '@/utils/date';
 import { ACCOUNT_TYPE_META } from '@/constants/categories';
 import { Colors, BorderRadius } from '@/constants/theme';
 
@@ -77,7 +77,11 @@ export default function HomeScreen() {
     let inc = 0;
     let exp = 0;
     filteredTransactions.forEach(t => {
-      if (t.date.startsWith(monthKey)) {
+      // monthKeyOf, not `date.startsWith(monthKey)`: dates are stored as UTC
+      // ISO strings, so a prefix compare buckets by UTC month. East of UTC a
+      // transaction logged just after local midnight on the 1st carries the
+      // previous UTC month and would be counted against the wrong month.
+      if (monthKeyOf(t.date) === monthKey) {
         if (t.type === 'income') inc += t.amount;
         if (t.type === 'expense') exp += t.amount;
       }

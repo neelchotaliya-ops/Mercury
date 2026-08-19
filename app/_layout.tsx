@@ -23,6 +23,7 @@ import { ShareIntentProvider } from 'expo-share-intent';
 import { AppThemeProvider } from '@/context/theme-context';
 import { FinanceProvider, useFinance } from '@/context/finance-context';
 import { useSharedReceipt } from '@/hooks/use-shared-receipt';
+import { PersistErrorBanner } from '@/components/ui/persist-error-banner';
 
 SplashScreen.preventAutoHideAsync();
 
@@ -63,7 +64,9 @@ function RootNavigator() {
         <Stack.Screen name="manage-categories" options={{ presentation: 'modal' }} />
         <Stack.Screen name="quick-presets" options={{ presentation: 'modal' }} />
         <Stack.Screen name="settings" options={{ presentation: 'modal' }} />
+        <Stack.Screen name="db-diagnostics" options={{ presentation: 'modal' }} />
       </Stack>
+      <PersistErrorBanner />
       <StatusBar style="dark" />
     </>
   );
