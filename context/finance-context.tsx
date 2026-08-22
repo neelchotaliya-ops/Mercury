@@ -45,8 +45,6 @@ import {
   updateTransaction as dbUpdateTransaction,
   deleteTransaction as dbDeleteTransaction,
 } from '@/db/transactions';
-import { rebuildRollups } from '@/db/rebuild';
-import { PersistedFinanceState } from '@/storage/storage';
 
 /**
  * The small, bounded entities: accounts, categories, budgets, presets,
@@ -89,7 +87,6 @@ interface FinanceActions {
   addPreset: (input: Omit<QuickPreset, 'id'>) => Promise<QuickPreset>;
   updatePreset: (preset: QuickPreset) => Promise<void>;
   deletePreset: (id: string) => Promise<void>;
-  replaceAllData: (next: PersistedFinanceState) => Promise<void>;
   updateSettings: (settings: Partial<AppSettings>) => Promise<void>;
   completeOnboarding: () => Promise<void>;
   resetAllData: () => Promise<void>;
@@ -270,43 +267,6 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
       updateSettings: patch => withDb(db => dbUpdateSettings(db, patch)),
       completeOnboarding: () => withDb(db => dbUpdateSettings(db, { hasOnboarded: true })),
-
-      replaceAllData: next =>
-        withDb(async db => {
-          await db.withTransaction(async txn => {
-            await txn.execAsync(
-              'DELETE FROM transactions; DELETE FROM accounts; DELETE FROM categories; DELETE FROM budgets; DELETE FROM quick_presets; DELETE FROM rollup; DELETE FROM account_balance;'
-            );
-            for (let i = 0; i < next.accounts.length; i++) await insertAccount(txn, next.accounts[i], i);
-            for (let i = 0; i < next.categories.length; i++) await insertCategory(txn, next.categories[i], i);
-            for (let i = 0; i < next.budgets.length; i++) await insertBudget(txn, next.budgets[i], i);
-            for (let i = 0; i < next.quickPresets.length; i++) await insertPreset(txn, next.quickPresets[i], i);
-            for (const tx of next.transactions) {
-              await txn.runAsync(
-                `INSERT OR IGNORE INTO transactions
-                   (id, type, amount, account_id, to_account_id, category_id, date, date_ms, month_key, day_key, note, note_lc, created_at)
-                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-                [
-                  tx.id,
-                  tx.type,
-                  tx.amount,
-                  tx.accountId,
-                  tx.toAccountId ?? null,
-                  tx.categoryId ?? null,
-                  tx.date,
-                  Date.parse(tx.date),
-                  tx.date.slice(0, 7),
-                  tx.date.slice(0, 10),
-                  tx.note ?? null,
-                  tx.note ? tx.note.toLowerCase() : null,
-                  tx.createdAt,
-                ]
-              );
-            }
-          });
-          await dbUpdateSettings(db, next.settings);
-          await rebuildRollups(db);
-        }),
 
       resetAllData: () =>
         withDb(async db => {

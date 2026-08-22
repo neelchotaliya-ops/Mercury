@@ -15,7 +15,7 @@
     "test:parser": "tsx scripts/test-receipt-parser.ts",
     "test:widget": "tsx scripts/test-widget-presets.ts",
     "test:currency": "tsx scripts/test-currency-formatting.ts",
-    "test": "npm run test:parser && npm run test:widget && npm run test:layout && npm run test:selectors && npm run test:transfer && npm run test:insights && npm run test:currency && npm run test:db:schema && npm run test:db:rollup-math && npm run test:db:queries && npm run test:db:rollup && npm run test:db:insights && npm run test:db:migration",
+    "test": "npm run test:parser && npm run test:widget && npm run test:layout && npm run test:selectors && npm run test:transfer && npm run test:insights && npm run test:currency && npm run test:db:schema && npm run test:db:rollup-math && npm run test:db:queries && npm run test:db:rollup && npm run test:db:insights && npm run test:db:migration && npm run test:json-stream && npm run test:import-stream",
     "test:layout": "tsx scripts/test-widget-layout.ts",
     "test:selectors": "tsx scripts/test-selectors.ts",
     "test:transfer": "tsx scripts/test-data-transfer.ts",
@@ -25,7 +25,9 @@
     "test:db:queries": "tsx scripts/test-db-queries.ts",
     "test:db:rollup": "tsx scripts/test-db-rollup.ts",
     "test:db:insights": "tsx scripts/test-db-insights.ts",
-    "test:db:migration": "tsx scripts/test-db-migration.ts"
+    "test:db:migration": "tsx scripts/test-db-migration.ts",
+    "test:json-stream": "tsx scripts/test-json-stream.ts",
+    "test:import-stream": "tsx scripts/test-import-stream.ts"
   },
   "dependencies": {
     "@expo-google-fonts/manrope": "^0.4.2",

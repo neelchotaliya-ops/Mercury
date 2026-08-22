@@ -123,37 +123,47 @@ export function parseCategories(raw: unknown): Category[] {
   return out;
 }
 
+/**
+ * Validates one raw transaction record against a known set of account ids.
+ * Split out from `parseTransactions` so a streaming reader can validate one
+ * record at a time — the same rules, without ever building the full array.
+ */
+export function parseTransactionItem(item: unknown, accountIds: Set<string>): Transaction | null {
+  if (!isRecord(item)) return null;
+  const id = str(item.id);
+  const amount = num(item.amount);
+  const accountId = str(item.accountId);
+  const date = str(item.date);
+  const type = item.type as TransactionType;
+  if (!id || amount === undefined || !accountId || !date) return null;
+  if (!TRANSACTION_TYPES.includes(type)) return null;
+  // A transaction pointing at an account that is not in the file would make
+  // every balance wrong, so it is dropped rather than silently mis-attributed.
+  if (!accountIds.has(accountId)) return null;
+  if (Number.isNaN(Date.parse(date))) return null;
+
+  const toAccountId = str(item.toAccountId);
+  if (type === 'transfer' && (!toAccountId || !accountIds.has(toAccountId))) return null;
+
+  return {
+    id,
+    type,
+    amount,
+    accountId,
+    toAccountId: type === 'transfer' ? toAccountId : undefined,
+    categoryId: type === 'transfer' ? undefined : str(item.categoryId),
+    date,
+    note: str(item.note),
+    createdAt: str(item.createdAt) ?? date,
+  };
+}
+
 export function parseTransactions(raw: unknown, accountIds: Set<string>): Transaction[] {
   if (!Array.isArray(raw)) return [];
   const out: Transaction[] = [];
   for (const item of raw) {
-    if (!isRecord(item)) continue;
-    const id = str(item.id);
-    const amount = num(item.amount);
-    const accountId = str(item.accountId);
-    const date = str(item.date);
-    const type = item.type as TransactionType;
-    if (!id || amount === undefined || !accountId || !date) continue;
-    if (!TRANSACTION_TYPES.includes(type)) continue;
-    // A transaction pointing at an account that is not in the file would make
-    // every balance wrong, so it is dropped rather than silently mis-attributed.
-    if (!accountIds.has(accountId)) continue;
-    if (Number.isNaN(Date.parse(date))) continue;
-
-    const toAccountId = str(item.toAccountId);
-    if (type === 'transfer' && (!toAccountId || !accountIds.has(toAccountId))) continue;
-
-    out.push({
-      id,
-      type,
-      amount,
-      accountId,
-      toAccountId: type === 'transfer' ? toAccountId : undefined,
-      categoryId: type === 'transfer' ? undefined : str(item.categoryId),
-      date,
-      note: str(item.note),
-      createdAt: str(item.createdAt) ?? date,
-    });
+    const parsed = parseTransactionItem(item, accountIds);
+    if (parsed) out.push(parsed);
   }
   return out;
 }

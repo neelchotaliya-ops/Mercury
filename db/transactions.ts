@@ -207,6 +207,72 @@ export async function insertTransaction(db: Db, tx: Transaction): Promise<void> 
   bumpDataVersion();
 }
 
+const BULK_INSERT_COLUMNS =
+  'id, type, amount, account_id, to_account_id, category_id, date, date_ms, month_key, day_key, note, note_lc, created_at';
+const BULK_INSERT_PLACEHOLDERS = '(?,?,?,?,?,?,?,?,?,?,?,?,?)';
+
+/**
+ * Inserts many rows with multi-row batched statements instead of one
+ * `runAsync` per row, and skips the incremental rollup math entirely —
+ * `applyRow`'s per-row upserts don't scale to a bulk load. Callers must run
+ * `rebuildRollups(db)` once after every batch is in, which does the
+ * equivalent aggregation in a single SQL pass over the whole table rather
+ * than millions of individual updates.
+ *
+ * `OR IGNORE` makes this double as "insert what's new" for a merge: a row
+ * whose id already exists is silently skipped rather than erroring, so
+ * calling this against a table that already has data (not just an empty one
+ * being bulk-loaded) is exactly "add anything new, keep what's there."
+ *
+ * 70 rows per statement keeps every batch under 1,000 bound parameters
+ * (70 × 13 columns = 910), safe even against SQLite's old default
+ * `SQLITE_MAX_VARIABLE_NUMBER` — modern builds allow far more, but there's
+ * no reason to depend on that.
+ */
+export async function bulkInsertTransactionRows(
+  db: Db,
+  rows: Iterable<Transaction> | AsyncIterable<Transaction>,
+  batchSize = 70
+): Promise<number> {
+  let batch: Transaction[] = [];
+  let total = 0;
+
+  const flush = async () => {
+    if (batch.length === 0) return;
+    const sql = `INSERT OR IGNORE INTO transactions (${BULK_INSERT_COLUMNS})
+      VALUES ${batch.map(() => BULK_INSERT_PLACEHOLDERS).join(',')}`;
+    const params: (string | number | null)[] = [];
+    for (const tx of batch) {
+      params.push(
+        tx.id,
+        tx.type,
+        tx.amount,
+        tx.accountId,
+        tx.toAccountId ?? null,
+        tx.categoryId ?? null,
+        tx.date,
+        Date.parse(tx.date),
+        monthKeyOf(tx.date),
+        dayKeyOf(tx.date),
+        tx.note ?? null,
+        tx.note ? tx.note.toLowerCase() : null,
+        tx.createdAt
+      );
+    }
+    await db.runAsync(sql, params);
+    total += batch.length;
+    batch = [];
+  };
+
+  for await (const tx of rows) {
+    batch.push(tx);
+    if (batch.length >= batchSize) await flush();
+  }
+  await flush();
+
+  return total;
+}
+
 export async function updateTransaction(db: Db, next: Transaction): Promise<void> {
   await db.withTransaction(async txn => {
     const oldRow = await txn.getFirstAsync<TransactionRow>(
@@ -272,20 +338,18 @@ export async function monthKeysTouchingAccount(db: Db, accountId: string): Promi
 }
 
 /**
- * Every transaction, oldest first. Used only by full-ledger export today
- * (see `utils/data-transfer-io.ts`) — `getEachAsync` streams rows from
- * SQLite one at a time rather than materializing the whole result set,
- * though the caller here still collects them into an array pending the
- * Phase 8 streaming rewrite of export/import.
+ * Every transaction, oldest first, one at a time. Backs full-ledger export
+ * (`utils/data-transfer-io.ts`) — `getEachAsync` streams rows from SQLite
+ * without materializing the whole result set, and this generator doesn't
+ * either, so peak memory during an export stays O(1) in the ledger size
+ * regardless of whether it holds a thousand rows or ten million.
  */
-export async function listAllTransactions(db: Db): Promise<Transaction[]> {
-  const out: Transaction[] = [];
+export async function* iterateTransactions(db: Db): AsyncGenerator<Transaction> {
   for await (const row of db.getEachAsync<TransactionRow>(
     `SELECT ${ROW_COLUMNS} FROM transactions ORDER BY seq ASC`
   )) {
-    out.push(rowToTransaction(row));
+    yield rowToTransaction(row);
   }
-  return out;
 }
 
 /** Newest N transactions, optionally for one account (either leg of a transfer counts). For Home's "recent activity" list. */

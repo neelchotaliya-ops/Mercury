@@ -10,10 +10,8 @@ import { GlassCard } from '@/components/ui/glass-card';
 import { ModalHeader } from '@/components/ui/modal-header';
 import { useFinance } from '@/context/finance-context';
 import { getDb } from '@/db/client';
-import { listAllTransactions } from '@/db/transactions';
 import { haptics } from '@/utils/haptics';
-import { mergeData, summarize } from '@/utils/data-transfer';
-import { exportData, pickAndParseImport } from '@/utils/data-transfer-io';
+import { applyImport, exportData, pickAndPreviewImport } from '@/utils/data-transfer-io';
 import { CURRENCIES } from '@/utils/currency';
 import { Colors, Spacing } from '@/constants/theme';
 
@@ -43,7 +41,7 @@ const Row: React.FC<RowProps> = ({ icon, label, tint, onPress, trailing, divider
 
 export default function SettingsScreen() {
   const router = useRouter();
-  const { state, updateSettings, resetAllData, seedDemoData, replaceAllData } = useFinance();
+  const { state, updateSettings, resetAllData, seedDemoData } = useFinance();
   const [busy, setBusy] = useState<'export' | 'import' | null>(null);
 
   const activeCurrency = CURRENCIES.find(c => c.code === state.settings.currency);
@@ -86,10 +84,8 @@ export default function SettingsScreen() {
     if (busy) return;
     setBusy('export');
     try {
-      const { isLoaded, ...entities } = state;
       const db = await getDb();
-      const transactions = await listAllTransactions(db);
-      const result = await exportData({ ...entities, transactions });
+      const result = await exportData(db);
       if (result.ok) {
         haptics.success();
       } else {
@@ -105,7 +101,7 @@ export default function SettingsScreen() {
     if (busy) return;
     setBusy('import');
     try {
-      const result = await pickAndParseImport();
+      const result = await pickAndPreviewImport();
 
       if (!result.ok) {
         if (!('cancelled' in result)) {
@@ -115,39 +111,36 @@ export default function SettingsScreen() {
         return;
       }
 
-      const { summary, data: incoming } = result;
-      const { isLoaded, ...entities } = state;
-      const db = await getDb();
-      const current = { ...entities, transactions: await listAllTransactions(db) };
+      const { file, preview } = result;
+      const commit = async (mode: 'merge' | 'replace') => {
+        try {
+          const db = await getDb();
+          await applyImport(db, file, mode);
+          if (mode === 'replace') haptics.warning();
+          else haptics.success();
+          Alert.alert(
+            'Imported',
+            mode === 'replace'
+              ? `Replaced with this backup's ${preview.summary.transactions} transaction(s).`
+              : `Merged in this backup's ${preview.summary.transactions} transaction(s).`
+          );
+        } catch (e) {
+          haptics.error();
+          Alert.alert('Import failed', e instanceof Error ? e.message : 'Could not apply that backup.');
+        }
+      };
 
       // Replacing is destructive and unrecoverable, so it is never the default
       // and always states what is about to be lost.
       Alert.alert(
         'Import data',
-        `This backup has ${summary.accounts} accounts, ${summary.transactions} transactions ` +
-          `and ${summary.budgets} budgets.\n\nMerge keeps what you already have and adds ` +
+        `This backup has ${preview.summary.accounts} accounts, ${preview.summary.transactions} transactions ` +
+          `and ${preview.summary.budgets} budgets.\n\nMerge keeps what you already have and adds ` +
           `anything new. Replace deletes your current data first.`,
         [
           { text: 'Cancel', style: 'cancel' },
-          {
-            text: 'Merge',
-            onPress: () => {
-              const merged = mergeData(current, incoming);
-              replaceAllData(merged);
-              haptics.success();
-              const after = summarize(merged);
-              Alert.alert('Imported', `You now have ${after.transactions} transactions.`);
-            },
-          },
-          {
-            text: 'Replace',
-            style: 'destructive',
-            onPress: () => {
-              replaceAllData(incoming);
-              haptics.warning();
-              Alert.alert('Imported', `Replaced with ${summary.transactions} transactions.`);
-            },
-          },
+          { text: 'Merge', onPress: () => void commit('merge') },
+          { text: 'Replace', style: 'destructive', onPress: () => void commit('replace') },
         ]
       );
     } finally {
