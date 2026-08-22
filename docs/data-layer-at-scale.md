@@ -52,6 +52,31 @@ it's slow at real scale. It runs against `node:sqlite` on whatever machine
 invokes it, so treat the absolute milliseconds as relative — before/after a
 change — rather than a promise about a specific phone.
 
+## Testing at scale from inside the app
+
+Settings → **Fill test data** (`app/fill-test-data.tsx`) is the same idea
+exposed to a real device: pick a row count (chips for 100K through 100M, or
+type an exact number) and fire off `db/seed-scale.ts#seedScaleData`, which
+generates and inserts in the same bounded-memory batches as the benchmark
+script and Phase 8's streaming import — never materializing the ledger in
+JS regardless of size. A progress card shows rows inserted, percent,
+rows/sec, and an ETA, updated every ~200ms, with a Cancel button that stops
+after the current batch and keeps whatever's already in (rollups are always
+rebuilt once at the end, cancelled or not, so the app stays correct either
+way).
+
+Unlike `utils/demo-data.ts`'s "Populate sample data" (a small, realistic
+2-year ledger with recurring rent/salary/groceries, meant to make a fresh
+install look lived-in), this generator is deliberately the opposite: every
+field — date, amount, account, category, type — is drawn independently and
+uniformly at random within whatever range is configured, with zero
+recurring structure. That's the point of it: a chart that only ever sees
+clean monthly patterns doesn't tell you much about how it handles real,
+noisy data. `scripts/test-seed-scale.ts` checks the distribution actually
+is uniform (no day-of-month clustering, amounts within range, type mix
+matches the configured weights) as well as the usual balance/`ledger_stat`
+correctness.
+
 ## Results
 
 Two runs, 8 years of data, 3 accounts, 5 categories, seeded

@@ -228,6 +228,15 @@ const BULK_INSERT_PLACEHOLDERS = '(?,?,?,?,?,?,?,?,?,?,?,?,?)';
  * (70 × 13 columns = 910), safe even against SQLite's old default
  * `SQLITE_MAX_VARIABLE_NUMBER` — modern builds allow far more, but there's
  * no reason to depend on that.
+ *
+ * All of it runs inside one `db.withTransaction` — without it, each 70-row
+ * statement auto-commits on its own, and on the web (WASM/OPFS) backend
+ * every commit is a real flush to persistent storage, not just an in-memory
+ * checkpoint; wrapping the whole call in one transaction turns hundreds of
+ * those flushes into one. `withTransaction`'s nesting support (see
+ * `db/client.ts`) means a caller that already has its own transaction open
+ * (e.g. batching several calls together) gets this for free rather than a
+ * second, redundant transaction.
  */
 export async function bulkInsertTransactionRows(
   db: Db,
@@ -237,38 +246,40 @@ export async function bulkInsertTransactionRows(
   let batch: Transaction[] = [];
   let total = 0;
 
-  const flush = async () => {
-    if (batch.length === 0) return;
-    const sql = `INSERT OR IGNORE INTO transactions (${BULK_INSERT_COLUMNS})
-      VALUES ${batch.map(() => BULK_INSERT_PLACEHOLDERS).join(',')}`;
-    const params: (string | number | null)[] = [];
-    for (const tx of batch) {
-      params.push(
-        tx.id,
-        tx.type,
-        tx.amount,
-        tx.accountId,
-        tx.toAccountId ?? null,
-        tx.categoryId ?? null,
-        tx.date,
-        Date.parse(tx.date),
-        monthKeyOf(tx.date),
-        dayKeyOf(tx.date),
-        tx.note ?? null,
-        tx.note ? tx.note.toLowerCase() : null,
-        tx.createdAt
-      );
-    }
-    await db.runAsync(sql, params);
-    total += batch.length;
-    batch = [];
-  };
+  await db.withTransaction(async txn => {
+    const flush = async () => {
+      if (batch.length === 0) return;
+      const sql = `INSERT OR IGNORE INTO transactions (${BULK_INSERT_COLUMNS})
+        VALUES ${batch.map(() => BULK_INSERT_PLACEHOLDERS).join(',')}`;
+      const params: (string | number | null)[] = [];
+      for (const tx of batch) {
+        params.push(
+          tx.id,
+          tx.type,
+          tx.amount,
+          tx.accountId,
+          tx.toAccountId ?? null,
+          tx.categoryId ?? null,
+          tx.date,
+          Date.parse(tx.date),
+          monthKeyOf(tx.date),
+          dayKeyOf(tx.date),
+          tx.note ?? null,
+          tx.note ? tx.note.toLowerCase() : null,
+          tx.createdAt
+        );
+      }
+      await txn.runAsync(sql, params);
+      total += batch.length;
+      batch = [];
+    };
 
-  for await (const tx of rows) {
-    batch.push(tx);
-    if (batch.length >= batchSize) await flush();
-  }
-  await flush();
+    for await (const tx of rows) {
+      batch.push(tx);
+      if (batch.length >= batchSize) await flush();
+    }
+    await flush();
+  });
 
   return total;
 }

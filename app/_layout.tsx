@@ -64,6 +64,7 @@ function RootNavigator() {
         <Stack.Screen name="manage-categories" options={{ presentation: 'modal' }} />
         <Stack.Screen name="quick-presets" options={{ presentation: 'modal' }} />
         <Stack.Screen name="settings" options={{ presentation: 'modal' }} />
+        <Stack.Screen name="fill-test-data" options={{ presentation: 'modal' }} />
         <Stack.Screen name="db-diagnostics" options={{ presentation: 'modal' }} />
       </Stack>
       <PersistErrorBanner />

@@ -249,6 +249,12 @@ export default function SettingsScreen() {
               divider
             />
             <Row
+              icon="speedometer-outline"
+              label="Fill test data (custom size)"
+              onPress={() => router.push('/fill-test-data')}
+              divider
+            />
+            <Row
               icon="trash-outline"
               label="Reset all data"
               tint={Colors.expense}
