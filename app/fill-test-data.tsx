@@ -23,8 +23,14 @@ const COUNT_PRESETS: { label: string; value: number }[] = [
   { label: '100M', value: 100_000_000 },
 ];
 
-/** Calibrated against the desktop benchmark in docs/data-layer-at-scale.md — a rough estimate, not a promise. */
-const ESTIMATED_ROWS_PER_SEC = 15_000;
+/**
+ * A rough pre-run estimate, not a promise — real throughput depends heavily
+ * on the device (a desktop `node:sqlite` benchmark hits 20-25k rows/sec with
+ * no JS↔native bridge to cross; an on-device run crossing that bridge for
+ * every insert statement is meaningfully slower). The live rows/sec shown
+ * once a run is underway is the number to trust.
+ */
+const ESTIMATED_ROWS_PER_SEC = 5_000;
 
 function formatDuration(seconds: number): string {
   if (!Number.isFinite(seconds) || seconds < 0) return '—';

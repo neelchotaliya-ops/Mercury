@@ -27,6 +27,7 @@ import {
 import { bulkInsertTransactionRows } from '@/db/transactions';
 import { rebuildRollups } from '@/db/rebuild';
 import { bumpDataVersion } from '@/db/version';
+import { dropBulkIndexes, ensureBulkIndexes } from '@/db/schema';
 import {
   EXPORT_FORMAT_VERSION,
   ExportSummary,
@@ -237,14 +238,22 @@ export async function applyImportChunks(
     if (batch.length > 0) await bulkInsertTransactionRows(db, batch);
   };
 
-  const meta = await readMercuryExport(chunks, async (raw, metaSoFar) => {
-    await applySmallEntities(metaSoFar);
-    pending.push(parseTransactionItem(raw, accountIds));
-    if (pending.length >= TRANSACTION_BATCH_SIZE) await flush();
-  });
+  // Dropped for the load and rebuilt once at the end — see
+  // db/schema.ts#dropBulkIndexes. A large import pays the same per-row
+  // index-maintenance cost a bulk seed does.
+  await dropBulkIndexes(db);
+  try {
+    const meta = await readMercuryExport(chunks, async (raw, metaSoFar) => {
+      await applySmallEntities(metaSoFar);
+      pending.push(parseTransactionItem(raw, accountIds));
+      if (pending.length >= TRANSACTION_BATCH_SIZE) await flush();
+    });
 
-  await applySmallEntities(meta); // no-op unless the backup had zero transactions
-  await flush();
+    await applySmallEntities(meta); // no-op unless the backup had zero transactions
+    await flush();
+  } finally {
+    await ensureBulkIndexes(db);
+  }
 
   await rebuildRollups(db);
   bumpDataVersion();

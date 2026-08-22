@@ -207,6 +207,67 @@ export async function applyMigrations(db: Db): Promise<number> {
   return MIGRATIONS.length;
 }
 
+/**
+ * The transactions table's secondary indexes — everything except the
+ * implicit `seq` primary key and the `id` UNIQUE index, which a bulk load
+ * cannot drop (`bulkInsertTransactionRows`'s `INSERT OR IGNORE` dedup, and
+ * therefore merge-import and re-running a cancelled fill, both rely on it
+ * staying enforced).
+ *
+ * Maintaining 7 indexes on every inserted row is the dominant cost of a
+ * bulk load — each row write becomes 7 extra B-tree insertions on top of
+ * the table write itself. Dropping these before a large load and rebuilding
+ * them once after (a single sorted bulk build, not millions of
+ * random-access insertions) is the standard SQLite technique for this, and
+ * is what actually moves the needle for "fill 100M rows" — batching
+ * statement size (see `bulkInsertTransactionRows`) helps too, but doesn't
+ * touch this cost, which scales with row count regardless of how the rows
+ * are grouped into statements.
+ */
+const BULK_INDEXES: { name: string; create: string }[] = [
+  { name: 'idx_tx_date', create: 'CREATE INDEX IF NOT EXISTS idx_tx_date ON transactions(date_ms, seq)' },
+  {
+    name: 'idx_tx_type_date',
+    create: 'CREATE INDEX IF NOT EXISTS idx_tx_type_date ON transactions(type, date_ms, seq)',
+  },
+  {
+    name: 'idx_tx_acct_date',
+    create: 'CREATE INDEX IF NOT EXISTS idx_tx_acct_date ON transactions(account_id, date_ms, seq)',
+  },
+  {
+    name: 'idx_tx_to_date',
+    create:
+      'CREATE INDEX IF NOT EXISTS idx_tx_to_date ON transactions(to_account_id, date_ms, seq) WHERE to_account_id IS NOT NULL',
+  },
+  {
+    name: 'idx_tx_cat_date',
+    create:
+      'CREATE INDEX IF NOT EXISTS idx_tx_cat_date ON transactions(category_id, date_ms, seq) WHERE category_id IS NOT NULL',
+  },
+  { name: 'idx_tx_month', create: 'CREATE INDEX IF NOT EXISTS idx_tx_month ON transactions(month_key)' },
+  { name: 'idx_tx_day', create: 'CREATE INDEX IF NOT EXISTS idx_tx_day ON transactions(day_key)' },
+];
+
+/** Drops the transactions table's secondary indexes ahead of a large bulk load. Safe to call when they're already missing. */
+export async function dropBulkIndexes(db: Db): Promise<void> {
+  for (const idx of BULK_INDEXES) {
+    await db.execAsync(`DROP INDEX IF EXISTS ${idx.name}`);
+  }
+}
+
+/**
+ * Rebuilds whichever bulk indexes are missing. Always call this after a
+ * `dropBulkIndexes`-guarded bulk load; it's also called once on every
+ * `open()` (see `db/client.ts`), which is what repairs a database left
+ * mid-drop by a crash or a killed app — cheap when nothing is missing,
+ * since `CREATE INDEX IF NOT EXISTS` is just a catalog check.
+ */
+export async function ensureBulkIndexes(db: Db): Promise<void> {
+  for (const idx of BULK_INDEXES) {
+    await db.execAsync(idx.create);
+  }
+}
+
 export async function getSchemaVersion(db: Db): Promise<number> {
   const row = await db.getFirstAsync<{ user_version: number }>('PRAGMA user_version');
   return row?.user_version ?? 0;

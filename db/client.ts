@@ -4,7 +4,7 @@ import * as SQLite from 'expo-sqlite';
 
 import { STORAGE_KEY as BLOB_KEY } from '@/storage/storage';
 
-import { applyMigrations, getMeta } from './schema';
+import { applyMigrations, ensureBulkIndexes, getMeta } from './schema';
 import { migrateBlobIntoDb, BlobMigrationResult } from './migrate-from-blob';
 import { Db } from './types';
 
@@ -103,6 +103,10 @@ async function open(): Promise<Db> {
 
   const db = adapt(raw);
   await applyMigrations(db);
+  // Repairs a database left with dropped indexes by an app kill mid-bulk-load
+  // (see db/schema.ts#dropBulkIndexes) — a no-op catalog check when nothing
+  // is actually missing.
+  await ensureBulkIndexes(db);
   lastMigrationResult = await runBlobMigration(db);
   return db;
 }

@@ -224,12 +224,7 @@ const BULK_INSERT_PLACEHOLDERS = '(?,?,?,?,?,?,?,?,?,?,?,?,?)';
  * calling this against a table that already has data (not just an empty one
  * being bulk-loaded) is exactly "add anything new, keep what's there."
  *
- * 70 rows per statement keeps every batch under 1,000 bound parameters
- * (70 × 13 columns = 910), safe even against SQLite's old default
- * `SQLITE_MAX_VARIABLE_NUMBER` — modern builds allow far more, but there's
- * no reason to depend on that.
- *
- * All of it runs inside one `db.withTransaction` — without it, each 70-row
+ * All of it runs inside one `db.withTransaction` — without it, each
  * statement auto-commits on its own, and on the web (WASM/OPFS) backend
  * every commit is a real flush to persistent storage, not just an in-memory
  * checkpoint; wrapping the whole call in one transaction turns hundreds of
@@ -237,22 +232,40 @@ const BULK_INSERT_PLACEHOLDERS = '(?,?,?,?,?,?,?,?,?,?,?,?,?)';
  * `db/client.ts`) means a caller that already has its own transaction open
  * (e.g. batching several calls together) gets this for free rather than a
  * second, redundant transaction.
+ *
+ * The batch size itself matters more than that transaction wrap once a
+ * real device is involved: each `runAsync` call crosses the JS↔native
+ * bridge, and that round trip — not statement execution — is what actually
+ * dominates wall time on-device. A conservative 70-row batch (measured:
+ * ~2,000 rows/sec on a real device, vs. the desktop `node:sqlite`
+ * benchmark's 20-25k/sec, where there is no bridge to cross) means paying
+ * that round-trip cost far more often than necessary. 800 rows per
+ * statement (10,400 bound parameters) cuts the number of round trips ~11x
+ * while staying comfortably under modern SQLite's default
+ * `SQLITE_MAX_VARIABLE_NUMBER` (32,766). If a batch is ever rejected with
+ * "too many SQL variables" — an older/differently-configured SQLite build —
+ * it's retried at a quarter the size, and that smaller size sticks for the
+ * rest of the call rather than re-discovering it every batch.
  */
+function isTooManyVariablesError(e: unknown): boolean {
+  return e instanceof Error && /too many sql variables/i.test(e.message);
+}
+
 export async function bulkInsertTransactionRows(
   db: Db,
   rows: Iterable<Transaction> | AsyncIterable<Transaction>,
-  batchSize = 70
+  batchSize = 800
 ): Promise<number> {
   let batch: Transaction[] = [];
   let total = 0;
+  let currentBatchSize = batchSize;
 
   await db.withTransaction(async txn => {
-    const flush = async () => {
-      if (batch.length === 0) return;
+    const insertChunk = async (chunk: Transaction[]) => {
       const sql = `INSERT OR IGNORE INTO transactions (${BULK_INSERT_COLUMNS})
-        VALUES ${batch.map(() => BULK_INSERT_PLACEHOLDERS).join(',')}`;
+        VALUES ${chunk.map(() => BULK_INSERT_PLACEHOLDERS).join(',')}`;
       const params: (string | number | null)[] = [];
-      for (const tx of batch) {
+      for (const tx of chunk) {
         params.push(
           tx.id,
           tx.type,
@@ -270,13 +283,30 @@ export async function bulkInsertTransactionRows(
         );
       }
       await txn.runAsync(sql, params);
-      total += batch.length;
+    };
+
+    const flush = async () => {
+      let remaining = batch;
+      while (remaining.length > 0) {
+        const chunk = remaining.slice(0, currentBatchSize);
+        try {
+          await insertChunk(chunk);
+          total += chunk.length;
+          remaining = remaining.slice(chunk.length);
+        } catch (e) {
+          if (isTooManyVariablesError(e) && currentBatchSize > 10) {
+            currentBatchSize = Math.max(10, Math.floor(currentBatchSize / 4));
+            continue;
+          }
+          throw e;
+        }
+      }
       batch = [];
     };
 
     for await (const tx of rows) {
       batch.push(tx);
-      if (batch.length >= batchSize) await flush();
+      if (batch.length >= currentBatchSize) await flush();
     }
     await flush();
   });

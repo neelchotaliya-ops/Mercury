@@ -24,6 +24,7 @@ import { insertAccount, insertCategory } from './entities';
 import { bulkInsertTransactionRows } from './transactions';
 import { rebuildRollups } from './rebuild';
 import { bumpDataVersion } from './version';
+import { dropBulkIndexes, ensureBulkIndexes } from './schema';
 
 export interface ScaleSeedOptions {
   /** How many transactions to generate. */
@@ -189,45 +190,59 @@ export async function seedScaleData(db: Db, options: ScaleSeedOptions): Promise<
   for (let i = 0; i < accounts.length; i++) await insertAccount(db, accounts[i], i);
   for (let i = 0; i < categories.length; i++) await insertCategory(db, categories[i], i);
 
-  const gen = generateRandomLedger({
-    count: options.count,
-    years: options.years,
-    minAmount: options.minAmount,
-    maxAmount: options.maxAmount,
-    expenseWeight: options.expenseWeight,
-    incomeWeight: options.incomeWeight,
-    transferWeight: options.transferWeight,
-    accountIds: accounts.map(a => a.id),
-    expenseCategoryIds: categories.filter(c => c.kind === 'expense').map(c => c.id),
-    incomeCategoryIds: categories.filter(c => c.kind === 'income').map(c => c.id),
-    seed: Date.now() & 0x7fffffff,
-  });
+  // Dropped for the load and rebuilt once at the end — see
+  // db/schema.ts#dropBulkIndexes for why this is the dominant lever for
+  // bulk-load speed, well beyond statement batching. `ensureBulkIndexes` in
+  // the `finally` guarantees they come back even if generation throws or
+  // the run is cancelled partway through.
+  await dropBulkIndexes(db);
 
   let buffer: Transaction[] = [];
   let inserted = 0;
   let cancelled = false;
 
-  for (const tx of gen) {
-    buffer.push(tx);
-    if (buffer.length >= CHUNK_SIZE) {
+  try {
+    const gen = generateRandomLedger({
+      count: options.count,
+      years: options.years,
+      minAmount: options.minAmount,
+      maxAmount: options.maxAmount,
+      expenseWeight: options.expenseWeight,
+      incomeWeight: options.incomeWeight,
+      transferWeight: options.transferWeight,
+      accountIds: accounts.map(a => a.id),
+      expenseCategoryIds: categories.filter(c => c.kind === 'expense').map(c => c.id),
+      incomeCategoryIds: categories.filter(c => c.kind === 'income').map(c => c.id),
+      seed: Date.now() & 0x7fffffff,
+    });
+
+    for (const tx of gen) {
+      buffer.push(tx);
+      if (buffer.length >= CHUNK_SIZE) {
+        await bulkInsertTransactionRows(db, buffer);
+        inserted += buffer.length;
+        buffer = [];
+        options.onProgress?.(inserted, options.count);
+        if (options.shouldCancel?.()) {
+          cancelled = true;
+          break;
+        }
+        // Yield to the JS event loop between chunks so the UI (progress bar,
+        // a Cancel tap) stays responsive across a run that can take minutes.
+        await new Promise(resolve => setTimeout(resolve, 0));
+      }
+    }
+
+    if (!cancelled && buffer.length > 0) {
       await bulkInsertTransactionRows(db, buffer);
       inserted += buffer.length;
-      buffer = [];
       options.onProgress?.(inserted, options.count);
-      if (options.shouldCancel?.()) {
-        cancelled = true;
-        break;
-      }
-      // Yield to the JS event loop between chunks so the UI (progress bar,
-      // a Cancel tap) stays responsive across a run that can take minutes.
-      await new Promise(resolve => setTimeout(resolve, 0));
     }
-  }
-
-  if (!cancelled && buffer.length > 0) {
-    await bulkInsertTransactionRows(db, buffer);
-    inserted += buffer.length;
-    options.onProgress?.(inserted, options.count);
+  } finally {
+    // Always restored — on success, on cancel, and on a thrown error alike —
+    // so the database never sits with degraded read performance longer than
+    // the load itself takes.
+    await ensureBulkIndexes(db);
   }
 
   // Rebuild regardless of cancellation — whatever got inserted should still
