@@ -7,7 +7,7 @@ import { GradientScreen } from '@/components/ui/gradient-screen';
 import { GlassCard } from '@/components/ui/glass-card';
 import { ModalHeader } from '@/components/ui/modal-header';
 import { Colors } from '@/constants/theme';
-import { getDb, DATABASE_NAME } from '@/db/client';
+import { getDb, getBlobMigrationResult, DATABASE_NAME } from '@/db/client';
 import { getSchemaVersion, LATEST_SCHEMA_VERSION } from '@/db/schema';
 
 interface Check {
@@ -69,6 +69,7 @@ export default function DbDiagnosticsScreen() {
         const wrote = await db.getFirstAsync<{ value: string }>(
           "SELECT value FROM meta WHERE key = 'diagnostics_ran_at'"
         );
+        const migration = await getBlobMigrationResult();
 
         setChecks([
           { label: 'Database', value: DATABASE_NAME, ok: true, info: true },
@@ -91,6 +92,15 @@ export default function DbDiagnosticsScreen() {
           { label: 'Indexes', value: String(indexes.length), ok: indexes.length >= 9 },
           { label: 'ledger_stat rows', value: String(stats.length), ok: stats.length === 4 },
           { label: 'Write round-trip', value: wrote ? 'ok' : 'failed', ok: Boolean(wrote) },
+          {
+            label: 'Blob migration',
+            value: migration
+              ? migration.status +
+                (migration.imported ? ` (${migration.imported.transactions} txns)` : '')
+              : 'unknown',
+            ok: migration?.status !== 'failed',
+            info: migration?.status !== 'failed',
+          },
         ]);
       } catch (e) {
         setError(e instanceof Error ? `${e.name}: ${e.message}` : String(e));

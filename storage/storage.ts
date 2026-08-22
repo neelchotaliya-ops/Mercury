@@ -1,7 +1,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { FinanceState } from '@/types/finance';
 
-const STORAGE_KEY = 'mercury_finance_data_v1';
+export const STORAGE_KEY = 'mercury_finance_data_v1';
 
 export type PersistedFinanceState = Omit<FinanceState, 'isLoaded'>;
 

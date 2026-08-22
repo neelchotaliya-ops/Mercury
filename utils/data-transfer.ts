@@ -65,7 +65,7 @@ const ACCOUNT_TYPES: AccountType[] = ['cash', 'bank', 'card', 'wallet', 'other']
 const TRANSACTION_TYPES: TransactionType[] = ['income', 'expense', 'transfer'];
 const CATEGORY_KINDS: CategoryKind[] = ['income', 'expense'];
 
-function isRecord(value: unknown): value is Record<string, unknown> {
+export function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
@@ -78,7 +78,7 @@ function num(value: unknown): number | undefined {
 }
 
 /** Anything that fails validation is dropped rather than guessed at. */
-function parseAccounts(raw: unknown): Account[] {
+export function parseAccounts(raw: unknown): Account[] {
   if (!Array.isArray(raw)) return [];
   const out: Account[] = [];
   for (const item of raw) {
@@ -101,7 +101,7 @@ function parseAccounts(raw: unknown): Account[] {
   return out;
 }
 
-function parseCategories(raw: unknown): Category[] {
+export function parseCategories(raw: unknown): Category[] {
   if (!Array.isArray(raw)) return [];
   const out: Category[] = [];
   for (const item of raw) {
@@ -123,7 +123,7 @@ function parseCategories(raw: unknown): Category[] {
   return out;
 }
 
-function parseTransactions(raw: unknown, accountIds: Set<string>): Transaction[] {
+export function parseTransactions(raw: unknown, accountIds: Set<string>): Transaction[] {
   if (!Array.isArray(raw)) return [];
   const out: Transaction[] = [];
   for (const item of raw) {
@@ -158,7 +158,7 @@ function parseTransactions(raw: unknown, accountIds: Set<string>): Transaction[]
   return out;
 }
 
-function parseBudgets(raw: unknown): Budget[] {
+export function parseBudgets(raw: unknown): Budget[] {
   if (!Array.isArray(raw)) return [];
   const out: Budget[] = [];
   for (const item of raw) {
@@ -172,7 +172,7 @@ function parseBudgets(raw: unknown): Budget[] {
   return out;
 }
 
-function parsePresets(raw: unknown): QuickPreset[] {
+export function parsePresets(raw: unknown): QuickPreset[] {
   if (!Array.isArray(raw)) return [];
   const out: QuickPreset[] = [];
   for (const item of raw) {
