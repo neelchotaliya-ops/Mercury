@@ -9,7 +9,7 @@ import type { WidgetInfo, WidgetTaskHandlerProps } from 'react-native-android-wi
 
 import { QuickLogWidget } from '@/widgets/quick-log-widget';
 import { QuickActionsWidget } from '@/widgets/quick-actions-widget';
-import { WidgetSummary, getWidgetSummary, logPreset } from '@/utils/widget-data';
+import { WidgetSummary, getWidgetSummary, logPreset } from '@/utils/widget-data-io';
 
 /** Must match the `name` of each widget declared in app.json. */
 const WIDGETS = {
@@ -66,7 +66,7 @@ export async function renderWidgetByInfo(
 /**
  * Runs in a headless JS task whenever Android needs a widget drawn or a widget
  * is tapped. There is no React tree and no FinanceProvider here, so all data
- * goes through `utils/widget-data`, which reads and writes AsyncStorage
+ * goes through `utils/widget-data-io`, which reads and writes SQLite
  * directly — that is what lets a tap record a transaction without launching
  * the app.
  */

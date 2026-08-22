@@ -1,16 +1,15 @@
 /**
- * Data access for the home screen widgets.
+ * Pure data shapes and rules for the home screen widgets.
  *
- * Widget rendering and clicks run in a headless JS task — no React tree, no
- * FinanceProvider — so this module talks to AsyncStorage directly through the
- * same key the app uses. The pure helpers are kept separate from the I/O so
- * the logging rules can be tested without a device.
+ * Deliberately free of any `react-native`/`expo-sqlite` import — the widget
+ * preset tests run under `tsx` in plain Node, which cannot transform the
+ * Flow syntax `react-native`'s own entry point uses, so anything reachable
+ * from here has to stay engine-agnostic. The actual I/O (`getDb()`) lives in
+ * `utils/widget-data-io.ts`, mirroring the split `db/rollup-math.ts` (pure)
+ * vs `db/client.ts` (I/O) already uses for the same reason.
  */
 
 import { FinanceState, QuickPreset, Transaction } from '@/types/finance';
-import { loadFinanceState, saveFinanceState, PersistedFinanceState } from '@/storage/storage';
-import { getAccountBalance, getMonthlyTotals, getTotalBalance } from '@/utils/selectors';
-import { toMonthKey } from '@/utils/date';
 import { generateId } from '@/utils/id';
 
 export interface WidgetAccountBalance {
@@ -31,42 +30,15 @@ export interface WidgetSummary {
   ready: boolean;
 }
 
-/** Selectors expect the in-memory shape, which adds the load flag. */
-function asFinanceState(persisted: PersistedFinanceState): FinanceState {
-  return { ...persisted, quickPresets: persisted.quickPresets ?? [], isLoaded: true };
-}
-
-function buildSummary(state: FinanceState): WidgetSummary {
-  const accounts = state.accounts
-    .filter(account => !account.archived)
-    .map(account => ({
-      id: account.id,
-      name: account.name,
-      color: account.color,
-      balance: getAccountBalance(state, account.id),
-    }))
-    .sort((a, b) => b.balance - a.balance);
-
-  const { expense } = getMonthlyTotals(state, toMonthKey(new Date()));
-
-  return {
-    currency: state.settings.currency,
-    balance: getTotalBalance(state),
-    spentThisMonth: expense,
-    presets: state.quickPresets,
-    accounts,
-    ready: state.settings.hasOnboarded,
-  };
-}
-
 /**
  * Builds the transaction a preset represents, or null when it cannot be saved.
  *
  * Pure so the rules stay testable: a preset is only valid if it has a positive
- * amount and resolves to an account that still exists.
+ * amount and resolves to an account that still exists. Only `accounts` and
+ * `categories` are read — callers pass a minimal `FinanceState`-shaped object.
  */
 export function buildPresetTransaction(
-  state: FinanceState,
+  state: Pick<FinanceState, 'accounts' | 'categories'>,
   preset: QuickPreset,
   now: Date = new Date()
 ): Transaction | null {
@@ -91,48 +63,4 @@ export function buildPresetTransaction(
     note: preset.label,
     createdAt: now.toISOString(),
   };
-}
-
-/** Numbers the widget renders. Safe to call before any data exists. */
-export async function getWidgetSummary(): Promise<WidgetSummary> {
-  const persisted = await loadFinanceState();
-
-  if (!persisted) {
-    return {
-      currency: 'INR',
-      balance: 0,
-      spentThisMonth: 0,
-      presets: [],
-      accounts: [],
-      ready: false,
-    };
-  }
-
-  return buildSummary(asFinanceState(persisted));
-}
-
-export type LogPresetResult =
-  | { ok: true; transaction: Transaction; summary: WidgetSummary }
-  | { ok: false; reason: 'no-data' | 'unknown-preset' | 'invalid' };
-
-/**
- * Writes the transaction for a preset straight to storage. This is what makes
- * the widget's one-tap logging work without ever opening the app.
- */
-export async function logPreset(presetId: string): Promise<LogPresetResult> {
-  const persisted = await loadFinanceState();
-  if (!persisted) return { ok: false, reason: 'no-data' };
-
-  const state = asFinanceState(persisted);
-  const preset = state.quickPresets.find(p => p.id === presetId);
-  if (!preset) return { ok: false, reason: 'unknown-preset' };
-
-  const transaction = buildPresetTransaction(state, preset);
-  if (!transaction) return { ok: false, reason: 'invalid' };
-
-  const next: FinanceState = { ...state, transactions: [...state.transactions, transaction] };
-  const { isLoaded, ...persistable } = next;
-  await saveFinanceState(persistable);
-
-  return { ok: true, transaction, summary: buildSummary(next) };
 }
