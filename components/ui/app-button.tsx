@@ -73,7 +73,9 @@ export const AppButton: React.FC<AppButtonProps> = ({
     overflow: 'hidden',
     opacity: isDisabled ? 0.4 : 1,
     ...(fullWidth ? { width: '100%' } : {}),
-    ...(variant === 'primary' ? Shadows.floating : {}),
+    ...(variant === 'primary'
+      ? { backgroundColor: Colors.ctaBg, ...Shadows.floating }
+      : {}),
     ...(variant === 'glass'
       ? { backgroundColor: Colors.controlBg, borderWidth: 1, borderColor: Colors.glassBorder }
       : {}),

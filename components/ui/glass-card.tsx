@@ -123,6 +123,10 @@ const GlassCardBase: React.FC<GlassCardProps> = ({
     ...containerStyle,
   };
 
+  const hasExplicitHeight =
+    containerStyle.height !== undefined ||
+    containerStyle.flex !== undefined;
+
   return (
     <Animated.View style={[cardContainerStyle, mountStyle]}>
       {Platform.OS !== 'android' && (
@@ -134,15 +138,17 @@ const GlassCardBase: React.FC<GlassCardProps> = ({
         end={{ x: 0.9, y: 1 }}
         style={StyleSheet.absoluteFill}
       />
-      <View style={[styles.content, contentStyle]}>{children}</View>
+      <View style={[styles.content, hasExplicitHeight && styles.contentFlex, contentStyle]}>{children}</View>
     </Animated.View>
   );
 };
 
 const styles = StyleSheet.create({
   content: {
-    flex: 1,
     width: '100%',
+  },
+  contentFlex: {
+    flex: 1,
   },
 });
 

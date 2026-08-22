@@ -182,7 +182,7 @@ export default function FillTestDataScreen() {
 
       {showProgress ? (
         <View style={styles.progressWrap}>
-          <GlassCard strong style={styles.progressCard} elevated>
+          <GlassCard strong style={styles.progressCard} padding={24} elevated>
             <AppText variant="h3" align="center">
               {outcome ? (outcome.cancelled ? 'Cancelled' : 'Done') : 'Filling test data…'}
             </AppText>
@@ -212,9 +212,9 @@ export default function FillTestDataScreen() {
             ) : null}
 
             {!outcome ? (
-              <AppButton title="Cancel" variant="glass" onPress={handleCancel} style={styles.cancelButton} />
+              <AppButton title="Cancel" onPress={handleCancel} style={styles.actionButton} />
             ) : (
-              <AppButton title="Close" onPress={() => router.back()} style={styles.cancelButton} />
+              <AppButton title="Close" onPress={() => router.back()} style={styles.actionButton} />
             )}
           </GlassCard>
         </View>
@@ -370,19 +370,21 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
   },
   progressCard: {
-    gap: 14,
+    gap: 16,
   },
   progressSub: {
-    marginTop: -6,
+    marginTop: -8,
   },
   progressBar: {
-    marginTop: 4,
+    marginTop: 2,
+    marginBottom: 2,
   },
   progressStats: {
     flexDirection: 'row',
     justifyContent: 'space-between',
+    paddingHorizontal: 2,
   },
-  cancelButton: {
-    marginTop: 6,
+  actionButton: {
+    marginTop: 8,
   },
 });

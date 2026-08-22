@@ -251,7 +251,7 @@ export default function SettingsScreen() {
             <Row
               icon="speedometer-outline"
               label="Fill test data (custom size)"
-              onPress={() => router.push('/fill-test-data')}
+              onPress={() => router.push('/fill-test-data' as any)}
               divider
             />
             <Row
