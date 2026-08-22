@@ -15,13 +15,16 @@
     "test:parser": "tsx scripts/test-receipt-parser.ts",
     "test:widget": "tsx scripts/test-widget-presets.ts",
     "test:currency": "tsx scripts/test-currency-formatting.ts",
-    "test": "npm run test:parser && npm run test:widget && npm run test:layout && npm run test:selectors && npm run test:transfer && npm run test:insights && npm run test:currency && npm run test:db:schema && npm run test:db:rollup-math",
+    "test": "npm run test:parser && npm run test:widget && npm run test:layout && npm run test:selectors && npm run test:transfer && npm run test:insights && npm run test:currency && npm run test:db:schema && npm run test:db:rollup-math && npm run test:db:queries && npm run test:db:rollup && npm run test:db:insights",
     "test:layout": "tsx scripts/test-widget-layout.ts",
     "test:selectors": "tsx scripts/test-selectors.ts",
     "test:transfer": "tsx scripts/test-data-transfer.ts",
     "test:insights": "tsx scripts/test-insights.ts",
     "test:db:schema": "tsx scripts/test-db-schema.ts",
-    "test:db:rollup-math": "tsx scripts/test-rollup-math.ts"
+    "test:db:rollup-math": "tsx scripts/test-rollup-math.ts",
+    "test:db:queries": "tsx scripts/test-db-queries.ts",
+    "test:db:rollup": "tsx scripts/test-db-rollup.ts",
+    "test:db:insights": "tsx scripts/test-db-insights.ts"
   },
   "dependencies": {
     "@expo-google-fonts/manrope": "^0.4.2",

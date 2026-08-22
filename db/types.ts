@@ -53,6 +53,7 @@ export interface TransactionRow {
   month_key: string;
   day_key: string;
   note: string | null;
+  note_lc: string | null;
   created_at: string;
 }
 
