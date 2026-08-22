@@ -189,45 +189,45 @@ export default function FillTestDataScreen() {
       {showProgress ? (
         <>
           <View style={styles.progressWrap}>
-          <GlassCard strong style={styles.progressCard} padding={24} elevated>
-            <AppText variant="h3" align="center">
-              {outcome ? (outcome.cancelled ? 'Cancelled' : 'Done') : 'Filling test data…'}
-            </AppText>
-            <AppText variant="caption" align="center" color={Colors.textMuted} style={styles.progressSub}>
-              {outcome
-                ? `${outcome.inserted.toLocaleString()} transaction(s) inserted`
-                : `${(progress?.inserted ?? 0).toLocaleString()} / ${(progress?.total ?? count).toLocaleString()}`}
-            </AppText>
+            <GlassCard strong style={styles.progressCard} padding={24} elevated>
+              <AppText variant="h3" align="center">
+                {outcome ? (outcome.cancelled ? 'Cancelled' : 'Done') : 'Filling test data…'}
+              </AppText>
+              <AppText variant="caption" align="center" color={Colors.textMuted} style={styles.progressSub}>
+                {outcome
+                  ? `${outcome.inserted.toLocaleString()} transaction(s) inserted`
+                  : `${(progress?.inserted ?? 0).toLocaleString()} / ${(progress?.total ?? count).toLocaleString()}`}
+              </AppText>
 
-            <ProgressBar
-              progress={progress ? progress.inserted / Math.max(progress.total, 1) : 0}
-              style={styles.progressBar}
-            />
+              <ProgressBar
+                progress={progress ? progress.inserted / Math.max(progress.total, 1) : 0}
+                style={styles.progressBar}
+              />
 
+              {!outcome ? (
+                <View style={styles.progressStats}>
+                  <AppText variant="micro" color={Colors.textMuted}>
+                    {Math.round((progress ? progress.inserted / Math.max(progress.total, 1) : 0) * 100)}%
+                  </AppText>
+                  <AppText variant="micro" color={Colors.textMuted}>
+                    {rowsPerSec > 0 ? `${Math.round(rowsPerSec).toLocaleString()} rows/sec` : 'starting…'}
+                  </AppText>
+                  <AppText variant="micro" color={Colors.textMuted}>
+                    {remainingSeconds !== undefined ? `ETA ${formatDuration(remainingSeconds)}` : ''}
+                  </AppText>
+                </View>
+              ) : null}
+            </GlassCard>
+          </View>
+
+          <View style={styles.footer}>
             {!outcome ? (
-              <View style={styles.progressStats}>
-                <AppText variant="micro" color={Colors.textMuted}>
-                  {Math.round((progress ? progress.inserted / Math.max(progress.total, 1) : 0) * 100)}%
-                </AppText>
-                <AppText variant="micro" color={Colors.textMuted}>
-                  {rowsPerSec > 0 ? `${Math.round(rowsPerSec).toLocaleString()} rows/sec` : 'starting…'}
-                </AppText>
-                <AppText variant="micro" color={Colors.textMuted}>
-                  {remainingSeconds !== undefined ? `ETA ${formatDuration(remainingSeconds)}` : ''}
-                </AppText>
-              </View>
-            ) : null}
-          </GlassCard>
-        </View>
-
-        <View style={styles.footer}>
-          {!outcome ? (
-            <AppButton title="Cancel" variant="glass" onPress={handleCancel} />
-          ) : (
-            <AppButton title="Done" onPress={() => router.back()} />
-          )}
-        </View>
-      </>
+              <AppButton title="Cancel" size="md" onPress={handleCancel} />
+            ) : (
+              <AppButton title="Done" size="md" onPress={() => router.back()} />
+            )}
+          </View>
+        </>
       ) : (
         <>
           <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
