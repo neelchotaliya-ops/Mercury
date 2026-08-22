@@ -7,6 +7,7 @@ import React, {
   useState,
   useSyncExternalStore,
 } from 'react';
+import { AppState } from 'react-native';
 
 import {
   Account,
@@ -19,7 +20,7 @@ import {
 import { DEFAULT_EXPENSE_CATEGORIES, DEFAULT_INCOME_CATEGORIES, ACCOUNT_TYPE_META } from '@/constants/categories';
 import { generateId } from '@/utils/id';
 import { getDb, getBlobMigrationResult } from '@/db/client';
-import { getDataVersion, subscribeDataVersion } from '@/db/version';
+import { bumpDataVersion, getDataVersion, subscribeDataVersion } from '@/db/version';
 import {
   listAccounts,
   listCategories,
@@ -137,10 +138,25 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
   const [persistError, setPersistError] = useState<string | null>(null);
   const [migrationFailed, setMigrationFailed] = useState(false);
 
-  // Re-render whenever any write anywhere (this provider, a background
-  // migration, eventually the widget's headless task) bumps the shared
-  // counter, and reload the small entity lists from SQLite when it does.
+  // Re-render whenever any write in this JS context (this provider, a
+  // background migration) bumps the shared counter, and reload the small
+  // entity lists from SQLite when it does.
   const dataVersion = useSyncExternalStore(subscribeDataVersion, getDataVersion, getDataVersion);
+
+  // The widget's tap handler runs in Android's headless JS task — a
+  // separate JS context with its own module state, so its own
+  // `bumpDataVersion()` call (in `utils/widget-data-io.ts`) bumps a
+  // *different* counter that this component's `useSyncExternalStore` never
+  // sees. Both contexts share the same SQLite file (see `db/client.ts`'s
+  // `busy_timeout`), so the fix isn't cross-process signaling — it's simply
+  // to re-check on every foreground transition, the same moment a widget
+  // tap could plausibly have just happened.
+  useEffect(() => {
+    const sub = AppState.addEventListener('change', state => {
+      if (state === 'active') bumpDataVersion();
+    });
+    return () => sub.remove();
+  }, []);
 
   useEffect(() => {
     let cancelled = false;

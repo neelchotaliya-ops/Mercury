@@ -15,10 +15,14 @@ a fixed layout.
 ## Why a tap can log without opening the app
 
 Widget rendering and clicks run in a **headless JS task** — real JavaScript, but
-no React tree and no `FinanceProvider`. `utils/widget-data.ts` therefore talks
-to AsyncStorage directly, using the same key the app does. A tap on a Quick Log
-tile emits a custom `QUICK_LOG` action, the handler writes the transaction, and
-the widget redraws from the result. The app is never launched.
+no React tree and no `FinanceProvider`. `utils/widget-data-io.ts` therefore
+opens the same SQLite database the app uses (`db/client.ts#getDb()` — built
+for exactly this, its `busy_timeout` PRAGMA exists so a widget tap and an app
+write, each on their own connection to the same file, serialise instead of
+clobbering each other) and writes through the normal `insertTransaction`
+path. A tap on a Quick Log tile emits a custom `QUICK_LOG` action, the
+handler writes the transaction, and the widget redraws from the result. The
+app is never launched.
 
 The Balance & Actions buttons are different on purpose: each one needs input to
 finish, so they deep-link (`mercury://add-transaction?type=expense`) into the
@@ -26,18 +30,20 @@ prefilled screen rather than pretending to complete silently.
 
 ## Why the app used to show a stale amount after using the widget
 
-The widget writes straight to `AsyncStorage`, bypassing `FinanceContext`
-entirely. `FinanceContext` loads state once into memory on mount and — before
-this fix — never looked at storage again, so returning to the app after a
-widget tap showed the old numbers until a full kill-and-relaunch re-ran that
-initial load.
+The widget's headless task is a **separate JS context** from the app's own —
+different module state, different everything except the SQLite file on disk.
+So the widget's own `bumpDataVersion()` call (the counter every screen's
+query hooks subscribe to — see `db/version.ts`) bumps a *different* in-memory
+counter than the one the app's `FinanceProvider` is watching; the app has no
+way to know a write happened in the other context.
 
-Fixed in `context/finance-context.tsx` with an `AppState` listener: whenever
-the app transitions to `active` (bringing it to the foreground, including a
-plain minimize-and-reopen — not just a cold start), it re-reads storage and
-dispatches a `REFRESH_FROM_STORAGE` action. A `skipNextPersist` ref stops that
-refresh from immediately writing the same bytes back out or triggering a
-redundant widget redraw.
+Rather than trying to signal across that boundary, `FinanceProvider` just
+re-checks on every foreground transition — the same moment a widget tap could
+plausibly have just happened. An `AppState` listener bumps the app's own
+`dataVersion` counter whenever the app becomes `active` (a plain
+minimize-and-reopen counts, not just a cold start), which every mounted query
+hook is already subscribed to, so it's a normal re-fetch through the same
+path any other write triggers — not a special case.
 
 ## Which account is this expense from?
 
@@ -134,7 +140,8 @@ the presets screen — goes through the bridge. Do not import
 
 | File | Role |
 | --- | --- |
-| `utils/widget-data.ts` | Headless reads/writes, including account balances. Pure rules split from the I/O. |
+| `utils/widget-data.ts` | Pure rules — `WidgetSummary`/`WidgetAccountBalance` types, `buildPresetTransaction`. No `react-native` import, so `npm run test:widget` can exercise it directly under `tsx`. |
+| `utils/widget-data-io.ts` | The actual headless reads/writes against SQLite (`getDb()`, account balances, `logPreset`). |
 | `utils/widget-bridge.ts` | Availability probe, task registration, refresh. The only importer of the library. |
 | `widgets/widget-task-handler.tsx` | Handles render and click events; threads widget size through. |
 | `widgets/widget-format.ts` | Pure layout/formatting helpers — size classes, account resolution, truncation. |
