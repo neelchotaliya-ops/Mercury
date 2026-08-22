@@ -4,8 +4,6 @@ const path = require('path');
 
 async function generate() {
   const root = 'd:/AntiGeavity/0/Mercury';
-  const pkg = JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf8'));
-  const version = pkg.version || '1.0.0';
 
   // Find chromium path or launch default
   let browser;
@@ -33,7 +31,7 @@ async function generate() {
 
   const iconBase64 = fs.readFileSync(path.join(root, 'assets/images/icon.png')).toString('base64');
 
-  // 1. Generate 1024x1024 splash-icon.png with centered logo & version number
+  // 1. Generate 1024x1024 splash-icon.png with centered clean logo
   const page = await browser.newPage({ viewport: { width: 1024, height: 1024, deviceScaleFactor: 1 } });
   const html = `
     <!DOCTYPE html>
@@ -46,37 +44,19 @@ async function generate() {
             height: 1024px;
             background: #ffffff;
             display: flex;
-            flex-direction: column;
-            align-items: center;
-            justify-content: center;
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
-          }
-          .logo-container {
-            display: flex;
-            flex-direction: column;
             align-items: center;
             justify-content: center;
           }
           img {
-            width: 500px;
-            height: 500px;
+            width: 440px;
+            height: 440px;
             object-fit: contain;
-            border-radius: 110px;
-          }
-          .version-tag {
-            margin-top: 36px;
-            font-size: 34px;
-            font-weight: 700;
-            color: #9CA3AF;
-            letter-spacing: 1.2px;
+            border-radius: 96px;
           }
         </style>
       </head>
       <body>
-        <div class="logo-container">
-          <img src="data:image/png;base64,${iconBase64}" />
-          <div class="version-tag">v${version}</div>
-        </div>
+        <img src="data:image/png;base64,${iconBase64}" />
       </body>
     </html>
   `;
@@ -84,7 +64,8 @@ async function generate() {
   await page.setContent(html);
   const splashPath = path.join(root, 'assets/images/splash-icon.png');
   await page.screenshot({ path: splashPath, omitBackground: false });
-  console.log(`Generated splash-icon.png with version v${version}`);
+  await page.close();
+  console.log('Generated clean splash-icon.png');
 
   // 2. Generate native Android drawable-*/splashscreen_logo.png
   const densities = [
@@ -98,13 +79,11 @@ async function generate() {
   for (const { dir, size } of densities) {
     const targetDir = path.join(root, 'android/app/src/main/res', dir);
     if (fs.existsSync(targetDir)) {
-      const pageD = await browser.newPage({ viewport: { width: size, height: size, deviceScaleFactor: 1 } });
-      const imgSize = Math.round(size * 0.50);
+      const pageLogo = await browser.newPage({ viewport: { width: size, height: size, deviceScaleFactor: 1 } });
+      const imgSize = Math.round(size * 0.58);
       const rad = Math.round(imgSize * 0.22);
-      const fontSize = Math.max(10, Math.round(size * 0.038));
-      const marginTop = Math.max(4, Math.round(size * 0.035));
 
-      const htmlD = `
+      const htmlLogo = `
         <!DOCTYPE html>
         <html>
           <head>
@@ -115,14 +94,6 @@ async function generate() {
                 height: ${size}px;
                 background: #ffffff;
                 display: flex;
-                flex-direction: column;
-                align-items: center;
-                justify-content: center;
-                font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
-              }
-              .logo-container {
-                display: flex;
-                flex-direction: column;
                 align-items: center;
                 justify-content: center;
               }
@@ -132,33 +103,23 @@ async function generate() {
                 object-fit: contain;
                 border-radius: ${rad}px;
               }
-              .version-tag {
-                margin-top: ${marginTop}px;
-                font-size: ${fontSize}px;
-                font-weight: 700;
-                color: #9CA3AF;
-                letter-spacing: 0.8px;
-              }
             </style>
           </head>
           <body>
-            <div class="logo-container">
-              <img src="data:image/png;base64,${iconBase64}" />
-              <div class="version-tag">v${version}</div>
-            </div>
+            <img src="data:image/png;base64,${iconBase64}" />
           </body>
         </html>
       `;
-      await pageD.setContent(htmlD);
-      const targetFile = path.join(targetDir, 'splashscreen_logo.png');
-      await pageD.screenshot({ path: targetFile, omitBackground: false });
-      await pageD.close();
-      console.log(`Generated ${dir}/splashscreen_logo.png (v${version})`);
+      await pageLogo.setContent(htmlLogo);
+      const logoFile = path.join(targetDir, 'splashscreen_logo.png');
+      await pageLogo.screenshot({ path: logoFile, omitBackground: false });
+      await pageLogo.close();
+      console.log(`Generated ${dir}/splashscreen_logo.png`);
     }
   }
 
   await browser.close();
-  console.log(`All splash icons generated with dynamic version v${version}!`);
+  console.log('All native splash assets generated cleanly!');
 }
 
 generate().catch(console.error);

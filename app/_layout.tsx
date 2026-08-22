@@ -1,4 +1,5 @@
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
+import { View } from 'react-native';
 import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import * as SplashScreen from 'expo-splash-screen';
@@ -24,6 +25,7 @@ import { AppThemeProvider } from '@/context/theme-context';
 import { FinanceProvider, useFinance } from '@/context/finance-context';
 import { useSharedReceipt } from '@/hooks/use-shared-receipt';
 import { PersistErrorBanner } from '@/components/ui/persist-error-banner';
+import { AppSplash } from '@/components/ui/app-splash';
 
 SplashScreen.preventAutoHideAsync();
 
@@ -33,43 +35,49 @@ export const unstable_settings = {
 
 function RootNavigator() {
   const { state } = useFinance();
+  const [splashDone, setSplashDone] = useState(false);
 
   useEffect(() => {
-    if (state.isLoaded) {
-      SplashScreen.hideAsync();
-    }
-  }, [state.isLoaded]);
+    // Hand over from native splash to interactive JS splash immediately
+    SplashScreen.hideAsync().catch(() => {});
+  }, []);
 
   // Only route a shared screenshot once accounts and categories exist to match against.
   useSharedReceipt(state.isLoaded && state.settings.hasOnboarded);
 
-  if (!state.isLoaded) {
-    return null;
-  }
-
   return (
-    <>
-      <Stack
-        screenOptions={{
-          headerShown: false,
-          contentStyle: { backgroundColor: 'transparent' },
-        }}
-      >
-        <Stack.Screen name="index" />
-        <Stack.Screen name="(tabs)" />
-        <Stack.Screen name="accounts" />
-        <Stack.Screen name="add-transaction" options={{ presentation: 'modal' }} />
-        <Stack.Screen name="add-account" options={{ presentation: 'modal' }} />
-        <Stack.Screen name="add-budget" options={{ presentation: 'modal' }} />
-        <Stack.Screen name="manage-categories" options={{ presentation: 'modal' }} />
-        <Stack.Screen name="quick-presets" options={{ presentation: 'modal' }} />
-        <Stack.Screen name="settings" options={{ presentation: 'modal' }} />
-        <Stack.Screen name="fill-test-data" options={{ presentation: 'modal' }} />
-        <Stack.Screen name="db-diagnostics" options={{ presentation: 'modal' }} />
-      </Stack>
+    <View style={{ flex: 1 }}>
+      {state.isLoaded ? (
+        <Stack
+          screenOptions={{
+            headerShown: false,
+            contentStyle: { backgroundColor: 'transparent' },
+          }}
+        >
+          <Stack.Screen name="index" />
+          <Stack.Screen name="(tabs)" />
+          <Stack.Screen name="accounts" />
+          <Stack.Screen name="add-transaction" options={{ presentation: 'modal' }} />
+          <Stack.Screen name="add-account" options={{ presentation: 'modal' }} />
+          <Stack.Screen name="add-budget" options={{ presentation: 'modal' }} />
+          <Stack.Screen name="manage-categories" options={{ presentation: 'modal' }} />
+          <Stack.Screen name="quick-presets" options={{ presentation: 'modal' }} />
+          <Stack.Screen name="settings" options={{ presentation: 'modal' }} />
+          <Stack.Screen name="fill-test-data" options={{ presentation: 'modal' }} />
+          <Stack.Screen name="db-diagnostics" options={{ presentation: 'modal' }} />
+        </Stack>
+      ) : null}
+
+      {!splashDone ? (
+        <AppSplash
+          isReady={state.isLoaded}
+          onAnimationComplete={() => setSplashDone(true)}
+        />
+      ) : null}
+
       <PersistErrorBanner />
       <StatusBar style="dark" />
-    </>
+    </View>
   );
 }
 
