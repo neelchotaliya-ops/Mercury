@@ -62,10 +62,10 @@ export interface OrganicHeroProps {
 }
 
 const SLOT_STYLES: Record<BadgeSlot, ViewStyle> = {
-  topLeft: { top: '21%', left: '4%' },
-  topRight: { top: '10%', right: '4%' },
-  bottomLeft: { bottom: '24%', left: '3%' },
-  bottomRight: { bottom: '15%', right: '5%' },
+  topLeft: { top: '19%', left: '3%' },
+  topRight: { top: '9%', right: '3%' },
+  bottomLeft: { bottom: '22%', left: '2%' },
+  bottomRight: { bottom: '13%', right: '4%' },
 };
 
 const RADIAL_VECTORS: Record<BadgeSlot, { dx: number; dy: number; stretchAngle: number }> = {
@@ -90,15 +90,8 @@ function formatShortCurrency(amount: number, currency: string): string {
 }
 
 /**
- * The blob geometry, resolved once into flat number arrays rather than
- * re-parsed on every touch.
- *
- * `BLOB_PATH` and `BLOB_PATH_ALT` (constants/shapes.ts) are both authored as
- * "M x y" + six "C x y x y x y" segments — the same 38-number shape — so any
- * point in either array lines up with the matching point in the other. That
- * is what makes numeric interpolation between them valid: mismatched control
- * points would produce a path that self-intersects rather than a shape that
- * reads as one blob turning into another.
+ * The blob geometry, resolved once into flat number arrays.
+ * BLOB_PATH and BLOB_PATH_ALT are authored with matching 38-number control structures.
  */
 function extractNumbers(path: string): number[] {
   return (path.match(/-?\d+(?:\.\d+)?/g) ?? []).map(Number);
@@ -110,6 +103,16 @@ const ALT_NUMS = extractNumbers(BLOB_PATH_ALT);
 function pathFromNumbers(n: number[]): string {
   'worklet';
   return `M${n[0]} ${n[1]} C${n[2]} ${n[3]} ${n[4]} ${n[5]} ${n[6]} ${n[7]} C${n[8]} ${n[9]} ${n[10]} ${n[11]} ${n[12]} ${n[13]} C${n[14]} ${n[15]} ${n[16]} ${n[17]} ${n[18]} ${n[19]} C${n[20]} ${n[21]} ${n[22]} ${n[23]} ${n[24]} ${n[25]} C${n[26]} ${n[27]} ${n[28]} ${n[29]} ${n[30]} ${n[31]} C${n[32]} ${n[33]} ${n[34]} ${n[35]} ${n[36]} ${n[37]} Z`;
+}
+
+function interpolateBlob(t: number): string {
+  'worklet';
+  const clampedT = Math.max(0, Math.min(1, t));
+  const n = new Array(38);
+  for (let i = 0; i < 38; i++) {
+    n[i] = RESTING_NUMS[i] + (ALT_NUMS[i] - RESTING_NUMS[i]) * clampedT;
+  }
+  return pathFromNumbers(n);
 }
 
 interface SmallFloatingBubbleProps {
@@ -126,30 +129,50 @@ const SmallFloatingBubble: React.FC<SmallFloatingBubbleProps> = ({
   currency = 'USD',
 }) => {
   const mergeProgress = useSharedValue(0);
+  const floatAnim = useSharedValue(0);
   const pressScale = useSharedValue(1);
   const badgeAnim = useSharedValue(1);
   const reducedMotion = useReducedMotion();
 
+  // Entrance merge animation
   useEffect(() => {
     if (reducedMotion) {
       mergeProgress.value = 1;
       return;
     }
-    // The liquid "budding" read is worth keeping, but as an entrance that
-    // settles — not a loop. Running it forever meant one perpetual animation
-    // per badge with nothing driving it, which is exactly the ambient motion
-    // that made the app feel busy and drop frames.
     mergeProgress.value = 0;
     mergeProgress.value = withDelay(
-      120 + index * 70,
-      withTiming(1, { duration: 620, easing: Ease.out })
+      60 + index * 60,
+      withTiming(1, { duration: 520, easing: Ease.out })
     );
   }, [index, mergeProgress, reducedMotion]);
+
+  // Concept 1: Slower, graceful asynchronous floating drift with individual durations
+  useFocusEffect(
+    useCallback(() => {
+      if (reducedMotion) return;
+      const floatDurations = [3800, 4600, 5200, 4200];
+      const duration = floatDurations[index % floatDurations.length];
+
+      floatAnim.value = withDelay(
+        index * 200,
+        withRepeat(
+          withTiming(1, { duration, easing: Easing.inOut(Easing.sin) }),
+          -1,
+          true
+        )
+      );
+
+      return () => {
+        cancelAnimation(floatAnim);
+      };
+    }, [floatAnim, index, reducedMotion])
+  );
 
   useEffect(() => {
     badgeAnim.value = 0;
     badgeAnim.value = withSequence(
-      withTiming(0, { duration: 100 }),
+      withTiming(0, { duration: 80 }),
       withSpring(1, { damping: 13, stiffness: 190 })
     );
   }, [badge.id, badge.balance, badgeAnim]);
@@ -158,10 +181,16 @@ const SmallFloatingBubble: React.FC<SmallFloatingBubbleProps> = ({
 
   const animatedStyle = useAnimatedStyle(() => {
     const p = mergeProgress.value;
+    const f = floatAnim.value;
 
-    // Radial position: 0 = merged into giant blob edge, 1 = de-merged detached in space
+    // Radial position from merge entrance
     const tx = vector.dx * (p - 0.25);
     const ty = vector.dy * (p - 0.25);
+
+    // Visible buoyant orbit float (±5.5px vertical, ±2.5px horizontal drift)
+    const floatY = interpolate(f, [0, 1], [-5.5, 5.5]);
+    const floatX = interpolate(f, [0, 1], [-2.5, 2.5]) * (index % 2 === 0 ? 1 : -1);
+    const floatPulse = interpolate(f, [0, 0.5, 1], [0.97, 1.03, 0.97]);
 
     // Liquid droplet stretching during de-merging
     const stretch = interpolate(
@@ -181,7 +210,7 @@ const SmallFloatingBubble: React.FC<SmallFloatingBubbleProps> = ({
     const opacity = interpolate(
       p,
       [0, 0.2, 0.8, 1],
-      [0.82, 0.96, 1.0, 0.95],
+      [0.85, 0.96, 1.0, 0.97],
       Extrapolation.CLAMP
     );
 
@@ -194,14 +223,14 @@ const SmallFloatingBubble: React.FC<SmallFloatingBubbleProps> = ({
 
     const popupScale = interpolate(badgeAnim.value, [0, 1], [0.75, 1], Extrapolation.CLAMP);
 
-    const scaleX = stretch * proportionalScale * pressScale.value * popupScale;
-    const scaleY = squish * proportionalScale * pressScale.value * popupScale;
+    const scaleX = stretch * proportionalScale * pressScale.value * popupScale * floatPulse;
+    const scaleY = squish * proportionalScale * pressScale.value * popupScale * floatPulse;
 
     return {
       opacity,
       transform: [
-        { translateX: tx },
-        { translateY: ty },
+        { translateX: tx + floatX },
+        { translateY: ty + floatY },
         { rotate: `${rot}deg` },
         { scaleX },
         { scaleY },
@@ -210,11 +239,11 @@ const SmallFloatingBubble: React.FC<SmallFloatingBubbleProps> = ({
   });
 
   const handlePressIn = () => {
-    pressScale.value = withSpring(0.88, { damping: 12, stiffness: 200 });
+    pressScale.value = withSpring(0.88, { damping: 14, stiffness: 220 });
   };
 
   const handlePressOut = () => {
-    pressScale.value = withSpring(1, { damping: 12, stiffness: 200 });
+    pressScale.value = withSpring(1, { damping: 14, stiffness: 220 });
   };
 
   const displayText =
@@ -238,17 +267,25 @@ const SmallFloatingBubble: React.FC<SmallFloatingBubbleProps> = ({
       <Svg width={bubbleSize} height={bubbleSize} viewBox={`0 0 ${BLOB_VIEWBOX} ${BLOB_VIEWBOX}`}>
         <Defs>
           <SvgLinearGradient id={`miniBlobGrad-${index}`} x1="10%" y1="0%" x2="90%" y2="100%">
-            <Stop offset="0%" stopColor="#FFFFFF" stopOpacity="0.96" />
-            <Stop offset="100%" stopColor="#F5E8F0" stopOpacity="0.88" />
+            <Stop offset="0%" stopColor="#FFFFFF" stopOpacity="0.99" />
+            <Stop offset="60%" stopColor="#FAF2F8" stopOpacity="0.94" />
+            <Stop offset="100%" stopColor="#F2E2EF" stopOpacity="0.88" />
           </SvgLinearGradient>
+          <SvgRadialGradient id={`miniBlobGlow-${index}`} cx="35%" cy="30%" rx="60%" ry="60%">
+            <Stop offset="0%" stopColor="#FFFFFF" stopOpacity="0.8" />
+            <Stop offset="60%" stopColor="#FFFFFF" stopOpacity="0.12" />
+            <Stop offset="100%" stopColor="#8B5CF6" stopOpacity="0.06" />
+          </SvgRadialGradient>
         </Defs>
 
         <Path
           d={index % 2 === 0 ? BLOB_PATH : BLOB_PATH_ALT}
           fill={`url(#miniBlobGrad-${index})`}
-          stroke="rgba(255,255,255,0.95)"
-          strokeWidth={2}
+          stroke="rgba(255,255,255,0.98)"
+          strokeWidth={1.8}
         />
+        {/* Soft specular glossy bubble glint */}
+        <Ellipse cx={78} cy={64} rx={32} ry={20} fill={`url(#miniBlobGlow-${index})`} />
       </Svg>
 
       <View style={styles.miniBlobContent}>
@@ -273,19 +310,18 @@ export const OrganicHero: React.FC<OrganicHeroProps> = ({
   onPressMain,
   children,
 }) => {
+  // Continuous shape morphing between hand-crafted resting and alternate lobes
+  const morph = useSharedValue(0);
+  // Buoyancy float and liquid volume breathing
   const breathe = useSharedValue(0);
-  // A second, independent loop for the aura layer behind the main blob — see
-  // the styles/render comment below for why two cheap loops read as one
-  // continuously morphing shape.
+  // Aura counter-rotation and glow expansion
   const aura = useSharedValue(0);
+  // Transition pop when value/label changes
   const swapAnim = useSharedValue(1);
   const reducedMotion = useReducedMotion();
 
-  // 0 = resting shape, 1 = fully turned into the alternate lobe. Only ever
-  // touched by a press, and only for the ~0.5s the sequence below takes —
-  // this is the one place a path's `d` gets recomputed per frame, and it is
-  // bounded to a direct response to touch rather than running forever.
-  const morph = useSharedValue(0);
+  // Reactive touch squash and press response
+  const pressMorph = useSharedValue(0);
   const squashX = useSharedValue(1);
   const squashY = useSharedValue(1);
   const ripple = useSharedValue(0);
@@ -294,92 +330,101 @@ export const OrganicHero: React.FC<OrganicHeroProps> = ({
   useEffect(() => {
     swapAnim.value = 0;
     swapAnim.value = withSequence(
-      withTiming(0, { duration: 120, easing: Easing.out(Easing.quad) }),
+      withTiming(0, { duration: 110, easing: Easing.out(Easing.quad) }),
       withSpring(1, { damping: 14, stiffness: 180, mass: 0.8 })
     );
   }, [value, label, swapAnim]);
 
-  // Start the ambient loops when the Home tab is visible; cancel them when
-  // the user navigates away. Previously two infinite loops ran for the entire
-  // app lifetime (all four tabs stay mounted after first visit).
+  // Concept 1: Liquid Orbit & Buoyancy animation lifecycle (tuned slow & graceful)
   useFocusEffect(
     useCallback(() => {
       if (reducedMotion) return;
+
+      // 1. Slow, graceful liquid shape morphing between resting and alt lobes (7.2s loop)
+      morph.value = withRepeat(
+        withTiming(1, { duration: 7200, easing: Easing.inOut(Easing.sin) }),
+        -1,
+        true
+      );
+
+      // 2. Visible buoyant floating and liquid volume breathing (5.0s loop)
       breathe.value = withRepeat(
-        withTiming(1, { duration: 5200, easing: Easing.inOut(Easing.sin) }),
+        withTiming(1, { duration: 5000, easing: Easing.inOut(Easing.sin) }),
         -1,
         true
       );
+
+      // 3. Aura counter-rotation and glow breathing (8.8s loop)
       aura.value = withRepeat(
-        withTiming(1, { duration: 8600, easing: Easing.inOut(Easing.sin) }),
+        withTiming(1, { duration: 8800, easing: Easing.inOut(Easing.sin) }),
         -1,
         true
       );
+
       return () => {
+        cancelAnimation(morph);
         cancelAnimation(breathe);
         cancelAnimation(aura);
       };
-    }, [breathe, aura, reducedMotion])
+    }, [morph, breathe, aura, reducedMotion])
   );
 
   const blobContainerStyle = useAnimatedStyle(() => {
     const swapScale = interpolate(
       swapAnim.value,
       [0, 0.4, 1],
-      [0.86, 0.94, 1.0],
+      [0.88, 0.95, 1.0],
       Extrapolation.CLAMP
     );
 
-    // All four of the old ambient loops, derived from one value, plus the
-    // press-triggered squash on top. The slight counter-phase between scaleX
-    // and scaleY is what reads as "breathing" rather than a plain pulse.
     const b = breathe.value;
-    const floatY = interpolate(b, [0, 1], [-5, 4]);
-    const tiltDeg = interpolate(b, [0, 1], [-1.2, 1.2]);
-    const stretchX = interpolate(b, [0, 1], [0.978, 1.022]);
-    const stretchY = interpolate(b, [0, 1], [1.022, 0.978]);
+    // Visible buoyant vertical float (±7.5px)
+    const floatY = interpolate(b, [0, 1], [-7.5, 7.5]);
+    // Liquid volume squish and stretch (0.968 to 1.032)
+    const stretchX = interpolate(b, [0, 0.5, 1], [0.968, 1.032, 0.968]);
+    const stretchY = interpolate(b, [0, 0.5, 1], [1.032, 0.968, 1.032]);
+    // Gentle tilt wobble (±1.5deg)
+    const tilt = interpolate(b, [0, 1], [-1.5, 1.5]);
 
     return {
       transform: [
         { translateY: floatY },
-        { rotate: `${tiltDeg}deg` },
+        { rotate: `${tilt}deg` },
         { scaleX: stretchX * swapScale * squashX.value },
         { scaleY: stretchY * swapScale * squashY.value },
       ],
     };
   });
 
-  /** The aura: a second lobe, faint, rotating slowly behind the main blob. */
+  /** Aura: soft translucent halo behind main bubble that gently rotates and breathes */
   const auraStyle = useAnimatedStyle(() => {
     const a = aura.value;
     const rotateDeg = interpolate(a, [0, 1], [-9, 11]);
-    const scale = interpolate(a, [0, 1], [1.05, 0.97]);
+    const scale = interpolate(a, [0, 1], [1.08, 0.96]);
     return {
       transform: [{ rotate: `${rotateDeg}deg` }, { scale }],
     };
   });
 
+  /** Main blob path: smoothly morphs between resting and alternate lobes */
   const mainPathProps = useAnimatedProps(() => {
     'worklet';
-    const t = morph.value;
-    if (t === 0) return { d: BLOB_PATH };
-    const n: number[] = new Array(38);
-    for (let i = 0; i < 38; i++) {
-      n[i] = RESTING_NUMS[i] + (ALT_NUMS[i] - RESTING_NUMS[i]) * t;
-    }
-    return { d: pathFromNumbers(n) };
+    const t = Math.min(1, morph.value + pressMorph.value * 0.4);
+    return {
+      d: interpolateBlob(t),
+    };
   });
 
   const rippleProps = useAnimatedProps(() => ({
-    opacity: interpolate(ripple.value, [0, 0.15, 1], [0, 0.35, 0], Extrapolation.CLAMP),
-    rx: interpolate(ripple.value, [0, 1], [90, 118]),
-    ry: interpolate(ripple.value, [0, 1], [84, 110]),
+    opacity: interpolate(ripple.value, [0, 0.15, 1], [0, 0.38, 0], Extrapolation.CLAMP),
+    rx: interpolate(ripple.value, [0, 1], [88, 122]),
+    ry: interpolate(ripple.value, [0, 1], [82, 114]),
   }));
 
   const contentAnimStyle = useAnimatedStyle(() => {
     const opacity = interpolate(swapAnim.value, [0, 0.3, 1], [0, 0.4, 1], Extrapolation.CLAMP);
-    const translateY = interpolate(swapAnim.value, [0, 1], [8, 0], Extrapolation.CLAMP);
-    const scale = interpolate(swapAnim.value, [0, 1], [0.92, 1], Extrapolation.CLAMP);
+    const translateY = interpolate(swapAnim.value, [0, 1], [6, 0], Extrapolation.CLAMP);
+    const scale = interpolate(swapAnim.value, [0, 1], [0.94, 1], Extrapolation.CLAMP);
 
     return {
       opacity,
@@ -393,25 +438,22 @@ export const OrganicHero: React.FC<OrganicHeroProps> = ({
   );
 
   /**
-   * The "poke a bubble" reaction: an asymmetric squash-and-overshoot on the
-   * whole blob, a real (bounded) shape change via the path morph above, a
-   * ripple ring, and a light haptic — everything a tap on the balance figure
-   * gets, and none of it runs before or after the ~0.6s it takes.
+   * Refined, tactile tap response: springy compression, soft ripple, haptic impact.
    */
   const handlePressIn = () => {
     if (reducedMotion) return;
     haptics.selection();
-    squashX.value = withSpring(1.09, Spring.pop);
-    squashY.value = withSpring(0.88, Spring.pop);
-    morph.value = withTiming(1, { duration: 220, easing: Ease.out });
+    squashX.value = withSpring(1.10, Spring.pop);
+    squashY.value = withSpring(0.90, Spring.pop);
+    pressMorph.value = withTiming(1, { duration: 180, easing: Ease.out });
     ripple.value = 0;
-    ripple.value = withTiming(1, { duration: 560, easing: Ease.out });
+    ripple.value = withTiming(1, { duration: 520, easing: Ease.out });
   };
 
   const handlePressOut = () => {
     squashX.value = withSpring(1, Spring.settle);
     squashY.value = withSpring(1, Spring.settle);
-    morph.value = withTiming(0, { duration: 360, easing: Ease.emphasis });
+    pressMorph.value = withTiming(0, { duration: 320, easing: Ease.emphasis });
   };
 
   return (
@@ -428,15 +470,14 @@ export const OrganicHero: React.FC<OrganicHeroProps> = ({
           blobContainerStyle,
         ]}
       >
-        {/* The aura is its own Svg wrapped in an Animated.View that carries the
-            transform — Svg only accepts SVG children, so the rotate/scale
-            loop cannot live on a View nested inside it. */}
+        {/* Aura layer: soft translucent silhouette behind main bubble */}
         <Animated.View style={[styles.auraLayer, { width: size * 1.16, height: size * 1.16 }, auraStyle]}>
           <Svg width="100%" height="100%" viewBox={`0 0 ${BLOB_VIEWBOX} ${BLOB_VIEWBOX}`}>
             <Defs>
               <SvgLinearGradient id="heroAuraFill" x1="10%" y1="0%" x2="90%" y2="100%">
-                <Stop offset="0%" stopColor="#F5D9EC" stopOpacity="0.55" />
-                <Stop offset="100%" stopColor="#DCE4FB" stopOpacity="0.4" />
+                <Stop offset="0%" stopColor="#F5D9EC" stopOpacity="0.6" />
+                <Stop offset="50%" stopColor="#E9D5FF" stopOpacity="0.45" />
+                <Stop offset="100%" stopColor="#DCE4FB" stopOpacity="0.35" />
               </SvgLinearGradient>
             </Defs>
             <Path d={BLOB_PATH_ALT} fill="url(#heroAuraFill)" />
@@ -445,30 +486,37 @@ export const OrganicHero: React.FC<OrganicHeroProps> = ({
 
         <Svg width={size} height={size} viewBox={`0 0 ${BLOB_VIEWBOX} ${BLOB_VIEWBOX}`}>
           <Defs>
-            <SvgLinearGradient id="heroBlobFill" x1="10%" y1="0%" x2="90%" y2="100%">
-              <Stop offset="0%" stopColor="#FFFFFF" stopOpacity="0.98" />
-              <Stop offset="100%" stopColor="#FCEEF5" stopOpacity="0.84" />
+            <SvgLinearGradient id="heroBlobFill" x1="15%" y1="0%" x2="85%" y2="100%">
+              <Stop offset="0%" stopColor="#FFFFFF" stopOpacity="0.99" />
+              <Stop offset="45%" stopColor="#FCF4F9" stopOpacity="0.94" />
+              <Stop offset="100%" stopColor="#F5E4F0" stopOpacity="0.86" />
             </SvgLinearGradient>
+
             <SvgRadialGradient id="heroBlobGlow" cx="50%" cy="54%" rx="50%" ry="50%">
-              <Stop offset="62%" stopColor="#6D28D9" stopOpacity="0.14" />
+              <Stop offset="58%" stopColor="#6D28D9" stopOpacity="0.14" />
+              <Stop offset="85%" stopColor="#EC4899" stopOpacity="0.06" />
               <Stop offset="100%" stopColor="#6D28D9" stopOpacity="0" />
             </SvgRadialGradient>
           </Defs>
 
+          {/* Ambient soft glow */}
           <Ellipse cx={100} cy={108} rx={99} ry={92} fill="url(#heroBlobGlow)" />
-          {/* Expanding ring on press — a bubble's "pop" response. */}
+
+          {/* Expanding bubble pop ripple on press */}
           <AnimatedEllipse
             cx={100}
             cy={108}
             animatedProps={rippleProps}
             fill="none"
             stroke={Colors.primary}
-            strokeWidth={1.4}
+            strokeWidth={1.5}
           />
+
+          {/* Main smoothly morphing organic blob */}
           <AnimatedPath
             animatedProps={mainPathProps}
             fill="url(#heroBlobFill)"
-            stroke="rgba(255,255,255,0.95)"
+            stroke="rgba(255,255,255,0.96)"
             strokeWidth={1.6}
           />
         </Svg>
@@ -503,6 +551,7 @@ export const OrganicHero: React.FC<OrganicHeroProps> = ({
         </Animated.View>
       </AnimatedPressable>
 
+      {/* Orbiting satellite bubbles */}
       {badges.slice(0, 4).map((badge, index) => {
         const absBal = badge.balance !== undefined ? Math.abs(badge.balance) : 0;
         const ratio = maxAbsBalance > 0 ? absBal / maxAbsBalance : 0.5;
