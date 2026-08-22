@@ -245,7 +245,14 @@ export async function applyImportChunks(
     if (pending.length === 0) return;
     const batch = pending.filter((t): t is NonNullable<typeof t> => t !== null);
     pending = [];
-    if (batch.length > 0) await bulkInsertTransactionRows(db, batch);
+    if (batch.length > 0) {
+      await bulkInsertTransactionRows(db, batch);
+      // Bound WAL growth on a large import the same way db/seed-scale.ts
+      // does for the Fill-test-data path — see that file's comment for why
+      // an un-checkpointed WAL is a plausible cause of a run that starts
+      // fast and gets catastrophically slower well before it finishes.
+      await db.execAsync('PRAGMA wal_checkpoint(PASSIVE)').catch(() => {});
+    }
   };
 
   // Dropped for the load and rebuilt once at the end — see

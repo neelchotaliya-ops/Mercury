@@ -8,7 +8,14 @@ export default function TabLayout() {
   return (
     <Tabs
       tabBar={props => <FloatingTabBar {...props} />}
-      screenOptions={{ headerShown: false, sceneStyle: { backgroundColor: 'transparent' } }}
+      screenOptions={{
+        headerShown: false,
+        sceneStyle: { backgroundColor: 'transparent' },
+        // Default is 'none' — tabs would otherwise swap with zero animation,
+        // which is what made switching tabs read as "sudden" next to the
+        // Stack's animated push/modal transitions everywhere else in the app.
+        animation: 'shift',
+      }}
     >
       <Tabs.Screen
         name="index"

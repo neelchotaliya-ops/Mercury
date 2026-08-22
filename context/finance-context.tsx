@@ -19,7 +19,7 @@ import {
 } from '@/types/finance';
 import { DEFAULT_EXPENSE_CATEGORIES, DEFAULT_INCOME_CATEGORIES, ACCOUNT_TYPE_META } from '@/constants/categories';
 import { generateId } from '@/utils/id';
-import { getDb, getBlobMigrationResult } from '@/db/client';
+import { getDb, getBlobMigrationResult, checkpoint } from '@/db/client';
 import { bumpDataVersion, getDataVersion, subscribeDataVersion } from '@/db/version';
 import {
   listAccounts,
@@ -154,7 +154,16 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
   // tap could plausibly have just happened.
   useEffect(() => {
     const sub = AppState.addEventListener('change', state => {
-      if (state === 'active') bumpDataVersion();
+      if (state === 'active') {
+        bumpDataVersion();
+      } else if (state === 'background') {
+        // Flushes the WAL into the main database file before Android's Auto
+        // Backup (or the OS) can snapshot it — see db/client.ts#checkpoint
+        // for why a restore from a copy taken mid-WAL loses whatever writes
+        // hadn't been checkpointed yet. Best-effort: a failure here shouldn't
+        // block backgrounding.
+        void checkpoint().catch(() => {});
+      }
     });
     return () => sub.remove();
   }, []);

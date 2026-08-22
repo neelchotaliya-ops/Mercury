@@ -7,8 +7,9 @@
 import { applyMigrations } from '../db/schema';
 import { Db } from '../db/types';
 import { Account, Category } from '@/types/finance';
-import { insertTransaction } from '../db/transactions';
+import { insertTransaction, bulkInsertTransactionRows } from '../db/transactions';
 import { insertAccount, insertCategory } from '../db/entities';
+import { rebuildRollups } from '../db/rebuild';
 import * as dbInsights from '../db/insights';
 import * as oracle from '@/utils/insights';
 import { openTestDb } from './support/node-db';
@@ -249,8 +250,59 @@ CASES.push({
   },
 });
 
-runCases(CASES, 'insights equivalence cases');
+CASES.push({
+  name: 'largestAmount and topNotes are bounded to the most recent UNAGGREGATED_SCAN_CAP matches, not exhaustive',
+  run: async () => {
+    const db = openTestDb();
+    await applyMigrations(db);
+    await insertAccount(db, { id: 'a1', name: 'a1', type: 'bank', icon: 'business', color: '#000', initialBalance: 0, createdAt: new Date(0).toISOString() }, 0);
+    await insertCategory(db, { id: 'c1', name: 'c1', icon: 'pricetag', color: '#000', kind: 'expense' }, 0);
 
+    // One row above the cap so the bound actually has to engage. The largest
+    // amount and a distinctive note both sit on the single OLDEST row (by
+    // date_ms), i.e. outside the most-recent-N window the bound scans —
+    // exercising the "excluded" side, not just "included and correct".
+    const total = dbInsights.UNAGGREGATED_SCAN_CAP + 5000;
+    const baseMs = new Date('2015-01-01T00:00:00.000Z').getTime();
+    const rows = [];
+    for (let i = 0; i < total; i++) {
+      const isOutlier = i === 0;
+      const dateIso = new Date(baseMs + i * 60_000).toISOString();
+      rows.push({
+        id: `s${i}`,
+        type: 'expense' as const,
+        amount: isOutlier ? 999_999 : 10 + (i % 50),
+        accountId: 'a1',
+        categoryId: 'c1',
+        date: dateIso,
+        createdAt: dateIso,
+        note: isOutlier ? 'AncientOutlierMerchant' : `Merchant${i % 30}`,
+      });
+    }
+    await bulkInsertTransactionRows(db, rows);
+    await rebuildRollups(db);
+
+    const now = new Date(baseMs + total * 60_000 + 86_400_000);
+    const filter: dbInsights.InsightFilter = { range: 'all', accountIds: [], categoryIds: [], kind: 'expense' };
+
+    const totals = await dbInsights.computeTotals(db, filter, now, true);
+    if (totals.count !== total) return `count: got ${totals.count}, expected ${total}`;
+    if (totals.largestAmount === 999_999) {
+      return 'largestAmount picked up the outlier that sits outside the most-recent-N window — bound is not engaging';
+    }
+    if (totals.largestAmount === undefined || totals.largestAmount < 10 || totals.largestAmount > 59) {
+      return `largestAmount: got ${totals.largestAmount}, expected a value from the recent-window pool (10-59)`;
+    }
+
+    const topNotes = await dbInsights.computeTopNotes(db, filter, 50, now);
+    if (topNotes.some(n => n.label === 'AncientOutlierMerchant')) {
+      return 'computeTopNotes surfaced the outlier merchant that sits outside the most-recent-N window — bound is not engaging';
+    }
+    if (topNotes.length === 0) return 'computeTopNotes returned nothing for a ledger full of recent matches';
+
+    return null;
+  },
+});
 
 CASES.push({
   name: 'budget progress matches a plain JS reduce for the month',
@@ -280,3 +332,5 @@ CASES.push({
     );
   },
 });
+
+runCases(CASES, 'insights equivalence cases');

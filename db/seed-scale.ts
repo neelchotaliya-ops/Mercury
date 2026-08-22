@@ -228,6 +228,18 @@ export async function seedScaleData(db: Db, options: ScaleSeedOptions): Promise<
         inserted += buffer.length;
         buffer = [];
         options.onProgress?.(inserted, options.count);
+        // Bound WAL growth on a run that can touch 100M rows. WAL mode
+        // normally auto-checkpoints around ~1000 pages, but that can be
+        // starved by any reader elsewhere holding the database open (another
+        // mounted screen's query, the widget's headless task) — when that
+        // happens the WAL grows without bound for the rest of the run, and
+        // every subsequent write has to scan further into it to find the
+        // right page version, which reads as exactly the kind of "fast at
+        // first, catastrophically slower later" cliff this is defending
+        // against. PASSIVE never blocks a writer and just no-ops if it can't
+        // get the read lock it needs, so calling it every chunk is safe
+        // whether or not anything is actually blocking it.
+        await db.execAsync('PRAGMA wal_checkpoint(PASSIVE)').catch(() => {});
         if (options.shouldCancel?.()) {
           cancelled = true;
           break;

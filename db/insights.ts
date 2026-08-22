@@ -44,6 +44,18 @@ export interface DateRange {
   end: Date;
 }
 
+/**
+ * The cap used by `computeTotals`'s `largestAmount` and `computeTopNotes` —
+ * the two Insights queries that have no rollup to answer from and fall back
+ * to a raw scan over `transactions`. Both bound that scan to the most
+ * recent N matches (an index-ordered read on `date_ms`, not a full sort)
+ * rather than every row the filter could match, so their cost stays
+ * constant instead of growing with the ledger. See each function's comment
+ * for why this trade — "among the most recent N", not exhaustive — is the
+ * right one for what these two answer.
+ */
+export const UNAGGREGATED_SCAN_CAP = 20_000;
+
 export function resolveRange(preset: DateRangePreset, now: Date = new Date()): DateRange {
   const end = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999);
   switch (preset) {
@@ -125,11 +137,11 @@ export interface InsightTotals {
   dailyAverage: number;
   activeDays: number;
   /**
-   * Undefined rather than fetched by default — finding the single largest row
-   * needs a real scan (there is no index on `amount`), bounded by the
-   * `(type, date_ms)` range but still O(matched rows). Populated only when
-   * `withLargest` is passed, so the common case (every other Insights read)
-   * never pays for it.
+   * Undefined rather than fetched by default — finding the largest row needs
+   * a real scan (there is no index on `amount`), capped to the most recent
+   * `UNAGGREGATED_SCAN_CAP` matches so it costs the same regardless of
+   * ledger size. Populated only when `withLargest` is passed, so the common
+   * case (every other Insights read) never pays for it.
    */
   largestAmount?: number;
 }
@@ -175,11 +187,25 @@ export async function computeTotals(
       clauses.push(`category_id IN (${filter.categoryIds.map(() => '?').join(',')})`);
       params.push(...filter.categoryIds);
     }
+    // `ORDER BY amount DESC LIMIT 1` alone has no index to lean on for the
+    // sort — SQLite narrows by the WHERE clause using idx_tx_type_date (or
+    // idx_tx_acct_date/idx_tx_cat_date) but then has to sort every matched
+    // row by amount, which is O(matched rows): fine for a filtered month,
+    // a real scan for 'all time' over a multi-million-row ledger. Bounding
+    // the candidate set to the most recent UNAGGREGATED_SCAN_CAP matches (an
+    // index-ordered scan on date_ms, no sort needed to apply that LIMIT)
+    // before taking MAX caps the cost at a constant regardless of ledger
+    // size — this is "largest among the most recent N matches" rather than
+    // an exhaustive all-time max, which is the same trade `computeTopNotes`
+    // below makes for the same reason.
     const row = await db.getFirstAsync<{ amount: number }>(
-      `SELECT amount FROM transactions WHERE ${clauses.join(' AND ')} ORDER BY amount DESC LIMIT 1`,
+      `SELECT MAX(amount) AS amount FROM (
+         SELECT amount FROM transactions WHERE ${clauses.join(' AND ')}
+         ORDER BY date_ms DESC LIMIT ${UNAGGREGATED_SCAN_CAP}
+       )`,
       params
     );
-    largestAmount = row?.amount;
+    largestAmount = row?.amount ?? undefined;
   }
 
   return {
@@ -451,9 +477,18 @@ export async function computeTopNotes(
     params.push(filter.minAmount);
   }
 
+  // `GROUP BY note` over the raw WHERE match is O(matched rows) — free-text
+  // grouping has no rollup to answer from, same as `computeTotals`'s
+  // `largestAmount` above. Bounding the pre-group candidate set to the most
+  // recent UNAGGREGATED_SCAN_CAP matches (an index-ordered read on
+  // `date_ms`) keeps this "top merchants among your most recent activity"
+  // rather than an exhaustive all-time tally, and caps the cost at a
+  // constant regardless of ledger size.
   const rows = await db.getAllAsync<{ note: string; amount: number; n: number }>(
-    `SELECT note, SUM(amount) AS amount, COUNT(*) AS n FROM transactions
-     WHERE ${clauses.join(' AND ')} GROUP BY note`,
+    `SELECT note, SUM(amount) AS amount, COUNT(*) AS n FROM (
+       SELECT note, amount FROM transactions WHERE ${clauses.join(' AND ')}
+       ORDER BY date_ms DESC LIMIT ${UNAGGREGATED_SCAN_CAP}
+     ) GROUP BY note`,
     params
   );
 
