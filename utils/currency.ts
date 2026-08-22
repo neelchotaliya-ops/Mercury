@@ -11,9 +11,14 @@ export const CURRENCIES: CurrencyOption[] = [
   { code: 'USD', symbol: '$', label: 'US Dollar' },
   { code: 'EUR', symbol: '€', label: 'Euro' },
   { code: 'GBP', symbol: '£', label: 'British Pound' },
-  { code: 'JPY', symbol: '¥', label: 'Japanese Yen' },
-  { code: 'AUD', symbol: 'A$', label: 'Australian Dollar' },
+  { code: 'AED', symbol: 'د.إ', label: 'UAE Dirham' },
   { code: 'CAD', symbol: 'C$', label: 'Canadian Dollar' },
+  { code: 'AUD', symbol: 'A$', label: 'Australian Dollar' },
+  { code: 'SGD', symbol: 'S$', label: 'Singapore Dollar' },
+  { code: 'JPY', symbol: '¥', label: 'Japanese Yen' },
+  { code: 'CHF', symbol: 'CHF', label: 'Swiss Franc' },
+  { code: 'NZD', symbol: 'NZ$', label: 'New Zealand Dollar' },
+  { code: 'SAR', symbol: '﷼', label: 'Saudi Riyal' },
   { code: 'CNY', symbol: '¥', label: 'Chinese Yuan' },
 ];
 
@@ -50,6 +55,40 @@ export function formatInternationalNumber(amount: number): string {
   const intPart = parts[0].replace(/\B(?=(\d{3})+(?!\d))/g, ',');
   const decPart = parts[1];
   return `${intPart}.${decPart}`;
+}
+
+/**
+ * Formats a raw user-typed number string (e.g. from keypad or text input) with either
+ * Indian (1,00,00,000) or International (100,000,000) digit grouping, preserving
+ * any decimal part as-is.
+ */
+export function formatRawNumber(
+  raw: string,
+  numberFormat?: NumberFormat,
+  currencyCode?: string
+): string {
+  if (!raw) return '0';
+  const isIndian = numberFormat === 'indian' || (!numberFormat && currencyCode === 'INR');
+  const [integerPart, decimalPart] = raw.split('.');
+
+  let formattedInteger: string;
+  if (isIndian) {
+    if (integerPart.length <= 3) {
+      formattedInteger = integerPart;
+    } else {
+      const lastThree = integerPart.slice(-3);
+      const remaining = integerPart.slice(0, -3);
+      const formattedRemaining = remaining.replace(/\B(?=(\d{2})+(?!\d))/g, ',');
+      formattedInteger = `${formattedRemaining},${lastThree}`;
+    }
+  } else {
+    formattedInteger = integerPart.replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+  }
+
+  if (decimalPart !== undefined) {
+    return `${formattedInteger}.${decimalPart}`;
+  }
+  return formattedInteger;
 }
 
 /**

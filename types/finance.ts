@@ -11,6 +11,7 @@ export interface Account {
   icon: IconName;
   color: string;
   initialBalance: number;
+  currency?: string;
   createdAt: string;
   archived?: boolean;
 }
@@ -44,6 +45,8 @@ export interface Budget {
   id: string;
   categoryId: string;
   monthlyLimit: number;
+  accountId?: string;
+  currency?: string;
   createdAt: string;
 }
 

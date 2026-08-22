@@ -274,7 +274,11 @@ export default function AddTransactionScreen() {
           <GlassCard strong style={styles.amountCard} elevated>
             <AmountDisplay
               value={amount}
-              currencySymbol={getCurrencySymbol(state.settings.currency)}
+              currencySymbol={getCurrencySymbol(
+                state.accounts.find(a => a.id === accountId)?.currency ?? state.settings.currency ?? 'INR'
+              )}
+              currencyCode={state.accounts.find(a => a.id === accountId)?.currency ?? state.settings.currency ?? 'INR'}
+              numberFormat={state.settings.numberFormat}
               accentColor={TYPE_COLOR[type]}
             />
           </GlassCard>

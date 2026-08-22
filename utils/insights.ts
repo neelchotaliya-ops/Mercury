@@ -129,7 +129,7 @@ export function computeTotals(transactions: Transaction[]): InsightTotals {
 
   for (const t of transactions) {
     total += t.amount;
-    days.add(t.date.slice(0, 10));
+    days.add(dayKeyOf(t.date));
     if (!largest || t.amount > largest.amount) largest = t;
   }
 

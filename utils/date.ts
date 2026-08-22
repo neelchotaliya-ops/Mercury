@@ -44,6 +44,13 @@ export function toMonthKey(date: Date | string): string {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
 }
 
+export function toDayKey(date: Date | string): string {
+  if (typeof date === 'string') return dayKeyOf(date);
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(
+    date.getDate()
+  ).padStart(2, '0')}`;
+}
+
 export function monthKeyLabel(monthKey: string): string {
   const [year, month] = monthKey.split('-').map(Number);
   const d = new Date(year, month - 1, 1);

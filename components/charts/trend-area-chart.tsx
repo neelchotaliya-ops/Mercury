@@ -6,6 +6,7 @@ import Svg, { Path, Defs, LinearGradient as SvgGradient, Stop, Line, Circle } fr
 import { AppText } from '@/components/ui/app-text';
 import { Colors } from '@/constants/theme';
 import { Duration, Ease } from '@/constants/motion';
+import { NumberFormat } from '@/types/finance';
 import { MonthPoint } from '@/utils/insights';
 import { monthShortLabel } from '@/utils/date';
 import { formatCompact } from '@/utils/currency';
@@ -13,6 +14,7 @@ import { formatCompact } from '@/utils/currency';
 export interface TrendAreaChartProps {
   points: MonthPoint[];
   currency: string;
+  numberFormat?: NumberFormat;
   /** Index of the selected month, if any. */
   selectedIndex?: number;
   onSelect?: (index: number) => void;
@@ -34,6 +36,7 @@ const PAD_BOTTOM = 22;
 export const TrendAreaChart: React.FC<TrendAreaChartProps> = ({
   points,
   currency,
+  numberFormat,
   selectedIndex,
   onSelect,
   height = 150,
@@ -181,7 +184,7 @@ export const TrendAreaChart: React.FC<TrendAreaChartProps> = ({
 
           <Animated.View style={[styles.peakLabel, chromeStyle]} pointerEvents="none">
             <AppText variant="micro" color={Colors.textSecondary}>
-              peak {formatCompact(geometry.coords[geometry.peakIndex].point.amount, currency)}
+              peak {formatCompact(geometry.coords[geometry.peakIndex].point.amount, currency, numberFormat)}
             </AppText>
           </Animated.View>
         </>

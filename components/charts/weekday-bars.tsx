@@ -5,12 +5,14 @@ import Animated, { useSharedValue, useAnimatedStyle, withDelay, withTiming } fro
 import { AppText } from '@/components/ui/app-text';
 import { Colors } from '@/constants/theme';
 import { Duration, Ease, STAGGER_STEP } from '@/constants/motion';
+import { NumberFormat } from '@/types/finance';
 import { formatCompact } from '@/utils/currency';
 
 export interface WeekdayBarsProps {
   /** Seven totals, index 0 = Sunday. */
   buckets: number[];
   currency: string;
+  numberFormat?: NumberFormat;
   height?: number;
 }
 
@@ -71,7 +73,7 @@ function Bar({
  * instead, and only it is labelled, because that is the single thing this
  * chart exists to say.
  */
-export const WeekdayBars: React.FC<WeekdayBarsProps> = ({ buckets, currency, height = 110 }) => {
+export const WeekdayBars: React.FC<WeekdayBarsProps> = ({ buckets, currency, numberFormat, height = 110 }) => {
   const max = Math.max(...buckets, 1);
   const peak = buckets.indexOf(Math.max(...buckets));
   const hasData = buckets.some(v => v > 0);
@@ -85,7 +87,7 @@ export const WeekdayBars: React.FC<WeekdayBarsProps> = ({ buckets, currency, hei
             <View key={index} style={styles.column}>
               {isPeak ? (
                 <AppText variant="micro" style={styles.peakValue}>
-                  {formatCompact(value, currency)}
+                  {formatCompact(value, currency, numberFormat)}
                 </AppText>
               ) : null}
               <Bar value={value} max={max} isPeak={isPeak} index={index} />

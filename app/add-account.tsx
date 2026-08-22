@@ -12,7 +12,7 @@ import { IconBadge } from '@/components/finance/icon-badge';
 import { useFinance } from '@/context/finance-context';
 import { AccountType } from '@/types/finance';
 import { ACCOUNT_TYPE_META, CATEGORY_COLOR_CHOICES } from '@/constants/categories';
-import { getCurrencySymbol } from '@/utils/currency';
+import { CURRENCIES, getCurrencySymbol } from '@/utils/currency';
 import { Colors, BorderRadius, Spacing } from '@/constants/theme';
 
 const ACCOUNT_TYPES = Object.keys(ACCOUNT_TYPE_META) as AccountType[];
@@ -30,6 +30,7 @@ export default function AddAccountScreen() {
   const [name, setName] = useState(editing?.name ?? '');
   const [type, setType] = useState<AccountType>(editing?.type ?? 'cash');
   const [color, setColor] = useState(editing?.color ?? ACCOUNT_TYPE_META.cash.color);
+  const [currency, setCurrency] = useState(editing?.currency ?? state.accounts[0]?.currency ?? state.settings.currency ?? 'INR');
   const [balance, setBalance] = useState(editing ? String(editing.initialBalance) : '');
 
   const canSave = name.trim().length > 0;
@@ -42,6 +43,7 @@ export default function AddAccountScreen() {
       icon: ACCOUNT_TYPE_META[type].icon,
       color,
       initialBalance: parseFloat(balance || '0'),
+      currency,
     };
     if (editing) updateAccount({ ...editing, ...payload });
     else addAccount(payload);
@@ -75,7 +77,7 @@ export default function AddAccountScreen() {
         <GlassCard strong style={styles.preview} elevated>
           <IconBadge icon={ACCOUNT_TYPE_META[type].icon} color={color} size={64} solid />
           <AppText variant="h3">{name.trim() || 'Account name'}</AppText>
-          <AppText variant="caption">{ACCOUNT_TYPE_META[type].label}</AppText>
+          <AppText variant="caption">{`${ACCOUNT_TYPE_META[type].label} • ${getCurrencySymbol(currency)} ${currency}`}</AppText>
         </GlassCard>
 
         <GlassCard style={styles.formCard} padding={18}>
@@ -88,6 +90,35 @@ export default function AddAccountScreen() {
               placeholderTextColor={Colors.textMuted}
               style={styles.input}
             />
+          </View>
+
+          <View style={styles.field}>
+            <AppText variant="label">Currency</AppText>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.currencyRow}>
+              {CURRENCIES.map(c => {
+                const active = c.code === currency;
+                return (
+                  <Pressable
+                    key={c.code}
+                    onPress={() => setCurrency(c.code)}
+                    style={[
+                      styles.currencyChip,
+                      {
+                        backgroundColor: active ? Colors.ctaBg : Colors.controlBg,
+                        borderColor: active ? 'transparent' : Colors.glassBorder,
+                      },
+                    ]}
+                  >
+                    <AppText variant="bodyStrong" color={active ? Colors.ctaText : Colors.primary}>
+                      {c.symbol}
+                    </AppText>
+                    <AppText variant="micro" color={active ? Colors.ctaText : Colors.textPrimary}>
+                      {c.code}
+                    </AppText>
+                  </Pressable>
+                );
+              })}
+            </ScrollView>
           </View>
 
           <View style={styles.field}>
@@ -148,7 +179,7 @@ export default function AddAccountScreen() {
             <AppText variant="label">Starting balance</AppText>
             <View style={styles.balanceRow}>
               <AppText variant="bodyStrong" color={Colors.textMuted}>
-                {getCurrencySymbol(state.settings.currency)}
+                {getCurrencySymbol(currency)}
               </AppText>
               <TextInput
                 value={balance}
@@ -199,6 +230,20 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontFamily: 'Manrope_500Medium',
     color: Colors.textPrimary,
+  },
+  currencyRow: {
+    flexDirection: 'row',
+    gap: 8,
+    paddingVertical: 2,
+  },
+  currencyChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderRadius: BorderRadius.pill,
+    borderWidth: 1,
   },
   typeRow: {
     flexDirection: 'row',

@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { View, StyleSheet, ScrollView } from 'react-native';
+import React, { useMemo, useState } from 'react';
+import { View, StyleSheet, ScrollView, Pressable } from 'react-native';
 import { useRouter } from 'expo-router';
 
 import { AppText } from '@/components/ui/app-text';
@@ -14,9 +14,9 @@ import { EmptyState } from '@/components/finance/empty-state';
 import { useScreenReady } from '@/hooks/use-screen-ready';
 import { useFinance } from '@/context/finance-context';
 import { useBudgetProgress } from '@/hooks/use-budget-progress';
-import { formatCurrency } from '@/utils/currency';
+import { formatCurrency, getCurrencySymbol } from '@/utils/currency';
 import { toMonthKey } from '@/utils/date';
-import { Colors, Spacing } from '@/constants/theme';
+import { Colors, BorderRadius, Spacing } from '@/constants/theme';
 
 export default function BudgetsScreen() {
   const router = useRouter();
@@ -24,10 +24,19 @@ export default function BudgetsScreen() {
   const [monthKey, setMonthKey] = useState(() => toMonthKey(new Date()));
   const isReady = useScreenReady(180);
 
+  const uniqueCurrencies = useMemo(() => {
+    const accountCurrs = state.accounts.map(a => a.currency ?? state.settings.currency ?? 'INR');
+    const budgetCurrs = state.budgets.map(b => b.currency ?? 'INR');
+    const list = Array.from(new Set([...accountCurrs, ...budgetCurrs]));
+    return list.length > 0 ? list : [state.settings.currency ?? 'INR'];
+  }, [state.accounts, state.budgets, state.settings.currency]);
+
+  const [selectedCurrency, setSelectedCurrency] = useState<string>(uniqueCurrencies[0] ?? 'INR');
+  const activeCurrency = uniqueCurrencies.includes(selectedCurrency) ? selectedCurrency : (uniqueCurrencies[0] ?? 'INR');
+
   // From the rollup, not a ledger scan — see db/entities.ts's
-  // getBudgetProgress. Re-fetches on month change or any write anywhere.
-  const { data: progress } = useBudgetProgress(monthKey);
-  const currency = state.settings.currency;
+  // getBudgetProgress. Re-fetches on month change, currency filter change, or any write anywhere.
+  const { data: progress } = useBudgetProgress(monthKey, activeCurrency);
   const numberFormat = state.settings.numberFormat;
 
   const totals = progress.reduce(
@@ -51,6 +60,34 @@ export default function BudgetsScreen() {
         <MonthStepper monthKey={monthKey} onChange={setMonthKey} />
       </View>
 
+      {uniqueCurrencies.length > 1 && (
+        <View style={styles.currencyBar}>
+          {uniqueCurrencies.map(c => {
+            const active = c === activeCurrency;
+            return (
+              <Pressable
+                key={c}
+                onPress={() => setSelectedCurrency(c)}
+                style={[
+                  styles.currencyChip,
+                  {
+                    backgroundColor: active ? Colors.ctaBg : Colors.controlBg,
+                    borderColor: active ? 'transparent' : Colors.glassBorder,
+                  },
+                ]}
+              >
+                <AppText variant="bodyStrong" color={active ? Colors.ctaText : Colors.primary}>
+                  {getCurrencySymbol(c)}
+                </AppText>
+                <AppText variant="caption" color={active ? Colors.ctaText : Colors.textPrimary}>
+                  {c}
+                </AppText>
+              </Pressable>
+            );
+          })}
+        </View>
+      )}
+
       <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
         {!isReady ? (
           <BudgetsSkeleton />
@@ -59,7 +96,7 @@ export default function BudgetsScreen() {
             <EmptyState
               icon="pie-chart-outline"
               title="No budgets yet"
-              subtitle="Set a monthly limit on a category and track how much is left."
+              subtitle={`Set a monthly limit on a category for ${activeCurrency} accounts and track how much is left.`}
               actionLabel="Create a budget"
               onAction={() => router.push('/add-budget')}
             />
@@ -69,9 +106,9 @@ export default function BudgetsScreen() {
             <GlassCard strong style={styles.summary} elevated>
               <View style={styles.summaryTop}>
                 <View style={styles.summaryText}>
-                  <AppText variant="label">Total budgeted</AppText>
-                  <AppText variant="h1">{formatCurrency(totals.spent, currency, numberFormat)}</AppText>
-                  <AppText variant="caption">of {formatCurrency(totals.limit, currency, numberFormat)}</AppText>
+                  <AppText variant="label">Total budgeted ({activeCurrency})</AppText>
+                  <AppText variant="h1">{formatCurrency(totals.spent, activeCurrency, numberFormat)}</AppText>
+                  <AppText variant="caption">of {formatCurrency(totals.limit, activeCurrency, numberFormat)}</AppText>
                 </View>
                 <View style={styles.summaryPill}>
                   <AppText variant="h3" color={overallOver ? Colors.expense : Colors.primary}>
@@ -115,6 +152,21 @@ const styles = StyleSheet.create({
   stepperWrap: {
     marginTop: Spacing.lg,
     paddingHorizontal: 20,
+  },
+  currencyBar: {
+    flexDirection: 'row',
+    paddingHorizontal: 20,
+    marginTop: Spacing.md,
+    gap: 8,
+  },
+  currencyChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+    borderRadius: BorderRadius.pill,
+    borderWidth: 1,
   },
   content: {
     paddingHorizontal: 20,

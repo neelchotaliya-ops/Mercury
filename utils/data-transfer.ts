@@ -94,6 +94,7 @@ export function parseAccounts(raw: unknown): Account[] {
       icon: (str(item.icon) ?? 'ellipse-outline') as Account['icon'],
       color: str(item.color) ?? '#64748B',
       initialBalance,
+      currency: str(item.currency) ?? 'INR',
       createdAt: str(item.createdAt) ?? new Date().toISOString(),
       archived: item.archived === true ? true : undefined,
     });
@@ -177,7 +178,14 @@ export function parseBudgets(raw: unknown): Budget[] {
     const categoryId = str(item.categoryId);
     const monthlyLimit = num(item.monthlyLimit);
     if (!id || !categoryId || monthlyLimit === undefined) continue;
-    out.push({ id, categoryId, monthlyLimit, createdAt: str(item.createdAt) ?? new Date().toISOString() });
+    out.push({
+      id,
+      categoryId,
+      monthlyLimit,
+      accountId: str(item.accountId) ?? undefined,
+      currency: str(item.currency) ?? 'INR',
+      createdAt: str(item.createdAt) ?? new Date().toISOString(),
+    });
   }
   return out;
 }

@@ -26,10 +26,21 @@ export default function AccountsScreen() {
     [state.accounts]
   );
 
-  const totalBalance = useMemo(
-    () => accounts.reduce((sum, a) => sum + (balanceMap.get(a.id) ?? 0), 0),
-    [accounts, balanceMap]
-  );
+  const currencyTotals = useMemo(() => {
+    const map = new Map<string, { total: number; count: number }>();
+    for (const a of accounts) {
+      const curr = a.currency ?? state.settings.currency ?? 'INR';
+      const entry = map.get(curr) ?? { total: 0, count: 0 };
+      entry.total += balanceMap.get(a.id) ?? 0;
+      entry.count += 1;
+      map.set(curr, entry);
+    }
+    return Array.from(map.entries()).map(([curr, data]) => ({
+      currency: curr,
+      total: data.total,
+      count: data.count,
+    }));
+  }, [accounts, balanceMap, state.settings.currency]);
 
   return (
     <GradientScreen contours="top">
@@ -42,12 +53,29 @@ export default function AccountsScreen() {
       <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
         <GlassCard strong style={styles.netWorth} elevated>
           <AppText variant="label">Net worth</AppText>
-          <AppText variant="display" color={totalBalance < 0 ? Colors.expense : Colors.textPrimary}>
-            {formatCurrency(totalBalance, state.settings.currency)}
-          </AppText>
-          <AppText variant="caption">
-            Across {accounts.length} {accounts.length === 1 ? 'account' : 'accounts'}
-          </AppText>
+          {currencyTotals.length <= 1 ? (
+            <>
+              <AppText variant="display" color={(currencyTotals[0]?.total ?? 0) < 0 ? Colors.expense : Colors.textPrimary}>
+                {formatCurrency(currencyTotals[0]?.total ?? 0, currencyTotals[0]?.currency ?? state.settings.currency, state.settings.numberFormat)}
+              </AppText>
+              <AppText variant="caption">
+                Across {accounts.length} {accounts.length === 1 ? 'account' : 'accounts'}
+              </AppText>
+            </>
+          ) : (
+            <View style={styles.multiCurrencyTotals}>
+              {currencyTotals.map(ct => (
+                <View key={ct.currency} style={styles.currencyTotalRow}>
+                  <AppText variant="h2" color={ct.total < 0 ? Colors.expense : Colors.textPrimary}>
+                    {formatCurrency(ct.total, ct.currency, state.settings.numberFormat)}
+                  </AppText>
+                  <AppText variant="caption">
+                    ({ct.count} {ct.count === 1 ? 'account' : 'accounts'})
+                  </AppText>
+                </View>
+              ))}
+            </View>
+          )}
         </GlassCard>
 
         {accounts.length === 0 ? (
@@ -67,7 +95,8 @@ export default function AccountsScreen() {
                 key={account.id}
                 account={account}
                 balance={balanceMap.get(account.id) ?? 0}
-                currency={state.settings.currency}
+                currency={account.currency ?? state.settings.currency}
+                numberFormat={state.settings.numberFormat}
                 animateIndex={index}
                 onPress={() => router.push(`/add-account?id=${account.id}`)}
               />
@@ -109,6 +138,16 @@ const styles = StyleSheet.create({
   netWorth: {
     gap: 4,
     alignItems: 'flex-start',
+  },
+  multiCurrencyTotals: {
+    gap: 6,
+    marginTop: 4,
+    width: '100%',
+  },
+  currencyTotalRow: {
+    flexDirection: 'row',
+    alignItems: 'baseline',
+    gap: 8,
   },
   list: {
     gap: 12,

@@ -177,6 +177,13 @@ const MIGRATIONS: string[] = [
   INSERT INTO ledger_stat (key, n, net) VALUES
     ('all', 0, 0), ('income', 0, 0), ('expense', 0, 0), ('transfer', 0, 0);
   `,
+
+  // v2 — multi-currency per account and account-bound budgets
+  `
+  ALTER TABLE accounts ADD COLUMN currency TEXT NOT NULL DEFAULT 'INR';
+  ALTER TABLE budgets ADD COLUMN account_id TEXT REFERENCES accounts(id) ON DELETE CASCADE;
+  ALTER TABLE budgets ADD COLUMN currency TEXT NOT NULL DEFAULT 'INR';
+  `,
 ];
 
 export const LATEST_SCHEMA_VERSION = MIGRATIONS.length;

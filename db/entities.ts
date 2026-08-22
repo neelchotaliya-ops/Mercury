@@ -22,6 +22,7 @@ function rowToAccount(row: AccountRow): Account {
     icon: row.icon as Account['icon'],
     color: row.color,
     initialBalance: row.initial_balance,
+    currency: row.currency ?? 'INR',
     createdAt: row.created_at,
     archived: row.archived === 1,
   };
@@ -46,8 +47,8 @@ export async function listAccounts(db: Db): Promise<Account[]> {
  */
 export async function insertAccountRow(db: Db, account: Account, sortOrder: number): Promise<void> {
   await db.runAsync(
-    `INSERT INTO accounts (id, name, type, icon, color, initial_balance, created_at, archived, sort_order)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    `INSERT INTO accounts (id, name, type, icon, color, initial_balance, currency, created_at, archived, sort_order)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       account.id,
       account.name,
@@ -55,6 +56,7 @@ export async function insertAccountRow(db: Db, account: Account, sortOrder: numb
       account.icon,
       account.color,
       account.initialBalance,
+      account.currency ?? 'INR',
       account.createdAt,
       account.archived ? 1 : 0,
       sortOrder,
@@ -72,7 +74,7 @@ export async function insertAccount(db: Db, account: Account, sortOrder: number)
 
 export async function updateAccount(db: Db, account: Account): Promise<void> {
   await db.runAsync(
-    `UPDATE accounts SET name = ?, type = ?, icon = ?, color = ?, initial_balance = ?, archived = ?
+    `UPDATE accounts SET name = ?, type = ?, icon = ?, color = ?, initial_balance = ?, currency = ?, archived = ?
      WHERE id = ?`,
     [
       account.name,
@@ -80,6 +82,7 @@ export async function updateAccount(db: Db, account: Account): Promise<void> {
       account.icon,
       account.color,
       account.initialBalance,
+      account.currency ?? 'INR',
       account.archived ? 1 : 0,
       account.id,
     ]
@@ -181,6 +184,8 @@ function rowToBudget(row: BudgetRow): Budget {
     id: row.id,
     categoryId: row.category_id,
     monthlyLimit: row.monthly_limit,
+    accountId: row.account_id ?? undefined,
+    currency: row.currency ?? 'INR',
     createdAt: row.created_at,
   };
 }
@@ -193,8 +198,8 @@ export async function listBudgets(db: Db): Promise<Budget[]> {
 /** The row-write half of `insertBudget` — see `insertAccountRow`'s doc comment for why bulk callers use this instead. */
 export async function insertBudgetRow(db: Db, budget: Budget, sortOrder: number): Promise<void> {
   await db.runAsync(
-    'INSERT INTO budgets (id, category_id, monthly_limit, created_at, sort_order) VALUES (?, ?, ?, ?, ?)',
-    [budget.id, budget.categoryId, budget.monthlyLimit, budget.createdAt, sortOrder]
+    'INSERT INTO budgets (id, category_id, monthly_limit, account_id, currency, created_at, sort_order) VALUES (?, ?, ?, ?, ?, ?, ?)',
+    [budget.id, budget.categoryId, budget.monthlyLimit, budget.accountId ?? null, budget.currency ?? 'INR', budget.createdAt, sortOrder]
   );
 }
 
@@ -204,11 +209,10 @@ export async function insertBudget(db: Db, budget: Budget, sortOrder: number): P
 }
 
 export async function updateBudget(db: Db, budget: Budget): Promise<void> {
-  await db.runAsync('UPDATE budgets SET category_id = ?, monthly_limit = ? WHERE id = ?', [
-    budget.categoryId,
-    budget.monthlyLimit,
-    budget.id,
-  ]);
+  await db.runAsync(
+    'UPDATE budgets SET category_id = ?, monthly_limit = ?, account_id = ?, currency = ? WHERE id = ?',
+    [budget.categoryId, budget.monthlyLimit, budget.accountId ?? null, budget.currency ?? 'INR', budget.id]
+  );
   bumpDataVersion();
 }
 
@@ -353,21 +357,44 @@ export interface BudgetProgress {
  * dropped month grain entirely: cheap either way, and this sidesteps ever
  * having to reason about whether a given month is "complete" again.
  */
-export async function getBudgetProgress(db: Db, monthKey: string): Promise<BudgetProgress[]> {
+export async function getBudgetProgress(db: Db, monthKey: string, currencyFilter?: string): Promise<BudgetProgress[]> {
   const budgets = await listBudgets(db);
   const categories = await listCategories(db);
+  const accounts = await listAccounts(db);
   const byId = new Map(categories.map(c => [c.id, c]));
+  const accountMap = new Map(accounts.map(a => [a.id, a]));
 
-  const rows = await db.getAllAsync<{ category_id: string; spent: number }>(
-    `SELECT category_id, SUM(expense) AS spent FROM rollup
+  const filteredBudgets = currencyFilter
+    ? budgets.filter(b => {
+        const bCurr = b.currency ?? (b.accountId ? accountMap.get(b.accountId)?.currency : 'INR') ?? 'INR';
+        return bCurr === currencyFilter;
+      })
+    : budgets;
+
+  const rows = await db.getAllAsync<{ category_id: string; account_id: string; spent: number }>(
+    `SELECT category_id, account_id, SUM(expense) AS spent FROM rollup
      WHERE grain = 'D' AND bucket LIKE ? AND category_id != ''
-     GROUP BY category_id`,
+     GROUP BY category_id, account_id`,
     [`${monthKey}-%`]
   );
-  const spendByCategory = new Map(rows.map(r => [r.category_id, (r.spent ?? 0) / 100]));
 
-  return budgets.map(budget => {
-    const spent = spendByCategory.get(budget.categoryId) ?? 0;
+  return filteredBudgets.map(budget => {
+    let spent = 0;
+    if (budget.accountId) {
+      const match = rows.find(r => r.category_id === budget.categoryId && r.account_id === budget.accountId);
+      spent = (match?.spent ?? 0) / 100;
+    } else {
+      const targetCurrency = budget.currency ?? 'INR';
+      for (const r of rows) {
+        if (r.category_id === budget.categoryId) {
+          const acct = accountMap.get(r.account_id);
+          if ((acct?.currency ?? 'INR') === targetCurrency) {
+            spent += (r.spent ?? 0) / 100;
+          }
+        }
+      }
+    }
+
     return {
       budget,
       category: byId.get(budget.categoryId),

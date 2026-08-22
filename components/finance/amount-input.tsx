@@ -7,31 +7,27 @@ import { AppText } from '@/components/ui/app-text';
 import { Colors } from '@/constants/theme';
 import { haptics } from '@/utils/haptics';
 import { PressScale, Spring } from '@/constants/motion';
+import { NumberFormat } from '@/types/finance';
+import { formatRawNumber } from '@/utils/currency';
 
 export interface AmountDisplayProps {
   value: string;
   currencySymbol: string;
+  currencyCode?: string;
+  numberFormat?: NumberFormat;
   accentColor?: string;
 }
-
-const formatNumberWithCommas = (raw: string): string => {
-  if (!raw) return '0';
-  const [integerPart, decimalPart] = raw.split('.');
-  const formattedInteger = integerPart.replace(/\B(?=(\d{3})+(?!\d))/g, ',');
-  if (decimalPart !== undefined) {
-    return `${formattedInteger}.${decimalPart}`;
-  }
-  return formattedInteger;
-};
 
 export const AmountDisplay: React.FC<AmountDisplayProps> = ({
   value,
   currencySymbol,
+  currencyCode,
+  numberFormat,
   accentColor,
 }) => {
   const tint = accentColor ?? Colors.textPrimary;
   const isEmpty = value.length === 0;
-  const formattedValue = formatNumberWithCommas(value);
+  const formattedValue = formatRawNumber(value, numberFormat, currencyCode);
 
   return (
     <View style={styles.displayRow}>
@@ -132,11 +128,19 @@ export const AmountInput: React.FC<AmountInputProps> = ({
   value,
   onChangeValue,
   currencySymbol,
+  currencyCode,
+  numberFormat,
   accentColor,
 }) => {
   return (
     <View style={styles.container}>
-      <AmountDisplay value={value} currencySymbol={currencySymbol} accentColor={accentColor} />
+      <AmountDisplay
+        value={value}
+        currencySymbol={currencySymbol}
+        currencyCode={currencyCode}
+        numberFormat={numberFormat}
+        accentColor={accentColor}
+      />
       <Numpad value={value} onChangeValue={onChangeValue} />
     </View>
   );

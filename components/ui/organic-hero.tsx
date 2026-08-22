@@ -33,6 +33,9 @@ import { haptics } from '@/utils/haptics';
 import { useReducedMotion } from '@/hooks/use-reduced-motion';
 import { BLOB_VIEWBOX, BLOB_PATH, BLOB_PATH_ALT } from '@/constants/shapes';
 
+import { NumberFormat } from '@/types/finance';
+import { getCurrencySymbol } from '@/utils/currency';
+
 const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
 const AnimatedEllipse = Animated.createAnimatedComponent(Ellipse);
 
@@ -42,6 +45,8 @@ export interface HeroBadge {
   id?: string | null;
   name?: string;
   balance?: number;
+  currency?: string;
+  numberFormat?: NumberFormat;
   icon: keyof typeof Ionicons.glyphMap;
   slot: BadgeSlot;
   color?: string;
@@ -56,6 +61,7 @@ export interface OrganicHeroProps {
   badges?: HeroBadge[];
   size?: number;
   currency?: string;
+  numberFormat?: NumberFormat;
   onPressMain?: () => void;
   children?: React.ReactNode;
 }
@@ -74,11 +80,22 @@ const RADIAL_VECTORS: Record<BadgeSlot, { dx: number; dy: number; stretchAngle: 
   bottomRight: { dx: 22, dy: 18, stretchAngle: -25 },
 };
 
-function formatShortCurrency(amount: number, currency: string): string {
+function formatShortCurrency(amount: number, currency: string, numberFormat?: NumberFormat): string {
   const abs = Math.abs(amount);
   const sign = amount < 0 ? '-' : '';
-  const sym = currency === 'USD' ? '$' : currency === 'EUR' ? '€' : currency === 'GBP' ? '£' : '$';
+  const sym = getCurrencySymbol(currency);
+  const isIndian = numberFormat === 'indian' || (!numberFormat && currency === 'INR');
 
+  if (isIndian) {
+    if (abs >= 10000000) return `${sign}${sym}${(abs / 10000000).toFixed(1)}Cr`;
+    if (abs >= 100000) return `${sign}${sym}${(abs / 100000).toFixed(1)}L`;
+    if (abs >= 1000) return `${sign}${sym}${(abs / 1000).toFixed(1)}k`;
+    return `${sign}${sym}${abs.toFixed(0)}`;
+  }
+
+  if (abs >= 1000000000) {
+    return `${sign}${sym}${(abs / 1000000000).toFixed(1)}B`;
+  }
   if (abs >= 1000000) {
     return `${sign}${sym}${(abs / 1000000).toFixed(1)}M`;
   }
@@ -241,6 +258,7 @@ interface SmallFloatingBubbleProps {
   index: number;
   proportionalScale?: number;
   currency?: string;
+  numberFormat?: NumberFormat;
   timeShared: { value: number };
 }
 
@@ -249,6 +267,7 @@ const SmallFloatingBubble: React.FC<SmallFloatingBubbleProps> = ({
   index,
   proportionalScale = 1,
   currency = 'USD',
+  numberFormat,
   timeShared,
 }) => {
   const mergeProgress = useSharedValue(0);
@@ -354,7 +373,7 @@ const SmallFloatingBubble: React.FC<SmallFloatingBubbleProps> = ({
 
   const displayText =
     badge.balance !== undefined
-      ? formatShortCurrency(badge.balance, currency)
+      ? formatShortCurrency(badge.balance, badge.currency ?? currency, badge.numberFormat ?? numberFormat)
       : badge.label;
 
   const bubbleSize = 64;
@@ -413,6 +432,7 @@ export const OrganicHero: React.FC<OrganicHeroProps> = ({
   badges = [],
   size = 225,
   currency = 'USD',
+  numberFormat,
   onPressMain,
   children,
 }) => {
@@ -648,6 +668,7 @@ export const OrganicHero: React.FC<OrganicHeroProps> = ({
             index={index}
             proportionalScale={proportionalScale}
             currency={currency}
+            numberFormat={numberFormat}
             timeShared={timeVal}
           />
         );

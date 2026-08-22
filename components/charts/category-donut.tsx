@@ -7,12 +7,14 @@ import { AppText } from '@/components/ui/app-text';
 import { ProgressBar } from '@/components/finance/progress-bar';
 import { Colors } from '@/constants/theme';
 import { Duration, Ease } from '@/constants/motion';
+import { NumberFormat } from '@/types/finance';
 import { CategorySlice } from '@/utils/insights';
 import { formatCurrency } from '@/utils/currency';
 
 export interface CategoryDonutProps {
   slices: CategorySlice[];
   currency: string;
+  numberFormat?: NumberFormat;
   centerLabel: string;
   total: number;
   size?: number;
@@ -115,6 +117,7 @@ const DonutSegment: React.FC<DonutSegmentProps> = ({
 export const CategoryDonut: React.FC<CategoryDonutProps> = ({
   slices,
   currency,
+  numberFormat,
   centerLabel,
   total,
   size = 190,
@@ -196,7 +199,7 @@ export const CategoryDonut: React.FC<CategoryDonutProps> = ({
         <View style={styles.center} pointerEvents="none">
           <AppText variant="micro">{centerLabel}</AppText>
           <AppText variant="h3" align="center" numberOfLines={1} adjustsFontSizeToFit>
-            {formatCurrency(total, currency)}
+            {formatCurrency(total, currency, numberFormat)}
           </AppText>
         </View>
       </View>
@@ -216,7 +219,7 @@ export const CategoryDonut: React.FC<CategoryDonutProps> = ({
                   {segment.name}
                 </AppText>
                 <AppText variant="micro" color={Colors.textPrimary}>
-                  {formatCurrency(segment.amount, currency)} · {Math.round(segment.share * 100)}%
+                  {formatCurrency(segment.amount, currency, numberFormat)} · {Math.round(segment.share * 100)}%
                 </AppText>
               </View>
               <ProgressBar progress={segment.share} color={segment.color} height={5} />

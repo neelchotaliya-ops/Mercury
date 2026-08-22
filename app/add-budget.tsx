@@ -1,6 +1,7 @@
 import React, { useMemo, useState } from 'react';
-import { View, StyleSheet, ScrollView, Alert } from 'react-native';
+import { View, StyleSheet, ScrollView, Alert, Pressable } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
+import { Ionicons } from '@expo/vector-icons';
 
 import { AppText } from '@/components/ui/app-text';
 import { AppButton } from '@/components/ui/app-button';
@@ -12,7 +13,7 @@ import { CategoryPicker } from '@/components/finance/category-picker';
 import { EmptyState } from '@/components/finance/empty-state';
 import { useFinance } from '@/context/finance-context';
 import { getCurrencySymbol } from '@/utils/currency';
-import { Colors, Spacing } from '@/constants/theme';
+import { Colors, BorderRadius, Spacing } from '@/constants/theme';
 
 export default function AddBudgetScreen() {
   const router = useRouter();
@@ -24,8 +25,30 @@ export default function AddBudgetScreen() {
     [state.budgets, params.id]
   );
 
+  const uniqueCurrencies = useMemo(() => {
+    const list = Array.from(
+      new Set(state.accounts.map(a => a.currency ?? state.settings.currency ?? 'INR'))
+    );
+    return list.length > 0 ? list : [state.settings.currency ?? 'INR'];
+  }, [state.accounts, state.settings.currency]);
+
+  const [selectedCurrency, setSelectedCurrency] = useState<string>(
+    editing?.currency ?? uniqueCurrencies[0] ?? 'INR'
+  );
+  const [selectedAccountId, setSelectedAccountId] = useState<string | undefined>(
+    editing?.accountId
+  );
+
+  // Accounts matching the active currency
+  const currencyAccounts = useMemo(
+    () => state.accounts.filter(a => (a.currency ?? 'INR') === selectedCurrency),
+    [state.accounts, selectedCurrency]
+  );
+
   const takenIds = new Set(
-    state.budgets.filter(b => b.id !== editing?.id).map(b => b.categoryId)
+    state.budgets
+      .filter(b => b.id !== editing?.id && (b.currency ?? 'INR') === selectedCurrency && b.accountId === selectedAccountId)
+      .map(b => b.categoryId)
   );
   const available = state.categories.filter(c => c.kind === 'expense' && !takenIds.has(c.id));
   const selectable = editing
@@ -40,8 +63,14 @@ export default function AddBudgetScreen() {
 
   const handleSave = () => {
     if (!canSave || !categoryId) return;
-    if (editing) updateBudget({ ...editing, categoryId, monthlyLimit: numericAmount });
-    else addBudget({ categoryId, monthlyLimit: numericAmount });
+    const payload = {
+      categoryId,
+      monthlyLimit: numericAmount,
+      accountId: selectedAccountId,
+      currency: selectedCurrency,
+    };
+    if (editing) updateBudget({ ...editing, ...payload });
+    else addBudget(payload);
     router.back();
   };
 
@@ -74,9 +103,97 @@ export default function AddBudgetScreen() {
           <AmountInput
             value={amount}
             onChangeValue={setAmount}
-            currencySymbol={getCurrencySymbol(state.settings.currency)}
+            currencySymbol={getCurrencySymbol(selectedCurrency)}
+            currencyCode={selectedCurrency}
+            numberFormat={state.settings.numberFormat}
             accentColor={Colors.primary}
           />
+        </GlassCard>
+
+        {/* Currency & Account Scope Selection */}
+        <GlassCard style={styles.formCard} padding={18}>
+          <AppText variant="label">Currency & Account</AppText>
+          {uniqueCurrencies.length > 1 && (
+            <View style={styles.chipRow}>
+              {uniqueCurrencies.map(curr => {
+                const active = curr === selectedCurrency;
+                return (
+                  <Pressable
+                    key={curr}
+                    onPress={() => {
+                      setSelectedCurrency(curr);
+                      setSelectedAccountId(undefined);
+                    }}
+                    style={[
+                      styles.scopeChip,
+                      {
+                        backgroundColor: active ? Colors.ctaBg : Colors.controlBg,
+                        borderColor: active ? 'transparent' : Colors.glassBorder,
+                      },
+                    ]}
+                  >
+                    <AppText variant="bodyStrong" color={active ? Colors.ctaText : Colors.primary}>
+                      {getCurrencySymbol(curr)}
+                    </AppText>
+                    <AppText variant="caption" color={active ? Colors.ctaText : Colors.textPrimary}>
+                      {curr}
+                    </AppText>
+                  </Pressable>
+                );
+              })}
+            </View>
+          )}
+
+          <View style={styles.scopeList}>
+            <Pressable
+              onPress={() => setSelectedAccountId(undefined)}
+              style={[
+                styles.scopeOption,
+                selectedAccountId === undefined && styles.scopeOptionActive,
+              ]}
+            >
+              <Ionicons
+                name="wallet-outline"
+                size={18}
+                color={selectedAccountId === undefined ? Colors.primary : Colors.textMuted}
+              />
+              <AppText
+                variant="body"
+                color={selectedAccountId === undefined ? Colors.textPrimary : Colors.textSecondary}
+                style={styles.scopeText}
+              >
+                All {selectedCurrency} Accounts
+              </AppText>
+              {selectedAccountId === undefined && (
+                <Ionicons name="checkmark-circle" size={18} color={Colors.primary} />
+              )}
+            </Pressable>
+
+            {currencyAccounts.map(acct => {
+              const active = selectedAccountId === acct.id;
+              return (
+                <Pressable
+                  key={acct.id}
+                  onPress={() => setSelectedAccountId(acct.id)}
+                  style={[styles.scopeOption, active && styles.scopeOptionActive]}
+                >
+                  <Ionicons
+                    name={acct.icon}
+                    size={18}
+                    color={active ? acct.color : Colors.textMuted}
+                  />
+                  <AppText
+                    variant="body"
+                    color={active ? Colors.textPrimary : Colors.textSecondary}
+                    style={styles.scopeText}
+                  >
+                    {acct.name}
+                  </AppText>
+                  {active && <Ionicons name="checkmark-circle" size={18} color={Colors.primary} />}
+                </Pressable>
+              );
+            })}
+          </View>
         </GlassCard>
 
         <GlassCard style={styles.formCard} padding={18}>
@@ -121,6 +238,42 @@ const styles = StyleSheet.create({
   },
   formCard: {
     gap: 12,
+  },
+  chipRow: {
+    flexDirection: 'row',
+    gap: 8,
+    paddingVertical: 4,
+  },
+  scopeChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingVertical: 8,
+    paddingHorizontal: 14,
+    borderRadius: BorderRadius.pill,
+    borderWidth: 1,
+  },
+  scopeList: {
+    gap: 8,
+    marginTop: 4,
+  },
+  scopeOption: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    paddingVertical: 12,
+    paddingHorizontal: 14,
+    borderRadius: BorderRadius.sm,
+    backgroundColor: 'rgba(25, 21, 39, 0.04)',
+    borderWidth: 1,
+    borderColor: 'transparent',
+  },
+  scopeOptionActive: {
+    backgroundColor: 'rgba(107, 78, 255, 0.08)',
+    borderColor: Colors.primary,
+  },
+  scopeText: {
+    flex: 1,
   },
   footer: {
     paddingHorizontal: 20,

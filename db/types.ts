@@ -64,6 +64,7 @@ export interface AccountRow {
   icon: string;
   color: string;
   initial_balance: number;
+  currency?: string | null;
   created_at: string;
   archived: number;
   sort_order: number;
@@ -83,6 +84,8 @@ export interface BudgetRow {
   id: string;
   category_id: string;
   monthly_limit: number;
+  account_id?: string | null;
+  currency?: string | null;
   created_at: string;
   sort_order: number;
 }

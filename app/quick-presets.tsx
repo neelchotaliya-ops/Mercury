@@ -143,7 +143,13 @@ export default function QuickPresetsScreen() {
                   </AppText>
                 </View>
 
-                <AppText variant="amount">{formatCurrency(preset.amount, currency)}</AppText>
+                <AppText variant="amount">
+                  {formatCurrency(
+                    preset.amount,
+                    resolveFundingAccount(state.accounts, preset.accountId)?.currency ?? currency,
+                    state.settings.numberFormat
+                  )}
+                </AppText>
 
                 <Pressable onPress={() => handleDelete(preset)} hitSlop={10} style={styles.deleteBtn}>
                   <Ionicons name="close" size={15} color={Colors.textMuted} />

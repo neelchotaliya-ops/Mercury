@@ -5,7 +5,7 @@ import Animated, { useSharedValue, useAnimatedStyle, withDelay, withTiming } fro
 import { AppText } from '@/components/ui/app-text';
 import { Colors } from '@/constants/theme';
 import { Duration, Ease } from '@/constants/motion';
-import { haptics } from '@/utils/haptics';
+import { NumberFormat } from '@/types/finance';
 import { HeatmapWeek } from '@/utils/insights';
 import { formatCurrency } from '@/utils/currency';
 import { monthShortLabel } from '@/utils/date';
@@ -13,6 +13,7 @@ import { monthShortLabel } from '@/utils/date';
 export interface CalendarHeatmapProps {
   weeks: HeatmapWeek[];
   currency: string;
+  numberFormat?: NumberFormat;
   selectedKey?: string;
   onSelect?: (dateKey: string | undefined) => void;
 }
@@ -36,6 +37,7 @@ function Cell({
   inRange,
   index,
   currency,
+  numberFormat,
   selected,
   onPress,
 }: {
@@ -45,6 +47,7 @@ function Cell({
   inRange: boolean;
   index: number;
   currency: string;
+  numberFormat?: NumberFormat;
   selected: boolean;
   onPress: () => void;
 }) {
@@ -73,7 +76,7 @@ function Cell({
         onPress={onPress}
         disabled={!inRange}
         hitSlop={2}
-        accessibilityLabel={`${dateKey}, ${formatCurrency(amount, currency)}`}
+        accessibilityLabel={`${dateKey}, ${formatCurrency(amount, currency, numberFormat)}`}
         style={[
           styles.cell,
           {
@@ -97,19 +100,22 @@ function Cell({
 export const CalendarHeatmap: React.FC<CalendarHeatmapProps> = ({
   weeks,
   currency,
+  numberFormat,
   selectedKey,
   onSelect,
 }) => {
   // Month labels sit above the first week that starts a new month.
   const monthLabels = weeks.map((week, i) => {
-    const firstDay = week.days.find(d => d !== null);
-    if (!firstDay) return null;
+    const firstRealDay = week.days.find(d => d && d.inRange);
+    if (!firstRealDay) return '';
+    const month = firstRealDay.date.getMonth();
+    if (i === 0) return monthShortLabel(firstRealDay.dateKey);
     const prevWeek = weeks[i - 1];
-    const prevFirstDay = prevWeek?.days.find(d => d !== null);
-    if (prevFirstDay && prevFirstDay.date.getMonth() === firstDay.date.getMonth()) return null;
-    return monthShortLabel(
-      `${firstDay.date.getFullYear()}-${String(firstDay.date.getMonth() + 1).padStart(2, '0')}`
-    );
+    const prevDay = prevWeek.days.find(d => d && d.inRange);
+    if (!prevDay || prevDay.date.getMonth() !== month) {
+      return monthShortLabel(firstRealDay.dateKey);
+    }
+    return '';
   });
 
   let cellIndex = 0;
@@ -145,9 +151,9 @@ export const CalendarHeatmap: React.FC<CalendarHeatmapProps> = ({
                       inRange={day.inRange}
                       index={idx}
                       currency={currency}
+                      numberFormat={numberFormat}
                       selected={selectedKey === day.dateKey}
                       onPress={() => {
-                        haptics.selection();
                         onSelect?.(selectedKey === day.dateKey ? undefined : day.dateKey);
                       }}
                     />

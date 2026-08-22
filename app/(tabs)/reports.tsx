@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { View, StyleSheet, ScrollView } from 'react-native';
+import React, { useMemo, useState } from 'react';
+import { View, StyleSheet, ScrollView, Pressable } from 'react-native';
 
 import { AppText } from '@/components/ui/app-text';
 import { GradientScreen } from '@/components/ui/gradient-screen';
@@ -16,9 +16,9 @@ import { useScreenReady } from '@/hooks/use-screen-ready';
 import { useFinance } from '@/context/finance-context';
 import { DEFAULT_INSIGHT_FILTER, InsightFilter } from '@/db/insights';
 import { useInsightsData } from '@/hooks/use-insights-data';
-import { formatCurrency } from '@/utils/currency';
+import { formatCurrency, getCurrencySymbol } from '@/utils/currency';
 import { monthKeyLabel } from '@/utils/date';
-import { Colors, Spacing } from '@/constants/theme';
+import { Colors, BorderRadius, Spacing } from '@/constants/theme';
 
 type Kind = 'expense' | 'income';
 
@@ -30,7 +30,34 @@ export default function ReportsScreen() {
   const [selectedDay, setSelectedDay] = useState<string | undefined>();
 
   const isReady = useScreenReady(180);
-  const currency = state.settings.currency;
+
+  const uniqueCurrencies = useMemo(() => {
+    const list = Array.from(
+      new Set(state.accounts.map(a => a.currency ?? state.settings.currency ?? 'INR'))
+    );
+    return list.length > 0 ? list : [state.settings.currency ?? 'INR'];
+  }, [state.accounts, state.settings.currency]);
+
+  const [selectedCurrency, setSelectedCurrency] = useState<string>(uniqueCurrencies[0] ?? 'INR');
+  const activeCurrency = uniqueCurrencies.includes(selectedCurrency)
+    ? selectedCurrency
+    : (uniqueCurrencies[0] ?? 'INR');
+
+  const currencyAccounts = useMemo(
+    () => state.accounts.filter(a => (a.currency ?? state.settings.currency ?? 'INR') === activeCurrency),
+    [state.accounts, state.settings.currency, activeCurrency]
+  );
+
+  const effectiveFilter = useMemo<InsightFilter>(() => {
+    if (uniqueCurrencies.length <= 1) return filter;
+    const validCurrencyAccountIds = currencyAccounts.map(a => a.id);
+    const selectedInCurrency = filter.accountIds.filter(id => validCurrencyAccountIds.includes(id));
+    return {
+      ...filter,
+      accountIds: selectedInCurrency.length > 0 ? selectedInCurrency : validCurrencyAccountIds,
+    };
+  }, [filter, uniqueCurrencies, currencyAccounts]);
+
   const numberFormat = state.settings.numberFormat;
 
   // Every chart's data comes from the rollup via useInsightsData, not a scan
@@ -38,7 +65,7 @@ export default function ReportsScreen() {
   // re-fetches only when the filter changes or a write anywhere bumps
   // db/version.ts, not on every unrelated app mutation.
   const { totals, breakdown, series, heatmap: heatmapWeeks, weekdays, topNotes, comparison } =
-    useInsightsData(filter, state.categories);
+    useInsightsData(effectiveFilter, state.categories);
 
   const isEmpty = totals.count === 0;
   const changePercent =
@@ -68,9 +95,40 @@ export default function ReportsScreen() {
           />
         </View>
 
+        {uniqueCurrencies.length > 1 && (
+          <View style={styles.currencyBar}>
+            {uniqueCurrencies.map(c => {
+              const active = c === activeCurrency;
+              return (
+                <Pressable
+                  key={c}
+                  onPress={() => {
+                    setSelectedCurrency(c);
+                    setFilter(prev => ({ ...prev, accountIds: [] }));
+                  }}
+                  style={[
+                    styles.currencyChip,
+                    {
+                      backgroundColor: active ? Colors.ctaBg : Colors.controlBg,
+                      borderColor: active ? 'transparent' : Colors.glassBorder,
+                    },
+                  ]}
+                >
+                  <AppText variant="bodyStrong" color={active ? Colors.ctaText : Colors.primary}>
+                    {getCurrencySymbol(c)}
+                  </AppText>
+                  <AppText variant="caption" color={active ? Colors.ctaText : Colors.textPrimary}>
+                    {c}
+                  </AppText>
+                </Pressable>
+              );
+            })}
+          </View>
+        )}
+
         <InsightFilters
           filter={filter}
-          accounts={state.accounts}
+          accounts={currencyAccounts}
           categories={state.categories}
           onChange={next => {
             setFilter(next);
@@ -86,7 +144,7 @@ export default function ReportsScreen() {
             <GlassCard>
               <EmptyState
                 icon="analytics-outline"
-                title="Nothing in this range"
+                title={`No ${activeCurrency} data in this range`}
                 subtitle="Widen the date range or clear a filter to see your numbers."
               />
             </GlassCard>
@@ -100,7 +158,7 @@ export default function ReportsScreen() {
                   {filter.kind === 'expense' ? 'Total spent' : 'Total received'}
                 </AppText>
                 <AppText variant="display" numberOfLines={1} adjustsFontSizeToFit>
-                  {formatCurrency(totals.total, currency, numberFormat)}
+                  {formatCurrency(totals.total, activeCurrency, numberFormat)}
                 </AppText>
                 {changePercent !== undefined ? (
                   <AppText
@@ -125,7 +183,7 @@ export default function ReportsScreen() {
                   <View style={styles.stat}>
                     <AppText variant="micro">Per active day</AppText>
                     <AppText variant="bodyStrong">
-                      {formatCurrency(totals.dailyAverage, currency, numberFormat)}
+                      {formatCurrency(totals.dailyAverage, activeCurrency, numberFormat)}
                     </AppText>
                   </View>
                   <View style={styles.stat}>
@@ -135,7 +193,7 @@ export default function ReportsScreen() {
                   <View style={styles.stat}>
                     <AppText variant="micro">Largest</AppText>
                     <AppText variant="bodyStrong">
-                      {totals.largestAmount !== undefined ? formatCurrency(totals.largestAmount, currency, numberFormat) : '—'}
+                      {totals.largestAmount !== undefined ? formatCurrency(totals.largestAmount, activeCurrency, numberFormat) : '—'}
                     </AppText>
                   </View>
                 </View>
@@ -149,7 +207,8 @@ export default function ReportsScreen() {
               <GlassCard style={styles.chartCard} animateIndex={1}>
                 <TrendAreaChart
                   points={series}
-                  currency={currency}
+                  currency={activeCurrency}
+                  numberFormat={numberFormat}
                   selectedIndex={selectedMonth}
                   onSelect={setSelectedMonth}
                 />
@@ -157,7 +216,7 @@ export default function ReportsScreen() {
                   <View style={styles.selection}>
                     <AppText variant="micro">{monthKeyLabel(series[selectedMonth].monthKey)}</AppText>
                     <AppText variant="bodyStrong">
-                      {formatCurrency(series[selectedMonth].amount, currency, numberFormat)}
+                      {formatCurrency(series[selectedMonth].amount, activeCurrency, numberFormat)}
                     </AppText>
                   </View>
                 ) : null}
@@ -171,7 +230,8 @@ export default function ReportsScreen() {
               <GlassCard style={styles.chartCard} animateIndex={2}>
                 <CategoryDonut
                   slices={breakdown}
-                  currency={currency}
+                  currency={activeCurrency}
+                  numberFormat={numberFormat}
                   centerLabel={filter.kind === 'expense' ? 'Spent' : 'Received'}
                   total={totals.total}
                   selectedId={selectedCategory}
@@ -187,7 +247,8 @@ export default function ReportsScreen() {
               <GlassCard style={styles.chartCard} animateIndex={3}>
                 <CalendarHeatmap
                   weeks={heatmapWeeks}
-                  currency={currency}
+                  currency={activeCurrency}
+                  numberFormat={numberFormat}
                   selectedKey={selectedDay}
                   onSelect={setSelectedDay}
                 />
@@ -205,7 +266,7 @@ export default function ReportsScreen() {
                         heatmapWeeks
                           .flatMap(w => w.days)
                           .find(d => d?.dateKey === selectedDay)?.amount ?? 0,
-                        currency,
+                        activeCurrency,
                         numberFormat
                       )}
                     </AppText>
@@ -219,7 +280,7 @@ export default function ReportsScreen() {
                 Busiest days
               </AppText>
               <GlassCard style={styles.chartCard} animateIndex={4}>
-                <WeekdayBars buckets={weekdays} currency={currency} />
+                <WeekdayBars buckets={weekdays} currency={activeCurrency} numberFormat={numberFormat} />
               </GlassCard>
             </View>
 
@@ -242,7 +303,7 @@ export default function ReportsScreen() {
                           {note.count} {note.count === 1 ? 'time' : 'times'}
                         </AppText>
                       </View>
-                      <AppText variant="amount">{formatCurrency(note.amount, currency, numberFormat)}</AppText>
+                      <AppText variant="amount">{formatCurrency(note.amount, activeCurrency, numberFormat)}</AppText>
                     </View>
                   ))}
                 </GlassCard>
@@ -268,6 +329,20 @@ const styles = StyleSheet.create({
   },
   kindWrap: {
     paddingHorizontal: 20,
+  },
+  currencyBar: {
+    flexDirection: 'row',
+    paddingHorizontal: 20,
+    gap: 8,
+  },
+  currencyChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+    borderRadius: BorderRadius.pill,
+    borderWidth: 1,
   },
   section: {
     paddingHorizontal: 20,

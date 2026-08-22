@@ -4,6 +4,7 @@ import {
   formatIndianNumber,
   formatInternationalNumber,
   formatCompact,
+  formatRawNumber,
   CURRENCIES,
 } from '../utils/currency';
 
@@ -73,6 +74,16 @@ test('formatCompact uses Cr and L for Indian format, and M and B for Internation
   assert.equal(formatCompact(1500000000, 'USD', 'international'), '$1.5B');
   assert.equal(formatCompact(2500000, 'USD', 'international'), '$2.5M');
   assert.equal(formatCompact(1500, 'USD', 'international'), '$1.5k');
+});
+
+// 6. formatRawNumber
+test('formatRawNumber correctly groups user input in Indian and International formats', () => {
+  assert.equal(formatRawNumber('10000000', 'indian'), '1,00,00,000');
+  assert.equal(formatRawNumber('10000000', 'international'), '10,000,000');
+  assert.equal(formatRawNumber('125000.75', 'indian'), '1,25,000.75');
+  assert.equal(formatRawNumber('125000.75', 'international'), '125,000.75');
+  assert.equal(formatRawNumber('', 'indian'), '0');
+  assert.equal(formatRawNumber('500', 'indian'), '500');
 });
 
 console.log('\nAll currency formatting cases passed.');

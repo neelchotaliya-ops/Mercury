@@ -48,11 +48,27 @@ export default function HomeScreen() {
     [state.accounts]
   );
 
-  const totalBalance = useMemo(() => {
+  const uniqueCurrencies = useMemo(() => {
+    const list = Array.from(
+      new Set(accounts.map(a => a.currency ?? state.settings.currency ?? 'INR'))
+    );
+    return list.length > 0 ? list : [state.settings.currency ?? 'INR'];
+  }, [accounts, state.settings.currency]);
+
+  const [selectedCurrency, setSelectedCurrency] = useState<string>(uniqueCurrencies[0] ?? 'INR');
+  const activeCurrency = uniqueCurrencies.includes(selectedCurrency)
+    ? selectedCurrency
+    : (uniqueCurrencies[0] ?? 'INR');
+
+  const currencyTotal = useMemo(() => {
     let total = 0;
-    for (const account of accounts) total += balanceMap.get(account.id) ?? 0;
+    for (const account of accounts) {
+      if ((account.currency ?? 'INR') === activeCurrency) {
+        total += balanceMap.get(account.id) ?? 0;
+      }
+    }
     return total;
-  }, [accounts, balanceMap]);
+  }, [accounts, balanceMap, activeCurrency]);
 
   // Selected account
   const selectedAccount = useMemo(
@@ -70,12 +86,17 @@ export default function HomeScreen() {
   // directly rather than sliced off a full in-memory array.
   const { data: recent } = useRecentTransactions(selectedAccountId, 4);
 
+  const heroCurrency = selectedAccount ? (selectedAccount.currency ?? activeCurrency) : activeCurrency;
   const heroValue = formatCurrency(
-    selectedAccount ? (balanceMap.get(selectedAccount.id) ?? 0) : totalBalance,
-    currency,
+    selectedAccount ? (balanceMap.get(selectedAccount.id) ?? 0) : currencyTotal,
+    heroCurrency,
     numberFormat
   );
-  const heroLabel = selectedAccount ? selectedAccount.name : 'Total balance';
+  const heroLabel = selectedAccount
+    ? selectedAccount.name
+    : uniqueCurrencies.length > 1
+      ? `Total (${activeCurrency})`
+      : 'Total balance';
   const heroSub = selectedAccount
     ? `${ACCOUNT_TYPE_META[selectedAccount.type].label} Account · Tap to reset`
     : `${accounts.length} ${accounts.length === 1 ? 'account' : 'accounts'}`;
@@ -94,6 +115,8 @@ export default function HomeScreen() {
         id: account.id,
         name: account.name,
         balance: balanceMap.get(account.id) ?? 0,
+        currency: account.currency ?? activeCurrency,
+        numberFormat,
         icon: account.icon,
         color: account.color,
         slot: slots[idx],
@@ -106,7 +129,9 @@ export default function HomeScreen() {
     const totalBadge: HeroBadge = {
       id: null,
       name: 'Total balance',
-      balance: totalBalance,
+      balance: currencyTotal,
+      currency: activeCurrency,
+      numberFormat,
       icon: 'sparkles',
       color: Colors.primary,
       slot: slots[0],
@@ -117,6 +142,8 @@ export default function HomeScreen() {
       id: account.id,
       name: account.name,
       balance: balanceMap.get(account.id) ?? 0,
+      currency: account.currency ?? activeCurrency,
+      numberFormat,
       icon: account.icon,
       color: account.color,
       slot: slots[idx + 1],
@@ -124,7 +151,7 @@ export default function HomeScreen() {
     }));
 
     return [totalBadge, ...remainingBadges];
-  }, [accounts, selectedAccountId, balanceMap, totalBalance]);
+  }, [accounts, selectedAccountId, balanceMap, currencyTotal, activeCurrency, numberFormat]);
 
   return (
     <GradientScreen contours="top">
@@ -145,7 +172,8 @@ export default function HomeScreen() {
           label={heroLabel}
           value={heroValue}
           sub={heroSub}
-          currency={currency}
+          currency={heroCurrency}
+          numberFormat={numberFormat}
           badges={orbitBadges}
           onPressMain={() => setSelectedAccountId(null)}
         />
@@ -204,7 +232,7 @@ export default function HomeScreen() {
                     color={(balanceMap.get(account.id) ?? 0) < 0 ? Colors.expense : Colors.textPrimary}
                     style={styles.accountValue}
                   >
-                    {formatCurrency(balanceMap.get(account.id) ?? 0, currency, numberFormat)}
+                    {formatCurrency(balanceMap.get(account.id) ?? 0, account.currency ?? currency, numberFormat)}
                   </AppText>
                 </GlassCard>
               </Pressable>
@@ -249,7 +277,7 @@ export default function HomeScreen() {
                   category={categoryById.get(t.categoryId ?? '')}
                   account={accountById.get(t.accountId)}
                   toAccount={t.toAccountId ? accountById.get(t.toAccountId) : undefined}
-                  currency={currency}
+                  currency={accountById.get(t.accountId)?.currency ?? currency}
                   numberFormat={numberFormat}
                   showDivider={index < recent.length - 1}
                   onPress={() => router.push(`/add-transaction?id=${t.id}`)}

@@ -20,7 +20,8 @@ export const BudgetRow: React.FC<BudgetRowProps> = ({ progress, onPress, animate
   const { state } = useFinance();
   const { category, spent, percent, remaining, budget } = progress;
   const isOver = remaining < 0;
-  const currency = state.settings.currency;
+  const targetAccount = budget.accountId ? state.accounts.find(a => a.id === budget.accountId) : undefined;
+  const currency = budget.currency ?? targetAccount?.currency ?? state.settings.currency ?? 'INR';
   const numberFormat = state.settings.numberFormat;
 
   return (
@@ -30,9 +31,18 @@ export const BudgetRow: React.FC<BudgetRowProps> = ({ progress, onPress, animate
           <View style={styles.header}>
             <IconBadge icon={category?.icon ?? 'pricetag'} color={category?.color ?? Colors.textMuted} size={40} />
             <View style={styles.titleCol}>
-              <AppText variant="bodyStrong" numberOfLines={1}>
-                {category?.name ?? 'Category'}
-              </AppText>
+              <View style={styles.titleRow}>
+                <AppText variant="bodyStrong" numberOfLines={1}>
+                  {category?.name ?? 'Category'}
+                </AppText>
+                {targetAccount && (
+                  <View style={styles.accountBadge}>
+                    <AppText variant="micro" color={targetAccount.color}>
+                      {targetAccount.name}
+                    </AppText>
+                  </View>
+                )}
+              </View>
               <AppText variant="caption">
                 {formatCurrency(spent, currency, numberFormat)} of {formatCurrency(budget.monthlyLimit, currency, numberFormat)}
               </AppText>
@@ -69,6 +79,17 @@ const styles = StyleSheet.create({
   titleCol: {
     flex: 1,
     gap: 3,
+  },
+  titleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  accountBadge: {
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 6,
+    backgroundColor: 'rgba(25, 21, 39, 0.05)',
   },
   percentPill: {
     paddingHorizontal: 10,

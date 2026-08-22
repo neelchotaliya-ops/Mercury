@@ -69,7 +69,7 @@ const DayGroup = React.memo(function DayGroup({
             category={categoryById.get(t.categoryId ?? '')}
             account={accountById.get(t.accountId)}
             toAccount={t.toAccountId ? accountById.get(t.toAccountId) : undefined}
-            currency={currency}
+            currency={accountById.get(t.accountId)?.currency ?? currency}
             numberFormat={numberFormat}
             showDivider={i < group.transactions.length - 1}
             onPress={() => onPressTransaction(t.id)}
