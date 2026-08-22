@@ -75,10 +75,25 @@ export default function SettingsScreen() {
   const handleSeedDemoData = () => {
     Alert.alert('Populate 2-Year Sample Data', 'This will populate 2 full years of realistic accounts, transactions, and budgets.', [
       { text: 'Cancel', style: 'cancel' },
-      { text: 'Populate 2-Year Data', onPress: seedDemoData },
+      {
+        text: 'Populate 2-Year Data',
+        onPress: async () => {
+          if (busy) return;
+          setBusy('import');
+          try {
+            await seedDemoData();
+            haptics.success();
+            Alert.alert('Sample data populated', '2 full years of sample data have been added.');
+          } catch (e) {
+            haptics.error();
+            Alert.alert('Populate failed', e instanceof Error ? e.message : 'Could not seed sample data.');
+          } finally {
+            setBusy(null);
+          }
+        },
+      },
     ]);
   };
-
 
   const handleExport = async () => {
     if (busy) return;
@@ -151,7 +166,24 @@ export default function SettingsScreen() {
   const handleReset = () => {
     Alert.alert('Reset all data', 'This permanently deletes every account, transaction, and budget.', [
       { text: 'Cancel', style: 'cancel' },
-      { text: 'Reset', style: 'destructive', onPress: resetAllData },
+      {
+        text: 'Reset',
+        style: 'destructive',
+        onPress: async () => {
+          if (busy) return;
+          setBusy('export');
+          try {
+            await resetAllData();
+            haptics.warning();
+            Alert.alert('Reset complete', 'All data has been cleared.');
+          } catch (e) {
+            haptics.error();
+            Alert.alert('Reset failed', e instanceof Error ? e.message : 'Could not reset data.');
+          } finally {
+            setBusy(null);
+          }
+        },
+      },
     ]);
   };
 

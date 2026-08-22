@@ -46,6 +46,7 @@ import {
   updateTransaction as dbUpdateTransaction,
   deleteTransaction as dbDeleteTransaction,
 } from '@/db/transactions';
+import { rebuildRollups } from '@/db/rebuild';
 
 /**
  * The small, bounded entities: accounts, categories, budgets, presets,
@@ -287,11 +288,22 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
       resetAllData: () =>
         withDb(async db => {
           await db.execAsync(
-            'DELETE FROM transactions; DELETE FROM accounts; DELETE FROM categories; DELETE FROM budgets; DELETE FROM quick_presets; DELETE FROM rollup; DELETE FROM account_balance; DELETE FROM settings;'
+            "DELETE FROM transactions; DELETE FROM accounts; DELETE FROM categories; DELETE FROM budgets; DELETE FROM quick_presets; DELETE FROM rollup; DELETE FROM account_balance; DELETE FROM settings; UPDATE ledger_stat SET n = 0, net = 0 WHERE key IN ('all','income','expense','transfer');"
           );
           const seeded = buildDefaultCategories();
           for (let i = 0; i < seeded.length; i++) await insertCategory(db, seeded[i], i);
+          const presets = PRESET_SEEDS.map(seed => ({
+            id: generateId(),
+            label: seed.label,
+            emoji: seed.emoji,
+            amount: seed.amount,
+            type: 'expense' as const,
+            categoryId: seeded.find(c => c.kind === 'expense' && c.name === seed.category)?.id,
+          }));
+          for (let i = 0; i < presets.length; i++) await insertPreset(db, presets[i], i);
           await dbUpdateSettings(db, { currency: entities.settings.currency, hasOnboarded: true });
+          await rebuildRollups(db);
+          bumpDataVersion();
         }),
 
       seedDemoData: () =>
@@ -299,12 +311,14 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
           const { buildDemoState } = await import('@/utils/demo-data');
           const demo = buildDemoState();
           await db.execAsync(
-            'DELETE FROM transactions; DELETE FROM accounts; DELETE FROM categories; DELETE FROM budgets; DELETE FROM quick_presets; DELETE FROM rollup; DELETE FROM account_balance;'
+            "DELETE FROM transactions; DELETE FROM accounts; DELETE FROM categories; DELETE FROM budgets; DELETE FROM quick_presets; DELETE FROM rollup; DELETE FROM account_balance; UPDATE ledger_stat SET n = 0, net = 0 WHERE key IN ('all','income','expense','transfer');"
           );
           for (let i = 0; i < demo.accounts.length; i++) await insertAccount(db, demo.accounts[i], i);
           for (let i = 0; i < demo.categories.length; i++) await insertCategory(db, demo.categories[i], i);
           for (let i = 0; i < demo.budgets.length; i++) await insertBudget(db, demo.budgets[i], i);
           for (const tx of demo.transactions) await insertTransaction(db, tx);
+          await rebuildRollups(db);
+          bumpDataVersion();
         }),
     }),
     [withDb, entities.settings.currency]
