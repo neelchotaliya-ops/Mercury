@@ -27,7 +27,8 @@
     "test:db:insights": "tsx scripts/test-db-insights.ts",
     "test:db:migration": "tsx scripts/test-db-migration.ts",
     "test:json-stream": "tsx scripts/test-json-stream.ts",
-    "test:import-stream": "tsx scripts/test-import-stream.ts"
+    "test:import-stream": "tsx scripts/test-import-stream.ts",
+    "bench:scale": "tsx scripts/benchmark-scale.ts"
   },
   "dependencies": {
     "@expo-google-fonts/manrope": "^0.4.2",
