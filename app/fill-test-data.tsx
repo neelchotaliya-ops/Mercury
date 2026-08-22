@@ -187,7 +187,8 @@ export default function FillTestDataScreen() {
       <ModalHeader title="Fill test data" subtitle="Random, unpatterned ledger for testing" onClose={handleClose} />
 
       {showProgress ? (
-        <View style={styles.progressWrap}>
+        <>
+          <View style={styles.progressWrap}>
           <GlassCard strong style={styles.progressCard} padding={24} elevated>
             <AppText variant="h3" align="center">
               {outcome ? (outcome.cancelled ? 'Cancelled' : 'Done') : 'Filling test data…'}
@@ -216,14 +217,17 @@ export default function FillTestDataScreen() {
                 </AppText>
               </View>
             ) : null}
-
-            {!outcome ? (
-              <AppButton title="Cancel" onPress={handleCancel} style={styles.actionButton} />
-            ) : (
-              <AppButton title="Close" onPress={() => router.back()} style={styles.actionButton} />
-            )}
           </GlassCard>
         </View>
+
+        <View style={styles.footer}>
+          {!outcome ? (
+            <AppButton title="Cancel" variant="glass" onPress={handleCancel} />
+          ) : (
+            <AppButton title="Done" onPress={() => router.back()} />
+          )}
+        </View>
+      </>
       ) : (
         <>
           <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
@@ -389,8 +393,5 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     paddingHorizontal: 2,
-  },
-  actionButton: {
-    marginTop: 8,
   },
 });
