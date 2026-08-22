@@ -34,7 +34,17 @@ export async function listAccounts(db: Db): Promise<Account[]> {
   return rows.map(rowToAccount);
 }
 
-export async function insertAccount(db: Db, account: Account, sortOrder: number): Promise<void> {
+/**
+ * The row-write half of `insertAccount`, without the `bumpDataVersion()`.
+ * For bulk setup (`db/seed-scale.ts`, `utils/import-stream.ts`) where
+ * calling this once per row would fire a version bump per row — and each
+ * bump can wake a mounted screen's query hook into issuing its own read
+ * against `transactions` on the same connection, which is exactly what
+ * produced "database table is locked" against the DROP/CREATE INDEX calls
+ * those bulk paths run immediately after this setup step. Bulk callers
+ * insert every row through this, then bump once at the very end.
+ */
+export async function insertAccountRow(db: Db, account: Account, sortOrder: number): Promise<void> {
   await db.runAsync(
     `INSERT INTO accounts (id, name, type, icon, color, initial_balance, created_at, archived, sort_order)
      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
@@ -53,6 +63,10 @@ export async function insertAccount(db: Db, account: Account, sortOrder: number)
   await db.runAsync('INSERT OR IGNORE INTO account_balance (account_id, delta) VALUES (?, 0)', [
     account.id,
   ]);
+}
+
+export async function insertAccount(db: Db, account: Account, sortOrder: number): Promise<void> {
+  await insertAccountRow(db, account, sortOrder);
   bumpDataVersion();
 }
 
@@ -115,12 +129,17 @@ export async function listCategories(db: Db): Promise<Category[]> {
   return rows.map(rowToCategory);
 }
 
-export async function insertCategory(db: Db, category: Category, sortOrder: number): Promise<void> {
+/** The row-write half of `insertCategory` — see `insertAccountRow`'s doc comment for why bulk callers use this instead. */
+export async function insertCategoryRow(db: Db, category: Category, sortOrder: number): Promise<void> {
   await db.runAsync(
     `INSERT INTO categories (id, name, icon, color, kind, is_default, sort_order)
      VALUES (?, ?, ?, ?, ?, ?, ?)`,
     [category.id, category.name, category.icon, category.color, category.kind, category.isDefault ? 1 : 0, sortOrder]
   );
+}
+
+export async function insertCategory(db: Db, category: Category, sortOrder: number): Promise<void> {
+  await insertCategoryRow(db, category, sortOrder);
   bumpDataVersion();
 }
 
@@ -171,11 +190,16 @@ export async function listBudgets(db: Db): Promise<Budget[]> {
   return rows.map(rowToBudget);
 }
 
-export async function insertBudget(db: Db, budget: Budget, sortOrder: number): Promise<void> {
+/** The row-write half of `insertBudget` — see `insertAccountRow`'s doc comment for why bulk callers use this instead. */
+export async function insertBudgetRow(db: Db, budget: Budget, sortOrder: number): Promise<void> {
   await db.runAsync(
     'INSERT INTO budgets (id, category_id, monthly_limit, created_at, sort_order) VALUES (?, ?, ?, ?, ?)',
     [budget.id, budget.categoryId, budget.monthlyLimit, budget.createdAt, sortOrder]
   );
+}
+
+export async function insertBudget(db: Db, budget: Budget, sortOrder: number): Promise<void> {
+  await insertBudgetRow(db, budget, sortOrder);
   bumpDataVersion();
 }
 
@@ -214,7 +238,8 @@ export async function listPresets(db: Db): Promise<QuickPreset[]> {
   return rows.map(rowToPreset);
 }
 
-export async function insertPreset(db: Db, preset: QuickPreset, sortOrder: number): Promise<void> {
+/** The row-write half of `insertPreset` — see `insertAccountRow`'s doc comment for why bulk callers use this instead. */
+export async function insertPresetRow(db: Db, preset: QuickPreset, sortOrder: number): Promise<void> {
   await db.runAsync(
     `INSERT INTO quick_presets (id, label, emoji, amount, type, category_id, account_id, sort_order)
      VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
@@ -229,6 +254,10 @@ export async function insertPreset(db: Db, preset: QuickPreset, sortOrder: numbe
       sortOrder,
     ]
   );
+}
+
+export async function insertPreset(db: Db, preset: QuickPreset, sortOrder: number): Promise<void> {
+  await insertPresetRow(db, preset, sortOrder);
   bumpDataVersion();
 }
 

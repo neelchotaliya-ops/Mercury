@@ -248,10 +248,38 @@ const BULK_INDEXES: { name: string; create: string }[] = [
   { name: 'idx_tx_day', create: 'CREATE INDEX IF NOT EXISTS idx_tx_day ON transactions(day_key)' },
 ];
 
+function isTableLockedError(e: unknown): boolean {
+  return e instanceof Error && /database table is locked/i.test(e.message);
+}
+
+/**
+ * `PRAGMA busy_timeout` (set in `db/client.ts`) covers `SQLITE_BUSY` —
+ * contention with the widget's separate connection — but a DDL statement
+ * like `DROP`/`CREATE INDEX` can instead hit `SQLITE_LOCKED` ("database
+ * table is locked"), which happens when some other statement on this same
+ * connection still has an open cursor against the table being altered
+ * (e.g. a query hook's read that was mid-flight). `busy_timeout` doesn't
+ * retry that case on its own, and it should resolve itself as soon as that
+ * other statement finishes, so a short bounded retry here is the
+ * appropriate fix — not a sign anything is actually stuck.
+ */
+async function execWithLockRetry(db: Db, sql: string): Promise<void> {
+  const attempts = 5;
+  for (let attempt = 1; attempt <= attempts; attempt++) {
+    try {
+      await db.execAsync(sql);
+      return;
+    } catch (e) {
+      if (!isTableLockedError(e) || attempt === attempts) throw e;
+      await new Promise(resolve => setTimeout(resolve, attempt * 100));
+    }
+  }
+}
+
 /** Drops the transactions table's secondary indexes ahead of a large bulk load. Safe to call when they're already missing. */
 export async function dropBulkIndexes(db: Db): Promise<void> {
   for (const idx of BULK_INDEXES) {
-    await db.execAsync(`DROP INDEX IF EXISTS ${idx.name}`);
+    await execWithLockRetry(db, `DROP INDEX IF EXISTS ${idx.name}`);
   }
 }
 
@@ -264,7 +292,7 @@ export async function dropBulkIndexes(db: Db): Promise<void> {
  */
 export async function ensureBulkIndexes(db: Db): Promise<void> {
   for (const idx of BULK_INDEXES) {
-    await db.execAsync(idx.create);
+    await execWithLockRetry(db, idx.create);
   }
 }
 

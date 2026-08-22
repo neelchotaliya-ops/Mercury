@@ -20,7 +20,7 @@
 import { Account, Category, Transaction, TransactionType } from '@/types/finance';
 import { DEFAULT_EXPENSE_CATEGORIES, DEFAULT_INCOME_CATEGORIES, ACCOUNT_TYPE_META } from '@/constants/categories';
 import { Db } from './types';
-import { insertAccount, insertCategory } from './entities';
+import { insertAccountRow, insertCategoryRow } from './entities';
 import { bulkInsertTransactionRows } from './transactions';
 import { rebuildRollups } from './rebuild';
 import { bumpDataVersion } from './version';
@@ -187,8 +187,13 @@ export async function seedScaleData(db: Db, options: ScaleSeedOptions): Promise<
       'DELETE FROM transactions; DELETE FROM accounts; DELETE FROM categories; DELETE FROM budgets; DELETE FROM quick_presets; DELETE FROM rollup; DELETE FROM account_balance;'
     );
   });
-  for (let i = 0; i < accounts.length; i++) await insertAccount(db, accounts[i], i);
-  for (let i = 0; i < categories.length; i++) await insertCategory(db, categories[i], i);
+  // Row-only inserts (no bumpDataVersion per row) — a bump here would risk
+  // waking a mounted screen's query hook into a read against `transactions`
+  // right as dropBulkIndexes() below starts altering its schema, which is
+  // exactly what produces SQLite's "database table is locked". One bump at
+  // the very end, after the indexes are back, is both correct and safe.
+  for (let i = 0; i < accounts.length; i++) await insertAccountRow(db, accounts[i], i);
+  for (let i = 0; i < categories.length; i++) await insertCategoryRow(db, categories[i], i);
 
   // Dropped for the load and rebuilt once at the end — see
   // db/schema.ts#dropBulkIndexes for why this is the dominant lever for

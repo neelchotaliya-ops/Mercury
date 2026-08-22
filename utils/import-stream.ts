@@ -18,10 +18,10 @@ import {
   listCategories,
   listBudgets,
   listPresets,
-  insertAccount,
-  insertCategory,
-  insertBudget,
-  insertPreset,
+  insertAccountRow,
+  insertCategoryRow,
+  insertBudgetRow,
+  insertPresetRow,
   updateSettings,
 } from '@/db/entities';
 import { bulkInsertTransactionRows } from '@/db/transactions';
@@ -196,6 +196,13 @@ export async function applyImportChunks(
    * the SQL layer) and, for `replace`, adopts the backup's settings. Called
    * once, either on the first transaction seen or, if the backup has none,
    * after the file has been fully read.
+   *
+   * Runs after `dropBulkIndexes` below, so this uses the *Row (no
+   * `bumpDataVersion`) insert variants — a bump here would risk waking a
+   * mounted screen's query hook into a read against `transactions` while
+   * its indexes are still down, which is exactly what produces SQLite's
+   * "database table is locked". One bump at the very end, once the indexes
+   * are back, is both correct and safe.
    */
   async function applySmallEntities(metaSoFar: Record<string, unknown>): Promise<void> {
     if (smallEntitiesApplied) return;
@@ -203,28 +210,31 @@ export async function applyImportChunks(
 
     for (const a of parseAccounts(metaSoFar.accounts)) {
       if (seenAccountIds.has(a.id)) continue;
-      await insertAccount(db, a, accountSortOrder++);
+      await insertAccountRow(db, a, accountSortOrder++);
       seenAccountIds.add(a.id);
     }
     accountIds = new Set(seenAccountIds);
 
     for (const c of parseCategories(metaSoFar.categories)) {
       if (seenCategoryIds.has(c.id)) continue;
-      await insertCategory(db, c, categorySortOrder++);
+      await insertCategoryRow(db, c, categorySortOrder++);
       seenCategoryIds.add(c.id);
     }
     for (const b of parseBudgets(metaSoFar.budgets)) {
       if (seenBudgetIds.has(b.id)) continue;
-      await insertBudget(db, b, budgetSortOrder++);
+      await insertBudgetRow(db, b, budgetSortOrder++);
       seenBudgetIds.add(b.id);
     }
     for (const p of parsePresets(metaSoFar.quickPresets)) {
       if (seenPresetIds.has(p.id)) continue;
-      await insertPreset(db, p, presetSortOrder++);
+      await insertPresetRow(db, p, presetSortOrder++);
       seenPresetIds.add(p.id);
     }
     // Merge keeps whatever settings are already there — only a full replace
     // adopts the backup's, matching the old `mergeData`'s `settings: current.settings`.
+    // updateSettings still bumps on its own — it's a single call, not a
+    // loop, so it isn't the per-row hazard the inserts above are, and
+    // settings changing mid-load is not itself unsafe.
     if (mode === 'replace') {
       await updateSettings(db, coerceSettings(metaSoFar.settings));
     }
