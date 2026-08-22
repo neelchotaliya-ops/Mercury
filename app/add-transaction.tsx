@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { View, StyleSheet, ScrollView, Pressable, TextInput, Alert } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
@@ -15,7 +15,9 @@ import { AccountPicker } from '@/components/finance/account-picker';
 import { DatePickerModal } from '@/components/finance/date-picker-modal';
 import { ScanReceiptButton } from '@/components/finance/scan-receipt-button';
 import { useFinance } from '@/context/finance-context';
-import { TransactionType } from '@/types/finance';
+import { getDb } from '@/db/client';
+import { getTransactionById } from '@/db/transactions';
+import { Transaction, TransactionType } from '@/types/finance';
 import { getCurrencySymbol } from '@/utils/currency';
 import { haptics } from '@/utils/haptics';
 import { buildNote } from '@/utils/receipt-parser';
@@ -46,26 +48,52 @@ export default function AddTransactionScreen() {
   }>();
   const { state, addTransaction, updateTransaction, deleteTransaction } = useFinance();
 
-  const editing = useMemo(
-    () => state.transactions.find(t => t.id === params.id),
-    [state.transactions, params.id]
-  );
+  // Transactions no longer live in FinanceContext's state (that was the
+  // point of the migration — the ledger is queried, not held in memory), so
+  // the transaction being edited is fetched here rather than found in an
+  // array. Since the form's useState initializers can no longer read it
+  // synchronously, they start at their "new transaction" defaults and an
+  // effect below fills them in once the fetch resolves — a brief flash on
+  // opening an edit rather than the instant fill the old synchronous lookup
+  // gave. A form-component split that gates rendering until the fetch
+  // resolves would remove that flash entirely; left as a follow-up rather
+  // than done here.
+  const [editing, setEditing] = useState<Transaction | undefined>(undefined);
+
+  useEffect(() => {
+    if (!params.id) return;
+    let cancelled = false;
+    (async () => {
+      const db = await getDb();
+      const tx = await getTransactionById(db, params.id!);
+      if (!cancelled && tx) setEditing(tx);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [params.id]);
 
   const [type, setType] = useState<TransactionType>(
-    editing?.type ??
-      (params.type === 'transfer' || params.type === 'income'
-        ? (params.type as TransactionType)
-        : 'expense')
+    params.type === 'transfer' || params.type === 'income' ? (params.type as TransactionType) : 'expense'
   );
-  const [amount, setAmount] = useState(editing ? String(editing.amount) : '');
-  const [accountId, setAccountId] = useState<string | undefined>(
-    editing?.accountId ?? state.accounts[0]?.id
-  );
-  const [toAccountId, setToAccountId] = useState<string | undefined>(editing?.toAccountId);
-  const [categoryId, setCategoryId] = useState<string | undefined>(editing?.categoryId);
-  const [note, setNote] = useState(editing?.note ?? '');
-  const [date, setDate] = useState<Date>(editing ? new Date(editing.date) : new Date());
+  const [amount, setAmount] = useState('');
+  const [accountId, setAccountId] = useState<string | undefined>(state.accounts[0]?.id);
+  const [toAccountId, setToAccountId] = useState<string | undefined>(undefined);
+  const [categoryId, setCategoryId] = useState<string | undefined>(undefined);
+  const [note, setNote] = useState('');
+  const [date, setDate] = useState<Date>(new Date());
   const [showDatePicker, setShowDatePicker] = useState(false);
+
+  useEffect(() => {
+    if (!editing) return;
+    setType(editing.type);
+    setAmount(String(editing.amount));
+    setAccountId(editing.accountId);
+    setToAccountId(editing.toAccountId);
+    setCategoryId(editing.categoryId);
+    setNote(editing.note ?? '');
+    setDate(new Date(editing.date));
+  }, [editing]);
 
   const [scanning, setScanning] = useState(false);
   const [scanned, setScanned] = useState<{ merchant?: string; confidence: number } | null>(null);
@@ -166,8 +194,8 @@ export default function AddTransactionScreen() {
       note: note.trim() || undefined,
     };
 
-    if (editing) updateTransaction({ ...editing, ...payload });
-    else addTransaction(payload);
+    if (editing) void updateTransaction({ ...editing, ...payload });
+    else void addTransaction(payload);
     haptics.success();
     router.back();
   };
@@ -180,7 +208,7 @@ export default function AddTransactionScreen() {
         text: 'Delete',
         style: 'destructive',
         onPress: () => {
-          deleteTransaction(editing.id);
+          void deleteTransaction(editing.id);
           haptics.warning();
           router.back();
         },

@@ -10,7 +10,7 @@ import { ModalHeader } from '@/components/ui/modal-header';
 import { AccountCard } from '@/components/finance/account-card';
 import { EmptyState } from '@/components/finance/empty-state';
 import { useFinance } from '@/context/finance-context';
-import { getAllAccountBalances } from '@/utils/selectors';
+import { useAccountBalances } from '@/hooks/use-account-balances';
 import { formatCurrency } from '@/utils/currency';
 import { Colors, BorderRadius, Spacing } from '@/constants/theme';
 
@@ -18,13 +18,8 @@ export default function AccountsScreen() {
   const router = useRouter();
   const { state } = useFinance();
 
-  // One pass over the ledger for every account, instead of the previous
-  // getAccountBalance-per-card (O(accounts x transactions)) plus a separate
-  // unmemoized getTotalBalance scan. Net worth is then a sum over the map.
-  const balanceMap = useMemo(
-    () => getAllAccountBalances({ accounts: state.accounts, transactions: state.transactions }),
-    [state.accounts, state.transactions]
-  );
+  // From account_balance/rollup, not a ledger scan.
+  const { data: balanceMap } = useAccountBalances();
 
   const accounts = useMemo(
     () => state.accounts.filter(a => !a.archived),

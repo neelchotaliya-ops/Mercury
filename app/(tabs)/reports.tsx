@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useState } from 'react';
 import { View, StyleSheet, ScrollView } from 'react-native';
 
 import { AppText } from '@/components/ui/app-text';
@@ -14,19 +14,8 @@ import { CalendarHeatmap } from '@/components/charts/calendar-heatmap';
 import { ReportsSkeleton } from '@/components/finance/reports-skeleton';
 import { useScreenReady } from '@/hooks/use-screen-ready';
 import { useFinance } from '@/context/finance-context';
-import {
-  DEFAULT_INSIGHT_FILTER,
-  InsightFilter,
-  compareWithPreviousPeriod,
-  computeCategoryBreakdown,
-  computeDailyHeatmap,
-  computeMonthlySeries,
-  computeTopNotes,
-  computeTotals,
-  computeWeekdayPattern,
-  resolveRange,
-  selectTransactions,
-} from '@/utils/insights';
+import { DEFAULT_INSIGHT_FILTER, InsightFilter } from '@/db/insights';
+import { useInsightsData } from '@/hooks/use-insights-data';
 import { formatCurrency } from '@/utils/currency';
 import { monthKeyLabel } from '@/utils/date';
 import { Colors, Spacing } from '@/constants/theme';
@@ -44,36 +33,14 @@ export default function ReportsScreen() {
   const currency = state.settings.currency;
   const numberFormat = state.settings.numberFormat;
 
-  // The ledger is scanned once here; every chart below reads this array.
-  //
-  // Keyed on `state.transactions`, not `state`. Both this and the comparison
-  // below only read the transactions array, but depending on the whole state
-  // object meant its identity changed on *any* mutation — a settings toggle, a
-  // budget edit, a widget-triggered refresh — and re-ran both full scans plus
-  // every chart computation below them. Insights stays mounted as a tab, so
-  // that fired constantly.
-  const ledger = useMemo(() => ({ transactions: state.transactions }), [state.transactions]);
+  // Every chart's data comes from the rollup via useInsightsData, not a scan
+  // over the ledger — each query is O(buckets) in the filtered range and
+  // re-fetches only when the filter changes or a write anywhere bumps
+  // db/version.ts, not on every unrelated app mutation.
+  const { totals, breakdown, series, heatmap: heatmapWeeks, weekdays, topNotes, comparison } =
+    useInsightsData(filter, state.categories);
 
-  const transactions = useMemo(() => selectTransactions(ledger, filter), [ledger, filter]);
-  const totals = useMemo(() => computeTotals(transactions), [transactions]);
-  const breakdown = useMemo(
-    () => computeCategoryBreakdown(transactions, state.categories),
-    [transactions, state.categories]
-  );
-  const range = useMemo(() => resolveRange(filter.range), [filter.range]);
-  const series = useMemo(() => computeMonthlySeries(transactions, range), [transactions, range]);
-  const heatmapWeeks = useMemo(
-    () => computeDailyHeatmap(transactions, range),
-    [transactions, range]
-  );
-  const weekdays = useMemo(() => computeWeekdayPattern(transactions), [transactions]);
-  const topNotes = useMemo(() => computeTopNotes(transactions), [transactions]);
-  const comparison = useMemo(
-    () => compareWithPreviousPeriod(ledger, filter),
-    [ledger, filter]
-  );
-
-  const isEmpty = transactions.length === 0;
+  const isEmpty = totals.count === 0;
   const changePercent =
     comparison.change !== undefined ? Math.round(comparison.change * 100) : undefined;
   const spendingUp = (comparison.change ?? 0) > 0;
@@ -168,7 +135,7 @@ export default function ReportsScreen() {
                   <View style={styles.stat}>
                     <AppText variant="micro">Largest</AppText>
                     <AppText variant="bodyStrong">
-                      {totals.largest ? formatCurrency(totals.largest.amount, currency, numberFormat) : '—'}
+                      {totals.largestAmount !== undefined ? formatCurrency(totals.largestAmount, currency, numberFormat) : '—'}
                     </AppText>
                   </View>
                 </View>

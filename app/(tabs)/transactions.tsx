@@ -11,6 +11,8 @@ import { TransactionsSkeleton } from '@/components/finance/transactions-skeleton
 import { EmptyState } from '@/components/finance/empty-state';
 import { useScreenReady } from '@/hooks/use-screen-ready';
 import { useFinance } from '@/context/finance-context';
+import { useTransactionPage } from '@/hooks/use-transaction-page';
+import { useLedgerHeader } from '@/hooks/use-ledger-header';
 import { GroupedTransactions, groupTransactionsByDay } from '@/utils/selectors';
 import { dayLabel } from '@/utils/date';
 import { formatCurrency } from '@/utils/currency';
@@ -87,27 +89,12 @@ export default function TransactionsScreen() {
 
   /**
    * Search is deferred so typing stays responsive: React keeps the previous
-   * results on screen while the new ones are computed, instead of refiltering
-   * the whole ledger synchronously on every keystroke.
+   * results on screen while the new query is in flight, instead of
+   * refiltering synchronously on every keystroke.
    */
   const deferredQuery = useDeferredValue(query);
+  const needle = deferredQuery.trim().toLowerCase();
 
-  /**
-   * Category names, resolved once. The filter below used to call
-   * getCategoryById per transaction, which is a linear scan inside a linear
-   * scan — O(transactions x categories) on every keystroke.
-   */
-  const categoryNameById = useMemo(() => {
-    const map = new Map<string, string>();
-    for (const c of state.categories) map.set(c.id, c.name.toLowerCase());
-    return map;
-  }, [state.categories]);
-
-  /**
-   * Full lookup maps for row rendering — separate from the name-only map
-   * above so TransactionListItem gets the complete Category/Account objects
-   * without scanning arrays per row.
-   */
   const categoryById = useMemo(
     () => new Map(state.categories.map(c => [c.id, c])),
     [state.categories]
@@ -119,39 +106,28 @@ export default function TransactionsScreen() {
   const currency = state.settings.currency;
   const numberFormat = state.settings.numberFormat;
 
-  // Keyed on transactions rather than the whole state object, so unrelated
-  // changes (settings, presets, budgets) no longer invalidate this.
-  const filtered = useMemo(() => {
-    const needle = deferredQuery.trim().toLowerCase();
-    // Fast path: when nothing is filtered, return state.transactions directly.
-    // This preserves the reference identity so groupTransactionsByDay sees the
-    // same pre-sorted array and its isSortedDesc check short-circuits instantly
-    // — no O(n) copy and no O(n log n) sort on every render.
-    if (filter === 'all' && needle.length === 0) return state.transactions;
+  // Category ids whose name matches the search needle — resolved once from
+  // the small in-memory category list, then passed to the SQL query as an
+  // IN(...) clause rather than fetching everything and filtering in JS.
+  const matchingCategoryIds = useMemo(() => {
+    if (!needle) return [];
+    return state.categories.filter(c => c.name.toLowerCase().includes(needle)).map(c => c.id);
+  }, [state.categories, needle]);
 
-    const out: typeof state.transactions = [];
-    for (const t of state.transactions) {
-      if (filter !== 'all' && t.type !== filter) continue;
-      if (needle.length > 0) {
-        const categoryName = t.categoryId ? categoryNameById.get(t.categoryId) ?? '' : '';
-        const note = t.note ? t.note.toLowerCase() : '';
-        if (!categoryName.includes(needle) && !note.includes(needle)) continue;
-      }
-      out.push(t);
-    }
-    return out;
-  }, [state.transactions, categoryNameById, filter, deferredQuery]);
-
-  const groups = useMemo(() => groupTransactionsByDay(filtered), [filtered]);
-
-  const filteredTotal = useMemo(
-    () =>
-      filtered.reduce(
-        (sum, t) => sum + (t.type === 'income' ? t.amount : t.type === 'expense' ? -t.amount : 0),
-        0
-      ),
-    [filtered]
+  const dbFilter = useMemo(
+    () => ({
+      type: filter === 'all' ? undefined : filter,
+      search: needle ? { needle, categoryIds: matchingCategoryIds } : undefined,
+    }),
+    [filter, needle, matchingCategoryIds]
   );
+
+  // Keyset-paginated: only ever holds the rows actually scrolled into view,
+  // never the whole ledger. loadMore is wired to FlatList's onEndReached.
+  const { rows, loading, loadMore, exhausted } = useTransactionPage(dbFilter, 60);
+  const groups = useMemo(() => groupTransactionsByDay(rows), [rows]);
+
+  const header = useLedgerHeader(filter, needle, matchingCategoryIds);
 
   const openTransaction = useCallback(
     (id: string) => router.push(`/add-transaction?id=${id}`),
@@ -180,8 +156,9 @@ export default function TransactionsScreen() {
       <View style={styles.header}>
         <AppText variant="h2">Activity</AppText>
         <AppText variant="caption">
-          {filtered.length} {filtered.length === 1 ? 'entry' : 'entries'} ·{' '}
-          {formatCurrency(filteredTotal, currency, numberFormat)} net
+          {header.data.n}
+          {exhausted ? '' : '+'} {header.data.n === 1 ? 'entry' : 'entries'} ·{' '}
+          {formatCurrency(header.data.net, currency, numberFormat)} net
         </AppText>
       </View>
 
@@ -229,7 +206,7 @@ export default function TransactionsScreen() {
         })}
       </ScrollView>
 
-      {!isReady ? (
+      {!isReady || (loading && groups.length === 0) ? (
         <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
           <TransactionsSkeleton />
         </ScrollView>
@@ -244,16 +221,18 @@ export default function TransactionsScreen() {
             groups.length === 0 && styles.emptyContent,
           ]}
           showsVerticalScrollIndicator={false}
-        // state.transactions is kept sorted newest-first by the reducer, so
-        // groups are also in order. These batch settings balance initial render
-        // speed with smooth scroll for large ledgers (1000+ transactions).
-        initialNumToRender={10}
-        maxToRenderPerBatch={8}
-        updateCellsBatchingPeriod={25}
-        windowSize={9}
-        // removeClippedSubviews is intentionally omitted on Android: it causes
-        // blank-frame jank when scrolling back to previously-detached views,
-        // which is worse than the small memory saving it provides.
+          // Pages accumulate newest-first as the user scrolls, never loading
+          // the whole ledger at once — this is the keyset pagination from
+          // hooks/use-transaction-page.ts, not a slice of an in-memory array.
+          onEndReached={() => loadMore()}
+          onEndReachedThreshold={0.5}
+          initialNumToRender={10}
+          maxToRenderPerBatch={8}
+          updateCellsBatchingPeriod={25}
+          windowSize={9}
+          // removeClippedSubviews is intentionally omitted on Android: it causes
+          // blank-frame jank when scrolling back to previously-detached views,
+          // which is worse than the small memory saving it provides.
           ListEmptyComponent={
             <GlassCard>
               <EmptyState

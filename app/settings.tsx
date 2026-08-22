@@ -9,6 +9,8 @@ import { GradientScreen } from '@/components/ui/gradient-screen';
 import { GlassCard } from '@/components/ui/glass-card';
 import { ModalHeader } from '@/components/ui/modal-header';
 import { useFinance } from '@/context/finance-context';
+import { getDb } from '@/db/client';
+import { listAllTransactions } from '@/db/transactions';
 import { haptics } from '@/utils/haptics';
 import { mergeData, summarize } from '@/utils/data-transfer';
 import { exportData, pickAndParseImport } from '@/utils/data-transfer-io';
@@ -84,8 +86,10 @@ export default function SettingsScreen() {
     if (busy) return;
     setBusy('export');
     try {
-      const { isLoaded, ...persistable } = state;
-      const result = await exportData(persistable);
+      const { isLoaded, ...entities } = state;
+      const db = await getDb();
+      const transactions = await listAllTransactions(db);
+      const result = await exportData({ ...entities, transactions });
       if (result.ok) {
         haptics.success();
       } else {
@@ -112,10 +116,9 @@ export default function SettingsScreen() {
       }
 
       const { summary, data: incoming } = result;
-      const current = (() => {
-        const { isLoaded, ...persistable } = state;
-        return persistable;
-      })();
+      const { isLoaded, ...entities } = state;
+      const db = await getDb();
+      const current = { ...entities, transactions: await listAllTransactions(db) };
 
       // Replacing is destructive and unrecoverable, so it is never the default
       // and always states what is about to be lost.

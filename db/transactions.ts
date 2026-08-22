@@ -3,6 +3,7 @@ import { dayKeyOf, monthKeyOf } from '@/utils/date';
 
 import { Db, TransactionRow } from './types';
 import { applyRow, reverseRow } from './apply';
+import { bumpDataVersion } from './version';
 import { RollupInput } from './rollup-math';
 
 /**
@@ -203,6 +204,7 @@ export async function insertTransaction(db: Db, tx: Transaction): Promise<void> 
     );
     await applyRow(txn, toRollupInput(tx));
   });
+  bumpDataVersion();
 }
 
 export async function updateTransaction(db: Db, next: Transaction): Promise<void> {
@@ -243,6 +245,7 @@ export async function updateTransaction(db: Db, next: Transaction): Promise<void
 
     await applyRow(txn, toRollupInput(next));
   });
+  bumpDataVersion();
 }
 
 export async function deleteTransaction(db: Db, id: string): Promise<void> {
@@ -256,6 +259,7 @@ export async function deleteTransaction(db: Db, id: string): Promise<void> {
     await reverseRow(txn, toRollupInput(rowToTransaction(row)));
     await txn.runAsync('DELETE FROM transactions WHERE id = ?', [id]);
   });
+  bumpDataVersion();
 }
 
 /** Every transaction touching this account, for the scoped rollup rebuild an account delete needs. */
@@ -265,4 +269,38 @@ export async function monthKeysTouchingAccount(db: Db, accountId: string): Promi
     [accountId, accountId]
   );
   return rows.map(r => r.month_key);
+}
+
+/**
+ * Every transaction, oldest first. Used only by full-ledger export today
+ * (see `utils/data-transfer-io.ts`) — `getEachAsync` streams rows from
+ * SQLite one at a time rather than materializing the whole result set,
+ * though the caller here still collects them into an array pending the
+ * Phase 8 streaming rewrite of export/import.
+ */
+export async function listAllTransactions(db: Db): Promise<Transaction[]> {
+  const out: Transaction[] = [];
+  for await (const row of db.getEachAsync<TransactionRow>(
+    `SELECT ${ROW_COLUMNS} FROM transactions ORDER BY seq ASC`
+  )) {
+    out.push(rowToTransaction(row));
+  }
+  return out;
+}
+
+/** Newest N transactions, optionally for one account (either leg of a transfer counts). For Home's "recent activity" list. */
+export async function getRecentTransactions(db: Db, accountId: string | null, limit = 4): Promise<Transaction[]> {
+  if (!accountId) {
+    const rows = await db.getAllAsync<TransactionRow>(
+      `SELECT ${ROW_COLUMNS} FROM transactions ORDER BY date_ms DESC, seq DESC LIMIT ?`,
+      [limit]
+    );
+    return rows.map(rowToTransaction);
+  }
+  const rows = await db.getAllAsync<TransactionRow>(
+    `SELECT ${ROW_COLUMNS} FROM transactions WHERE account_id = ? OR to_account_id = ?
+     ORDER BY date_ms DESC, seq DESC LIMIT ?`,
+    [accountId, accountId, limit]
+  );
+  return rows.map(rowToTransaction);
 }

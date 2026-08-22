@@ -250,3 +250,33 @@ CASES.push({
 });
 
 runCases(CASES, 'insights equivalence cases');
+
+
+CASES.push({
+  name: 'budget progress matches a plain JS reduce for the month',
+  run: async () => {
+    const dbEntities = await import('../db/entities');
+    const db = openTestDb();
+    await applyMigrations(db);
+    await insertAccount(db, { id: 'a1', name: 'a1', type: 'bank', icon: 'business', color: '#000', initialBalance: 0, createdAt: new Date(0).toISOString() }, 0);
+    await insertCategory(db, { id: 'c1', name: 'Groceries', icon: 'cart', color: '#000', kind: 'expense' }, 0);
+    await insertCategory(db, { id: 'c2', name: 'Fun', icon: 'game-controller', color: '#000', kind: 'expense' }, 0);
+    await dbEntities.insertBudget(db, { id: 'b1', categoryId: 'c1', monthlyLimit: 500, createdAt: new Date(0).toISOString() }, 0);
+
+    const ledger = [
+      { id: 't1', type: 'expense' as const, amount: 100, accountId: 'a1', categoryId: 'c1', date: '2026-08-05T00:00:00.000Z', createdAt: '2026-08-05T00:00:00.000Z' },
+      { id: 't2', type: 'expense' as const, amount: 250, accountId: 'a1', categoryId: 'c1', date: '2026-08-15T00:00:00.000Z', createdAt: '2026-08-15T00:00:00.000Z' },
+      { id: 't3', type: 'expense' as const, amount: 999, accountId: 'a1', categoryId: 'c1', date: '2026-09-01T00:00:00.000Z', createdAt: '2026-09-01T00:00:00.000Z' },
+      { id: 't4', type: 'expense' as const, amount: 40, accountId: 'a1', categoryId: 'c2', date: '2026-08-05T00:00:00.000Z', createdAt: '2026-08-05T00:00:00.000Z' },
+    ];
+    for (const tx of ledger) await insertTransaction(db, tx);
+
+    const progress = await dbEntities.getBudgetProgress(db, '2026-08');
+    const row = progress.find((p: any) => p.budget.id === 'b1');
+    return (
+      close('spent', row?.spent ?? -1, 350, 0.01) ??
+      close('percent', row?.percent ?? -1, 0.7, 0.001) ??
+      close('remaining', row?.remaining ?? -9999, 150, 0.01)
+    );
+  },
+});

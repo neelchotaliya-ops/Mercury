@@ -1,47 +1,124 @@
-import React, { createContext, useContext, useEffect, useMemo, useReducer, useRef, useState } from 'react';
-import { AppState, AppStateStatus } from 'react-native';
+import React, {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useState,
+  useSyncExternalStore,
+} from 'react';
 
 import {
   Account,
   AppSettings,
   Budget,
   Category,
-  FinanceState,
   QuickPreset,
   Transaction,
 } from '@/types/finance';
 import { DEFAULT_EXPENSE_CATEGORIES, DEFAULT_INCOME_CATEGORIES, ACCOUNT_TYPE_META } from '@/constants/categories';
 import { generateId } from '@/utils/id';
-import { loadFinanceState, saveFinanceState, PersistedFinanceState } from '@/storage/storage';
-import { refreshWidgets } from '@/utils/widget-bridge';
+import { getDb, getBlobMigrationResult } from '@/db/client';
+import { getDataVersion, subscribeDataVersion } from '@/db/version';
+import {
+  listAccounts,
+  listCategories,
+  listBudgets,
+  listPresets,
+  getSettings,
+  insertAccount,
+  updateAccount as dbUpdateAccount,
+  deleteAccount as dbDeleteAccount,
+  insertCategory,
+  updateCategory as dbUpdateCategory,
+  deleteCategory as dbDeleteCategory,
+  insertBudget,
+  updateBudget as dbUpdateBudget,
+  deleteBudget as dbDeleteBudget,
+  insertPreset,
+  updatePreset as dbUpdatePreset,
+  deletePreset as dbDeletePreset,
+  updateSettings as dbUpdateSettings,
+} from '@/db/entities';
+import {
+  insertTransaction,
+  updateTransaction as dbUpdateTransaction,
+  deleteTransaction as dbDeleteTransaction,
+} from '@/db/transactions';
+import { rebuildRollups } from '@/db/rebuild';
+import { PersistedFinanceState } from '@/storage/storage';
 
-type Action =
-  | { type: 'HYDRATE'; payload: PersistedFinanceState }
-  | { type: 'REFRESH_FROM_STORAGE'; payload: PersistedFinanceState }
-  | { type: 'ADD_ACCOUNT'; payload: Account }
-  | { type: 'UPDATE_ACCOUNT'; payload: Account }
-  | { type: 'DELETE_ACCOUNT'; payload: { id: string } }
-  | { type: 'ADD_CATEGORY'; payload: Category }
-  | { type: 'UPDATE_CATEGORY'; payload: Category }
-  | { type: 'DELETE_CATEGORY'; payload: { id: string } }
-  | { type: 'ADD_TRANSACTION'; payload: Transaction }
-  | { type: 'UPDATE_TRANSACTION'; payload: Transaction }
-  | { type: 'DELETE_TRANSACTION'; payload: { id: string } }
-  | { type: 'ADD_BUDGET'; payload: Budget }
-  | { type: 'UPDATE_BUDGET'; payload: Budget }
-  | { type: 'DELETE_BUDGET'; payload: { id: string } }
-  | { type: 'ADD_PRESET'; payload: QuickPreset }
-  | { type: 'UPDATE_PRESET'; payload: QuickPreset }
-  | { type: 'DELETE_PRESET'; payload: { id: string } }
-  | { type: 'UPDATE_SETTINGS'; payload: Partial<AppSettings> }
-  | { type: 'REPLACE_ALL_DATA'; payload: PersistedFinanceState }
-  | { type: 'RESET_ALL_DATA' }
-  | { type: 'SEED_DEMO_DATA' };
+/**
+ * The small, bounded entities: accounts, categories, budgets, presets,
+ * settings. There are tens of rows here, never millions, so they stay fully
+ * loaded in React state the same way they always have.
+ *
+ * `transactions` is deliberately absent — that was the whole point of this
+ * rewrite. It used to live in this same object as a plain array, and every
+ * mutation copied it: an edit did a `filter` (full array copy) followed by a
+ * binary-insert (`[...transactions]`, a second full copy), and the app's
+ * context value changed identity on every one of those, so all four tabs
+ * re-rendered together no matter which single number actually changed.
+ * Screens that need transaction-level data now call the query hooks in
+ * `hooks/use-*` directly, which read from SQLite on demand and re-run only
+ * when `db/version.ts`'s counter changes — the entities here don't gate that
+ * at all, and don't hold anything whose size scales with the ledger.
+ */
+export interface FinanceEntities {
+  accounts: Account[];
+  categories: Category[];
+  budgets: Budget[];
+  quickPresets: QuickPreset[];
+  settings: AppSettings;
+  isLoaded: boolean;
+}
 
-const defaultSettings: AppSettings = {
-  currency: 'USD',
-  hasOnboarded: true,
-};
+interface FinanceActions {
+  addAccount: (input: Omit<Account, 'id' | 'createdAt'>) => Promise<Account>;
+  updateAccount: (account: Account) => Promise<void>;
+  deleteAccount: (id: string) => Promise<void>;
+  addCategory: (input: Omit<Category, 'id'>) => Promise<Category>;
+  updateCategory: (category: Category) => Promise<void>;
+  deleteCategory: (id: string) => Promise<void>;
+  addTransaction: (input: Omit<Transaction, 'id' | 'createdAt'>) => Promise<Transaction>;
+  updateTransaction: (transaction: Transaction) => Promise<void>;
+  deleteTransaction: (id: string) => Promise<void>;
+  addBudget: (input: Omit<Budget, 'id' | 'createdAt'>) => Promise<Budget>;
+  updateBudget: (budget: Budget) => Promise<void>;
+  deleteBudget: (id: string) => Promise<void>;
+  addPreset: (input: Omit<QuickPreset, 'id'>) => Promise<QuickPreset>;
+  updatePreset: (preset: QuickPreset) => Promise<void>;
+  deletePreset: (id: string) => Promise<void>;
+  replaceAllData: (next: PersistedFinanceState) => Promise<void>;
+  updateSettings: (settings: Partial<AppSettings>) => Promise<void>;
+  completeOnboarding: () => Promise<void>;
+  resetAllData: () => Promise<void>;
+  seedDemoData: () => Promise<void>;
+}
+
+interface FinanceContextValue extends FinanceActions {
+  state: FinanceEntities;
+  /**
+   * Set when the last attempted write failed. Screens surface this rather
+   * than letting a failure pass unnoticed — the exact lesson from the old
+   * AsyncStorage path, where a swallowed write error was the actual
+   * data-loss mechanism, not the storage cap that triggered it.
+   */
+  persistError: string | null;
+  /** True once the blob migration has run (or determined there was nothing to migrate) and a real failure, if any, is known. */
+  migrationFailed: boolean;
+}
+
+const FinanceContext = createContext<FinanceContextValue | undefined>(undefined);
+
+const defaultSettings: AppSettings = { currency: 'USD', hasOnboarded: false };
+
+function buildDefaultCategories(): Category[] {
+  return [...DEFAULT_EXPENSE_CATEGORIES, ...DEFAULT_INCOME_CATEGORIES].map(c => ({
+    ...c,
+    id: generateId(),
+  }));
+}
 
 /** Starting points for the home screen widget, all editable in Settings. */
 const PRESET_SEEDS: { label: string; emoji: string; amount: number; category: string }[] = [
@@ -51,644 +128,226 @@ const PRESET_SEEDS: { label: string; emoji: string; amount: number; category: st
   { label: 'Snacks', emoji: '🍫', amount: 100, category: 'Food & Dining' },
 ];
 
-/**
- * Seeds presets against whichever default categories the user actually has, so
- * a fresh install and an upgrade both land on a usable widget.
- */
-function buildDefaultPresets(categories: Category[]): QuickPreset[] {
-  return PRESET_SEEDS.map(seed => ({
-    id: generateId(),
-    label: seed.label,
-    emoji: seed.emoji,
-    amount: seed.amount,
-    type: 'expense' as const,
-    categoryId: categories.find(c => c.kind === 'expense' && c.name === seed.category)?.id,
-  }));
-}
-
-function buildDefaultCategories(): Category[] {
-  return [...DEFAULT_EXPENSE_CATEGORIES, ...DEFAULT_INCOME_CATEGORIES].map(c => ({
-    ...c,
-    id: generateId(),
-  }));
-}
-
-function buildFreshInstallState(): PersistedFinanceState {
-  const categories = buildDefaultCategories();
-  return {
-    accounts: [],
-    categories,
-    transactions: [],
-    budgets: [],
-    quickPresets: buildDefaultPresets(categories),
-    settings: defaultSettings,
-  };
-}
-
-function buildDefaultState(): FinanceState {
-  const categories = buildDefaultCategories();
-
-  const getCatId = (nameQuery: string, fallbackKind: 'income' | 'expense') => {
-    const match = categories.find(
-      c => c.kind === fallbackKind && c.name.toLowerCase().includes(nameQuery.toLowerCase())
-    );
-    if (match) return match.id;
-    const fallback = categories.find(c => c.kind === fallbackKind);
-    return fallback ? fallback.id : generateId();
-  };
-
-  const catSalary = getCatId('salary', 'income');
-  const catFreelance = getCatId('freelance', 'income');
-
-  const catGroceries = getCatId('grocer', 'expense') || getCatId('food', 'expense');
-  const catHousing = getCatId('house', 'expense') || getCatId('rent', 'expense');
-  const catUtilities = getCatId('util', 'expense') || getCatId('bill', 'expense');
-  const catEntertainment = getCatId('entertain', 'expense') || getCatId('fun', 'expense');
-  const catShopping = getCatId('shop', 'expense');
-  const catTransport = getCatId('transport', 'expense') || getCatId('gas', 'expense');
-  const catHealth = getCatId('health', 'expense');
-
-  const now = new Date();
-  const todayISO = now.toISOString();
-
-  // Accounts
-  const bankAccount: Account = {
-    id: generateId(),
-    name: 'Main Checking',
-    type: 'bank',
-    icon: ACCOUNT_TYPE_META.bank.icon,
-    color: ACCOUNT_TYPE_META.bank.color,
-    initialBalance: 3200,
-    createdAt: todayISO,
-  };
-
-  const cashAccount: Account = {
-    id: generateId(),
-    name: 'Cash Wallet',
-    type: 'cash',
-    icon: ACCOUNT_TYPE_META.cash.icon,
-    color: ACCOUNT_TYPE_META.cash.color,
-    initialBalance: 420,
-    createdAt: todayISO,
-  };
-
-  const cardAccount: Account = {
-    id: generateId(),
-    name: 'Rewards Card',
-    type: 'card',
-    icon: ACCOUNT_TYPE_META.card.icon,
-    color: ACCOUNT_TYPE_META.card.color,
-    initialBalance: -240,
-    createdAt: todayISO,
-  };
-
-  const savingsAccount: Account = {
-    id: generateId(),
-    name: 'Vault Savings',
-    type: 'wallet',
-    icon: ACCOUNT_TYPE_META.wallet.icon,
-    color: '#10B981',
-    initialBalance: 8500,
-    createdAt: todayISO,
-  };
-
-  const transactions: Transaction[] = [];
-
-  // Generate 24 months of rich realistic data (month 24 down to 0)
-  for (let m = 24; m >= 0; m--) {
-    const year = now.getFullYear();
-    const month = now.getMonth() - m;
-    const targetDate = new Date(year, month, 1);
-
-    // 1st of month: Salary Income
-    const salaryDate = new Date(targetDate.getFullYear(), targetDate.getMonth(), 1, 10, 0);
-    if (salaryDate <= now) {
-      transactions.push({
-        id: generateId(),
-        type: 'income',
-        amount: 3200 + (m % 3) * 150,
-        accountId: bankAccount.id,
-        categoryId: catSalary,
-        note: 'Monthly Salary Deposit',
-        date: salaryDate.toISOString(),
-        createdAt: salaryDate.toISOString(),
-      });
-    }
-
-    // 1st of month: Apartment Rent
-    const rentDate = new Date(targetDate.getFullYear(), targetDate.getMonth(), 1, 12, 0);
-    if (rentDate <= now) {
-      transactions.push({
-        id: generateId(),
-        type: 'expense',
-        amount: 1250,
-        accountId: bankAccount.id,
-        categoryId: catHousing,
-        note: 'Monthly Rent Payment',
-        date: rentDate.toISOString(),
-        createdAt: rentDate.toISOString(),
-      });
-    }
-
-    // 5th of month: Electric & Utilities
-    const utilDate = new Date(targetDate.getFullYear(), targetDate.getMonth(), 5, 14, 30);
-    if (utilDate <= now) {
-      transactions.push({
-        id: generateId(),
-        type: 'expense',
-        amount: 85 + (m % 5) * 12,
-        accountId: bankAccount.id,
-        categoryId: catUtilities,
-        note: 'Power & High-Speed Internet',
-        date: utilDate.toISOString(),
-        createdAt: utilDate.toISOString(),
-      });
-    }
-
-    // 8th of month: Groceries
-    const grocDate1 = new Date(targetDate.getFullYear(), targetDate.getMonth(), 8, 16, 20);
-    if (grocDate1 <= now) {
-      transactions.push({
-        id: generateId(),
-        type: 'expense',
-        amount: 94.50 + (m % 4) * 15,
-        accountId: bankAccount.id,
-        categoryId: catGroceries,
-        note: 'Organic Foods & Essentials',
-        date: grocDate1.toISOString(),
-        createdAt: grocDate1.toISOString(),
-      });
-    }
-
-    // 12th of month: Freelance side income (every 2 months)
-    if (m % 2 === 0) {
-      const freeDate = new Date(targetDate.getFullYear(), targetDate.getMonth(), 12, 11, 0);
-      if (freeDate <= now) {
-        transactions.push({
-          id: generateId(),
-          type: 'income',
-          amount: 450 + (m % 3) * 100,
-          accountId: cashAccount.id,
-          categoryId: catFreelance,
-          note: 'Design Consulting Fee',
-          date: freeDate.toISOString(),
-          createdAt: freeDate.toISOString(),
-        });
-      }
-    }
-
-    // 15th of month: Mid-month Groceries & Dining
-    const grocDate2 = new Date(targetDate.getFullYear(), targetDate.getMonth(), 15, 18, 45);
-    if (grocDate2 <= now) {
-      transactions.push({
-        id: generateId(),
-        type: 'expense',
-        amount: 68.20 + (m % 3) * 10,
-        accountId: cashAccount.id,
-        categoryId: catGroceries,
-        note: 'Weekly Pantry Restock',
-        date: grocDate2.toISOString(),
-        createdAt: grocDate2.toISOString(),
-      });
-    }
-
-    // 18th of month: Entertainment / Streaming
-    const entDate = new Date(targetDate.getFullYear(), targetDate.getMonth(), 18, 20, 15);
-    if (entDate <= now) {
-      transactions.push({
-        id: generateId(),
-        type: 'expense',
-        amount: 16.99 + (m % 2) * 5,
-        accountId: cardAccount.id,
-        categoryId: catEntertainment,
-        note: 'Cinema & Streaming Subscriptions',
-        date: entDate.toISOString(),
-        createdAt: entDate.toISOString(),
-      });
-    }
-
-    // 22nd of month: Fuel & Transport
-    const transDate = new Date(targetDate.getFullYear(), targetDate.getMonth(), 22, 9, 10);
-    if (transDate <= now) {
-      transactions.push({
-        id: generateId(),
-        type: 'expense',
-        amount: 48.00 + (m % 4) * 8,
-        accountId: bankAccount.id,
-        categoryId: catTransport,
-        note: 'Gas Refill & Transit Pass',
-        date: transDate.toISOString(),
-        createdAt: transDate.toISOString(),
-      });
-    }
-
-    // 26th of month: Shopping
-    const shopDate = new Date(targetDate.getFullYear(), targetDate.getMonth(), 26, 15, 30);
-    if (shopDate <= now) {
-      transactions.push({
-        id: generateId(),
-        type: 'expense',
-        amount: 110.00 + (m % 5) * 25,
-        accountId: cardAccount.id,
-        categoryId: catShopping,
-        note: 'Clothing & Electronics',
-        date: shopDate.toISOString(),
-        createdAt: shopDate.toISOString(),
-      });
-    }
-
-    // 28th of month: Health & Gym
-    const healthDate = new Date(targetDate.getFullYear(), targetDate.getMonth(), 28, 7, 45);
-    if (healthDate <= now) {
-      transactions.push({
-        id: generateId(),
-        type: 'expense',
-        amount: 45.00,
-        accountId: cardAccount.id,
-        categoryId: catHealth,
-        note: 'Fitness Club Membership',
-        date: healthDate.toISOString(),
-        createdAt: healthDate.toISOString(),
-      });
-    }
-  }
-
-  // Budgets
-  const dummyBudgets: Budget[] = [
-    {
-      id: generateId(),
-      categoryId: catGroceries,
-      monthlyLimit: 500,
-      createdAt: todayISO,
-    },
-    {
-      id: generateId(),
-      categoryId: catEntertainment,
-      monthlyLimit: 150,
-      createdAt: todayISO,
-    },
-    {
-      id: generateId(),
-      categoryId: catShopping,
-      monthlyLimit: 300,
-      createdAt: todayISO,
-    },
-    {
-      id: generateId(),
-      categoryId: catUtilities,
-      monthlyLimit: 200,
-      createdAt: todayISO,
-    },
-  ];
-
-  return {
-    accounts: [bankAccount, cashAccount, cardAccount, savingsAccount],
-    categories,
-    quickPresets: buildDefaultPresets(categories),
-    transactions,
-    budgets: dummyBudgets,
-    settings: defaultSettings,
-    isLoaded: true,
-  };
-}
-
-const initialState: FinanceState = {
-  accounts: [],
-  categories: [],
-  quickPresets: [],
-  transactions: [],
-  budgets: [],
-  settings: defaultSettings,
-  isLoaded: false,
-};
-
-/**
- * Comparator: newest-first (ISO-8601 strings sort lexicographically).
- * Keeps state.transactions sorted so consumers never need to sort.
- */
-function cmpDateDesc(a: Transaction, b: Transaction): number {
-  return a.date < b.date ? 1 : a.date > b.date ? -1 : 0;
-}
-
-/**
- * Binary-insert a single transaction into an already-sorted (newest-first)
- * array. O(log n) search + O(n) splice — far cheaper than a full re-sort
- * after every ADD_TRANSACTION action.
- */
-function insertSortedDesc(transactions: Transaction[], tx: Transaction): Transaction[] {
-  const target = tx.date;
-  let lo = 0;
-  let hi = transactions.length;
-  while (lo < hi) {
-    const mid = (lo + hi) >>> 1;
-    // If this slot is older-or-equal to target, the new entry belongs here.
-    if (transactions[mid].date <= target) hi = mid;
-    else lo = mid + 1;
-  }
-  const result = [...transactions];
-  result.splice(lo, 0, tx);
-  return result;
-}
-
-function reducer(state: FinanceState, action: Action): FinanceState {
-  switch (action.type) {
-    case 'HYDRATE':
-    case 'REFRESH_FROM_STORAGE':
-      return {
-        ...action.payload,
-        settings: { ...defaultSettings, ...action.payload.settings },
-        // Saved before quick presets existed; seed them from the categories
-        // this user already has rather than leaving the widget empty.
-        quickPresets: action.payload.quickPresets ?? buildDefaultPresets(action.payload.categories),
-        // Sort on load — data from older builds may not be sorted yet, and
-        // keeping a single guaranteed ordering lets every consumer skip the
-        // O(n log n) sort step on every render.
-        transactions: [...action.payload.transactions].sort(cmpDateDesc),
-        isLoaded: true,
-      };
-
-    case 'ADD_ACCOUNT':
-      return { ...state, accounts: [...state.accounts, action.payload] };
-    case 'UPDATE_ACCOUNT':
-      return {
-        ...state,
-        accounts: state.accounts.map(a => (a.id === action.payload.id ? action.payload : a)),
-      };
-    case 'DELETE_ACCOUNT':
-      return {
-        ...state,
-        accounts: state.accounts.filter(a => a.id !== action.payload.id),
-        transactions: state.transactions.filter(
-          t => t.accountId !== action.payload.id && t.toAccountId !== action.payload.id
-        ),
-      };
-
-    case 'ADD_CATEGORY':
-      return { ...state, categories: [...state.categories, action.payload] };
-    case 'UPDATE_CATEGORY':
-      return {
-        ...state,
-        categories: state.categories.map(c => (c.id === action.payload.id ? action.payload : c)),
-      };
-    case 'DELETE_CATEGORY':
-      return {
-        ...state,
-        categories: state.categories.filter(c => c.id !== action.payload.id),
-        budgets: state.budgets.filter(b => b.categoryId !== action.payload.id),
-      };
-
-    case 'ADD_TRANSACTION':
-      // Binary-insert preserves newest-first order without a full sort.
-      return { ...state, transactions: insertSortedDesc(state.transactions, action.payload) };
-    case 'UPDATE_TRANSACTION': {
-      // The transaction's date may have changed, so remove-then-reinsert
-      // rather than a map() to keep the array sorted.
-      const without = state.transactions.filter(t => t.id !== action.payload.id);
-      return { ...state, transactions: insertSortedDesc(without, action.payload) };
-    }
-    case 'DELETE_TRANSACTION':
-      return { ...state, transactions: state.transactions.filter(t => t.id !== action.payload.id) };
-
-    case 'ADD_BUDGET':
-      return { ...state, budgets: [...state.budgets, action.payload] };
-    case 'UPDATE_BUDGET':
-      return { ...state, budgets: state.budgets.map(b => (b.id === action.payload.id ? action.payload : b)) };
-    case 'DELETE_BUDGET':
-      return { ...state, budgets: state.budgets.filter(b => b.id !== action.payload.id) };
-
-    case 'ADD_PRESET':
-      return { ...state, quickPresets: [...state.quickPresets, action.payload] };
-    case 'UPDATE_PRESET':
-      return {
-        ...state,
-        quickPresets: state.quickPresets.map(p => (p.id === action.payload.id ? action.payload : p)),
-      };
-    case 'DELETE_PRESET':
-      return {
-        ...state,
-        quickPresets: state.quickPresets.filter(p => p.id !== action.payload.id),
-      };
-
-    case 'UPDATE_SETTINGS':
-      return { ...state, settings: { ...state.settings, ...action.payload } };
-
-    // Wholesale swap, used by data import. Goes through the same normalisation
-    // as HYDRATE so an older export without newer fields still lands valid.
-    case 'REPLACE_ALL_DATA':
-      return {
-        ...action.payload,
-        settings: { ...defaultSettings, ...action.payload.settings },
-        quickPresets: action.payload.quickPresets ?? buildDefaultPresets(action.payload.categories),
-        transactions: [...action.payload.transactions].sort(cmpDateDesc),
-        isLoaded: true,
-      };
-
-    case 'RESET_ALL_DATA': {
-      const categories = buildDefaultCategories();
-      return {
-        accounts: [],
-        categories,
-        transactions: [],
-        budgets: [],
-        quickPresets: buildDefaultPresets(categories),
-        settings: defaultSettings,
-        isLoaded: true,
-      };
-    }
-
-    case 'SEED_DEMO_DATA': {
-      const seeded = buildDefaultState();
-      return { ...seeded, transactions: [...seeded.transactions].sort(cmpDateDesc) };
-    }
-
-    default:
-      return state;
-  }
-}
-
-interface FinanceActions {
-  addAccount: (input: Omit<Account, 'id' | 'createdAt'>) => Account;
-  updateAccount: (account: Account) => void;
-  deleteAccount: (id: string) => void;
-  addCategory: (input: Omit<Category, 'id'>) => Category;
-  updateCategory: (category: Category) => void;
-  deleteCategory: (id: string) => void;
-  addTransaction: (input: Omit<Transaction, 'id' | 'createdAt'>) => Transaction;
-  updateTransaction: (transaction: Transaction) => void;
-  deleteTransaction: (id: string) => void;
-  addBudget: (input: Omit<Budget, 'id' | 'createdAt'>) => Budget;
-  updateBudget: (budget: Budget) => void;
-  deleteBudget: (id: string) => void;
-  addPreset: (input: Omit<QuickPreset, 'id'>) => QuickPreset;
-  updatePreset: (preset: QuickPreset) => void;
-  deletePreset: (id: string) => void;
-  replaceAllData: (next: PersistedFinanceState) => void;
-  updateSettings: (settings: Partial<AppSettings>) => void;
-  completeOnboarding: () => void;
-  resetAllData: () => void;
-  seedDemoData: () => void;
-}
-
-interface FinanceContextValue extends FinanceActions {
-  state: FinanceState;
-  /**
-   * Set when the last attempted save failed. Non-null means the in-memory
-   * ledger is ahead of what is on disk and will be lost if the process dies —
-   * screens surface this rather than letting it pass unnoticed.
-   */
-  persistError: string | null;
-}
-
-const FinanceContext = createContext<FinanceContextValue | undefined>(undefined);
-
 export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const [state, dispatch] = useReducer(reducer, initialState);
+  const [entities, setEntities] = useState<FinanceEntities>({
+    accounts: [],
+    categories: [],
+    budgets: [],
+    quickPresets: [],
+    settings: defaultSettings,
+    isLoaded: false,
+  });
   const [persistError, setPersistError] = useState<string | null>(null);
-  const hasHydrated = useRef(false);
-  // Set right before a REFRESH_FROM_STORAGE dispatch so the persist effect
-  // below doesn't write straight back out the bytes it just read in.
-  const skipNextPersist = useRef(false);
-  // Debounce handle — prevents a JSON.stringify + AsyncStorage write on every
-  // single state change. Rapid interactions (filter taps, navigation) previously
-  // stacked multiple synchronous disk writes on the JS thread.
-  const persistTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [migrationFailed, setMigrationFailed] = useState(false);
+
+  // Re-render whenever any write anywhere (this provider, a background
+  // migration, eventually the widget's headless task) bumps the shared
+  // counter, and reload the small entity lists from SQLite when it does.
+  const dataVersion = useSyncExternalStore(subscribeDataVersion, getDataVersion, getDataVersion);
 
   useEffect(() => {
+    let cancelled = false;
     (async () => {
-      const persisted = await loadFinanceState();
-      if (persisted) {
-        dispatch({ type: 'HYDRATE', payload: persisted });
-      } else {
-        const fresh = buildFreshInstallState();
-        dispatch({ type: 'HYDRATE', payload: fresh });
+      try {
+        const db = await getDb();
+        const [accounts, categories, budgets, quickPresets, settings] = await Promise.all([
+          listAccounts(db),
+          listCategories(db),
+          listBudgets(db),
+          listPresets(db),
+          getSettings(db),
+        ]);
+        if (cancelled) return;
+
+        // First launch: SQLite has no categories yet (the migration only
+        // seeds from an existing blob). Seed the same defaults the old
+        // fresh-install path used, once.
+        if (categories.length === 0 && accounts.length === 0 && quickPresets.length === 0) {
+          const seededCategories = buildDefaultCategories();
+          for (let i = 0; i < seededCategories.length; i++) {
+            await insertCategory(db, seededCategories[i], i);
+          }
+          const presets = PRESET_SEEDS.map(seed => ({
+            id: generateId(),
+            label: seed.label,
+            emoji: seed.emoji,
+            amount: seed.amount,
+            type: 'expense' as const,
+            categoryId: seededCategories.find(c => c.kind === 'expense' && c.name === seed.category)?.id,
+          }));
+          for (let i = 0; i < presets.length; i++) await insertPreset(db, presets[i], i);
+
+          if (cancelled) return;
+          setEntities({
+            accounts: [],
+            categories: seededCategories,
+            budgets: [],
+            quickPresets: presets,
+            settings,
+            isLoaded: true,
+          });
+        } else {
+          setEntities({ accounts, categories, budgets, quickPresets, settings, isLoaded: true });
+        }
+
+        const migration = await getBlobMigrationResult();
+        if (!cancelled) setMigrationFailed(migration?.status === 'failed');
+      } catch (e) {
+        if (!cancelled) {
+          setPersistError(e instanceof Error ? e.message : 'Could not load your data.');
+          setEntities(prev => ({ ...prev, isLoaded: true }));
+        }
       }
-      hasHydrated.current = true;
     })();
-  }, []);
-
-  // The widget's headless task writes transactions straight to AsyncStorage,
-  // bypassing this reducer entirely, so returning to the app after using it
-  // must re-read storage — otherwise the in-memory state stays stale until a
-  // full app restart. minimize-and-reopen (not a kill) is exactly the "active"
-  // transition below; without this the amount silently disagrees with the
-  // widget until the process is killed and relaunched.
-  useEffect(() => {
-    const onChange = async (next: AppStateStatus) => {
-      if (next !== 'active' || !hasHydrated.current) return;
-      const fresh = await loadFinanceState();
-      if (!fresh) return;
-      skipNextPersist.current = true;
-      dispatch({ type: 'REFRESH_FROM_STORAGE', payload: fresh });
-    };
-    const subscription = AppState.addEventListener('change', onChange);
-    return () => subscription.remove();
-  }, []);
-
-  useEffect(() => {
-    if (!state.isLoaded || !hasHydrated.current) return;
-    if (skipNextPersist.current) {
-      skipNextPersist.current = false;
-      return;
-    }
-    // Debounce: only write after the state has been stable for 500 ms.
-    // This collapses rapid consecutive changes (typing, filter toggles) into a
-    // single disk write instead of one per keystroke.
-    if (persistTimeoutRef.current) clearTimeout(persistTimeoutRef.current);
-    persistTimeoutRef.current = setTimeout(() => {
-      const { isLoaded, ...persistable } = state;
-      saveFinanceState(persistable)
-        .then(() => {
-          setPersistError(null);
-          // Home screen widgets read the same store, so keep them in step with it.
-          refreshWidgets();
-        })
-        .catch((e: unknown) => {
-          // A failed write means everything entered since the last successful
-          // one exists only in memory and dies with the process. The user has
-          // to be told while they can still act on it (export a backup), so
-          // this is surfaced in the UI rather than logged and forgotten.
-          setPersistError(e instanceof Error ? e.message : 'Could not save your data.');
-        });
-    }, 500);
     return () => {
-      if (persistTimeoutRef.current) clearTimeout(persistTimeoutRef.current);
+      cancelled = true;
     };
-  }, [state]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dataVersion]);
 
-  /**
-   * Actions depend only on `dispatch`, which useReducer guarantees is stable,
-   * so this object is built once for the lifetime of the provider. Previously
-   * it was rebuilt on every render, which changed the context value's identity
-   * on every state change and re-rendered every consumer — including screens
-   * that only ever dispatch and never read state.
-   */
-  const actions = useMemo<FinanceActions>(
-    () => ({
-      addAccount: input => {
-        const account: Account = { ...input, id: generateId(), createdAt: new Date().toISOString() };
-        dispatch({ type: 'ADD_ACCOUNT', payload: account });
-        return account;
-      },
-      updateAccount: account => dispatch({ type: 'UPDATE_ACCOUNT', payload: account }),
-      deleteAccount: id => dispatch({ type: 'DELETE_ACCOUNT', payload: { id } }),
-
-      addCategory: input => {
-        const category: Category = { ...input, id: generateId() };
-        dispatch({ type: 'ADD_CATEGORY', payload: category });
-        return category;
-      },
-      updateCategory: category => dispatch({ type: 'UPDATE_CATEGORY', payload: category }),
-      deleteCategory: id => dispatch({ type: 'DELETE_CATEGORY', payload: { id } }),
-
-      addTransaction: input => {
-        const transaction: Transaction = {
-          ...input,
-          id: generateId(),
-          createdAt: new Date().toISOString(),
-        };
-        dispatch({ type: 'ADD_TRANSACTION', payload: transaction });
-        return transaction;
-      },
-      updateTransaction: transaction => dispatch({ type: 'UPDATE_TRANSACTION', payload: transaction }),
-      deleteTransaction: id => dispatch({ type: 'DELETE_TRANSACTION', payload: { id } }),
-
-      addBudget: input => {
-        const budget: Budget = { ...input, id: generateId(), createdAt: new Date().toISOString() };
-        dispatch({ type: 'ADD_BUDGET', payload: budget });
-        return budget;
-      },
-      updateBudget: budget => dispatch({ type: 'UPDATE_BUDGET', payload: budget }),
-      deleteBudget: id => dispatch({ type: 'DELETE_BUDGET', payload: { id } }),
-
-      addPreset: input => {
-        const preset: QuickPreset = { ...input, id: generateId() };
-        dispatch({ type: 'ADD_PRESET', payload: preset });
-        return preset;
-      },
-      updatePreset: preset => dispatch({ type: 'UPDATE_PRESET', payload: preset }),
-      deletePreset: id => dispatch({ type: 'DELETE_PRESET', payload: { id } }),
-
-      replaceAllData: next => dispatch({ type: 'REPLACE_ALL_DATA', payload: next }),
-      updateSettings: settings => dispatch({ type: 'UPDATE_SETTINGS', payload: settings }),
-      completeOnboarding: () => dispatch({ type: 'UPDATE_SETTINGS', payload: { hasOnboarded: true } }),
-      resetAllData: () => dispatch({ type: 'RESET_ALL_DATA' }),
-      seedDemoData: () => dispatch({ type: 'SEED_DEMO_DATA' }),
-    }),
+  const withDb = useCallback(
+    async <T,>(fn: (db: Awaited<ReturnType<typeof getDb>>) => Promise<T>): Promise<T> => {
+      try {
+        const db = await getDb();
+        const result = await fn(db);
+        setPersistError(null);
+        return result;
+      } catch (e) {
+        const message = e instanceof Error ? e.message : 'Could not save your data.';
+        setPersistError(message);
+        throw e;
+      }
+    },
     []
   );
 
+  const actions = useMemo<FinanceActions>(
+    () => ({
+      addAccount: input =>
+        withDb(async db => {
+          const account: Account = { ...input, id: generateId(), createdAt: new Date().toISOString() };
+          await insertAccount(db, account, 999);
+          return account;
+        }),
+      updateAccount: account => withDb(db => dbUpdateAccount(db, account)),
+      deleteAccount: id => withDb(db => dbDeleteAccount(db, id)),
+
+      addCategory: input =>
+        withDb(async db => {
+          const category: Category = { ...input, id: generateId() };
+          await insertCategory(db, category, 999);
+          return category;
+        }),
+      updateCategory: category => withDb(db => dbUpdateCategory(db, category)),
+      deleteCategory: id => withDb(db => dbDeleteCategory(db, id)),
+
+      addTransaction: input =>
+        withDb(async db => {
+          const transaction: Transaction = { ...input, id: generateId(), createdAt: new Date().toISOString() };
+          await insertTransaction(db, transaction);
+          return transaction;
+        }),
+      updateTransaction: transaction => withDb(db => dbUpdateTransaction(db, transaction)),
+      deleteTransaction: id => withDb(db => dbDeleteTransaction(db, id)),
+
+      addBudget: input =>
+        withDb(async db => {
+          const budget: Budget = { ...input, id: generateId(), createdAt: new Date().toISOString() };
+          await insertBudget(db, budget, 999);
+          return budget;
+        }),
+      updateBudget: budget => withDb(db => dbUpdateBudget(db, budget)),
+      deleteBudget: id => withDb(db => dbDeleteBudget(db, id)),
+
+      addPreset: input =>
+        withDb(async db => {
+          const preset: QuickPreset = { ...input, id: generateId() };
+          await insertPreset(db, preset, 999);
+          return preset;
+        }),
+      updatePreset: preset => withDb(db => dbUpdatePreset(db, preset)),
+      deletePreset: id => withDb(db => dbDeletePreset(db, id)),
+
+      updateSettings: patch => withDb(db => dbUpdateSettings(db, patch)),
+      completeOnboarding: () => withDb(db => dbUpdateSettings(db, { hasOnboarded: true })),
+
+      replaceAllData: next =>
+        withDb(async db => {
+          await db.withTransaction(async txn => {
+            await txn.execAsync(
+              'DELETE FROM transactions; DELETE FROM accounts; DELETE FROM categories; DELETE FROM budgets; DELETE FROM quick_presets; DELETE FROM rollup; DELETE FROM account_balance;'
+            );
+            for (let i = 0; i < next.accounts.length; i++) await insertAccount(txn, next.accounts[i], i);
+            for (let i = 0; i < next.categories.length; i++) await insertCategory(txn, next.categories[i], i);
+            for (let i = 0; i < next.budgets.length; i++) await insertBudget(txn, next.budgets[i], i);
+            for (let i = 0; i < next.quickPresets.length; i++) await insertPreset(txn, next.quickPresets[i], i);
+            for (const tx of next.transactions) {
+              await txn.runAsync(
+                `INSERT OR IGNORE INTO transactions
+                   (id, type, amount, account_id, to_account_id, category_id, date, date_ms, month_key, day_key, note, note_lc, created_at)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+                [
+                  tx.id,
+                  tx.type,
+                  tx.amount,
+                  tx.accountId,
+                  tx.toAccountId ?? null,
+                  tx.categoryId ?? null,
+                  tx.date,
+                  Date.parse(tx.date),
+                  tx.date.slice(0, 7),
+                  tx.date.slice(0, 10),
+                  tx.note ?? null,
+                  tx.note ? tx.note.toLowerCase() : null,
+                  tx.createdAt,
+                ]
+              );
+            }
+          });
+          await dbUpdateSettings(db, next.settings);
+          await rebuildRollups(db);
+        }),
+
+      resetAllData: () =>
+        withDb(async db => {
+          await db.execAsync(
+            'DELETE FROM transactions; DELETE FROM accounts; DELETE FROM categories; DELETE FROM budgets; DELETE FROM quick_presets; DELETE FROM rollup; DELETE FROM account_balance; DELETE FROM settings;'
+          );
+          const seeded = buildDefaultCategories();
+          for (let i = 0; i < seeded.length; i++) await insertCategory(db, seeded[i], i);
+          await dbUpdateSettings(db, { currency: entities.settings.currency, hasOnboarded: true });
+        }),
+
+      seedDemoData: () =>
+        withDb(async db => {
+          const { buildDemoState } = await import('@/utils/demo-data');
+          const demo = buildDemoState();
+          await db.execAsync(
+            'DELETE FROM transactions; DELETE FROM accounts; DELETE FROM categories; DELETE FROM budgets; DELETE FROM quick_presets; DELETE FROM rollup; DELETE FROM account_balance;'
+          );
+          for (let i = 0; i < demo.accounts.length; i++) await insertAccount(db, demo.accounts[i], i);
+          for (let i = 0; i < demo.categories.length; i++) await insertCategory(db, demo.categories[i], i);
+          for (let i = 0; i < demo.budgets.length; i++) await insertBudget(db, demo.budgets[i], i);
+          for (const tx of demo.transactions) await insertTransaction(db, tx);
+        }),
+    }),
+    [withDb, entities.settings.currency]
+  );
+
   const value = useMemo<FinanceContextValue>(
-    () => ({ state, persistError, ...actions }),
-    [state, persistError, actions]
+    () => ({ state: entities, persistError, migrationFailed, ...actions }),
+    [entities, persistError, migrationFailed, actions]
   );
 
   return <FinanceContext.Provider value={value}>{children}</FinanceContext.Provider>;
 };
 
-export const useFinance = (): FinanceContextValue => {
-  const context = useContext(FinanceContext);
-  if (!context) {
-    throw new Error('useFinance must be used within a FinanceProvider');
-  }
-  return context;
-};
+export function useFinance(): FinanceContextValue {
+  const ctx = useContext(FinanceContext);
+  if (!ctx) throw new Error('useFinance must be used within a FinanceProvider');
+  return ctx;
+}
+
+export function accountTypeMeta(type: Account['type']) {
+  return ACCOUNT_TYPE_META[type];
+}

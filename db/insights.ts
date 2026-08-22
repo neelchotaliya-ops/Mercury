@@ -32,6 +32,13 @@ export interface InsightFilter {
   minAmount?: number;
 }
 
+export const DEFAULT_INSIGHT_FILTER: InsightFilter = {
+  range: '6m',
+  accountIds: [],
+  categoryIds: [],
+  kind: 'expense',
+};
+
 export interface DateRange {
   start: Date;
   end: Date;
@@ -117,9 +124,22 @@ export interface InsightTotals {
   average: number;
   dailyAverage: number;
   activeDays: number;
+  /**
+   * Undefined rather than fetched by default — finding the single largest row
+   * needs a real scan (there is no index on `amount`), bounded by the
+   * `(type, date_ms)` range but still O(matched rows). Populated only when
+   * `withLargest` is passed, so the common case (every other Insights read)
+   * never pays for it.
+   */
+  largestAmount?: number;
 }
 
-export async function computeTotals(db: Db, filter: InsightFilter, now = new Date()): Promise<InsightTotals> {
+export async function computeTotals(
+  db: Db,
+  filter: InsightFilter,
+  now = new Date(),
+  withLargest = false
+): Promise<InsightTotals> {
   const range = resolveRange(filter.range, now);
   // Always day grain, even for 'all': the range always ends "today", so the
   // current month is partial for every preset including 'all' — there is no
@@ -143,12 +163,32 @@ export async function computeTotals(db: Db, filter: InsightFilter, now = new Dat
   // second query for a number nothing reads yet.
   const activeDays = activeDayBuckets.size;
 
+  let largestAmount: number | undefined;
+  if (withLargest && count > 0) {
+    const clauses = ['type = ?', 'date_ms BETWEEN ? AND ?'];
+    const params: (string | number)[] = [filter.kind, range.start.getTime(), range.end.getTime()];
+    if (filter.accountIds.length > 0) {
+      clauses.push(`account_id IN (${filter.accountIds.map(() => '?').join(',')})`);
+      params.push(...filter.accountIds);
+    }
+    if (filter.categoryIds.length > 0) {
+      clauses.push(`category_id IN (${filter.categoryIds.map(() => '?').join(',')})`);
+      params.push(...filter.categoryIds);
+    }
+    const row = await db.getFirstAsync<{ amount: number }>(
+      `SELECT amount FROM transactions WHERE ${clauses.join(' AND ')} ORDER BY amount DESC LIMIT 1`,
+      params
+    );
+    largestAmount = row?.amount;
+  }
+
   return {
     total,
     count,
     average: count > 0 ? total / count : 0,
     activeDays,
     dailyAverage: activeDays > 0 ? total / activeDays : 0,
+    largestAmount,
   };
 }
 

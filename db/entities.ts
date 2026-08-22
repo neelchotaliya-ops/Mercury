@@ -3,6 +3,7 @@ import { Account, AppSettings, Budget, Category, NumberFormat, QuickPreset } fro
 import { Db, AccountRow, CategoryRow, BudgetRow, QuickPresetRow } from './types';
 import { monthKeysTouchingAccount } from './transactions';
 import { rebuildRollups } from './rebuild';
+import { bumpDataVersion } from './version';
 
 /**
  * CRUD for the small, bounded entities — accounts, categories, budgets,
@@ -52,6 +53,7 @@ export async function insertAccount(db: Db, account: Account, sortOrder: number)
   await db.runAsync('INSERT OR IGNORE INTO account_balance (account_id, delta) VALUES (?, 0)', [
     account.id,
   ]);
+  bumpDataVersion();
 }
 
 export async function updateAccount(db: Db, account: Account): Promise<void> {
@@ -68,6 +70,7 @@ export async function updateAccount(db: Db, account: Account): Promise<void> {
       account.id,
     ]
   );
+  bumpDataVersion();
 }
 
 /**
@@ -89,6 +92,7 @@ export async function deleteAccount(db: Db, accountId: string): Promise<void> {
     // practice, but deletes are rare, destructive, already-confirmed actions.
     await rebuildRollups(db);
   }
+  bumpDataVersion();
 }
 
 // ---- categories ----
@@ -117,6 +121,7 @@ export async function insertCategory(db: Db, category: Category, sortOrder: numb
      VALUES (?, ?, ?, ?, ?, ?, ?)`,
     [category.id, category.name, category.icon, category.color, category.kind, category.isDefault ? 1 : 0, sortOrder]
   );
+  bumpDataVersion();
 }
 
 export async function updateCategory(db: Db, category: Category): Promise<void> {
@@ -126,6 +131,7 @@ export async function updateCategory(db: Db, category: Category): Promise<void> 
     category.color,
     category.id,
   ]);
+  bumpDataVersion();
 }
 
 /**
@@ -146,6 +152,7 @@ export async function deleteCategory(db: Db, categoryId: string): Promise<void> 
   if ((touched?.n ?? 0) > 0) {
     await rebuildRollups(db);
   }
+  bumpDataVersion();
 }
 
 // ---- budgets ----
@@ -169,6 +176,7 @@ export async function insertBudget(db: Db, budget: Budget, sortOrder: number): P
     'INSERT INTO budgets (id, category_id, monthly_limit, created_at, sort_order) VALUES (?, ?, ?, ?, ?)',
     [budget.id, budget.categoryId, budget.monthlyLimit, budget.createdAt, sortOrder]
   );
+  bumpDataVersion();
 }
 
 export async function updateBudget(db: Db, budget: Budget): Promise<void> {
@@ -177,10 +185,12 @@ export async function updateBudget(db: Db, budget: Budget): Promise<void> {
     budget.monthlyLimit,
     budget.id,
   ]);
+  bumpDataVersion();
 }
 
 export async function deleteBudget(db: Db, id: string): Promise<void> {
   await db.runAsync('DELETE FROM budgets WHERE id = ?', [id]);
+  bumpDataVersion();
 }
 
 // ---- quick presets ----
@@ -219,6 +229,7 @@ export async function insertPreset(db: Db, preset: QuickPreset, sortOrder: numbe
       sortOrder,
     ]
   );
+  bumpDataVersion();
 }
 
 export async function updatePreset(db: Db, preset: QuickPreset): Promise<void> {
@@ -227,10 +238,12 @@ export async function updatePreset(db: Db, preset: QuickPreset): Promise<void> {
      WHERE id = ?`,
     [preset.label, preset.emoji, preset.amount, preset.type, preset.categoryId ?? null, preset.accountId ?? null, preset.id]
   );
+  bumpDataVersion();
 }
 
 export async function deletePreset(db: Db, id: string): Promise<void> {
   await db.runAsync('DELETE FROM quick_presets WHERE id = ?', [id]);
+  bumpDataVersion();
 }
 
 // ---- settings ----
@@ -262,6 +275,7 @@ export async function updateSettings(db: Db, patch: Partial<AppSettings>): Promi
       }
     }
   });
+  bumpDataVersion();
 }
 
 // ---- account balances (used by Home, Accounts, the widget) ----
@@ -291,4 +305,69 @@ export async function getNetWorth(db: Db): Promise<number> {
      WHERE a.archived = 0`
   );
   return row?.total ?? 0;
+}
+
+// ---- budget progress (Budgets screen) ----
+
+export interface BudgetProgress {
+  budget: Budget;
+  category: Category | undefined;
+  spent: number;
+  percent: number;
+  remaining: number;
+}
+
+/**
+ * Category spend for one month, from the rollup rather than a scan — the
+ * `expense` column at day grain, summed across that month's day buckets.
+ * Day grain rather than month grain for the same reason `db/insights.ts`
+ * dropped month grain entirely: cheap either way, and this sidesteps ever
+ * having to reason about whether a given month is "complete" again.
+ */
+export async function getBudgetProgress(db: Db, monthKey: string): Promise<BudgetProgress[]> {
+  const budgets = await listBudgets(db);
+  const categories = await listCategories(db);
+  const byId = new Map(categories.map(c => [c.id, c]));
+
+  const rows = await db.getAllAsync<{ category_id: string; spent: number }>(
+    `SELECT category_id, SUM(expense) AS spent FROM rollup
+     WHERE grain = 'D' AND bucket LIKE ? AND category_id != ''
+     GROUP BY category_id`,
+    [`${monthKey}-%`]
+  );
+  const spendByCategory = new Map(rows.map(r => [r.category_id, (r.spent ?? 0) / 100]));
+
+  return budgets.map(budget => {
+    const spent = spendByCategory.get(budget.categoryId) ?? 0;
+    return {
+      budget,
+      category: byId.get(budget.categoryId),
+      spent,
+      percent: budget.monthlyLimit > 0 ? Math.min(spent / budget.monthlyLimit, 1) : 0,
+      remaining: budget.monthlyLimit - spent,
+    };
+  });
+}
+
+// ---- month summary (Home screen) ----
+
+export interface MonthSummary {
+  income: number;
+  expense: number;
+}
+
+/** This month's income/expense, optionally scoped to one account, from the rollup. */
+export async function getMonthSummary(db: Db, monthKey: string, accountId?: string | null): Promise<MonthSummary> {
+  const clauses = ["grain = 'D'", 'bucket LIKE ?'];
+  const params: (string | number)[] = [`${monthKey}-%`];
+  if (accountId) {
+    clauses.push('account_id = ?');
+    params.push(accountId);
+  }
+  const row = await db.getFirstAsync<{ income: number; expense: number }>(
+    `SELECT COALESCE(SUM(income), 0) AS income, COALESCE(SUM(expense), 0) AS expense
+     FROM rollup WHERE ${clauses.join(' AND ')}`,
+    params
+  );
+  return { income: (row?.income ?? 0) / 100, expense: (row?.expense ?? 0) / 100 };
 }

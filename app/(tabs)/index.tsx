@@ -12,9 +12,10 @@ import { StatCard } from '@/components/finance/stat-card';
 import { TransactionListItem } from '@/components/finance/transaction-list-item';
 import { EmptyState } from '@/components/finance/empty-state';
 import { useFinance } from '@/context/finance-context';
-import { getAllAccountBalances } from '@/utils/selectors';
+import { useAccountBalances } from '@/hooks/use-account-balances';
+import { useMonthSummary, useRecentTransactions } from '@/hooks/use-home-data';
 import { formatCurrency } from '@/utils/currency';
-import { toMonthKey, monthKeyOf } from '@/utils/date';
+import { toMonthKey } from '@/utils/date';
 import { ACCOUNT_TYPE_META } from '@/constants/categories';
 import { Colors, BorderRadius } from '@/constants/theme';
 
@@ -33,14 +34,9 @@ export default function HomeScreen() {
     [state.accounts]
   );
 
-  // Single O(n) pass over all transactions — reused for every balance read
-  // on this screen. Previously getAccountBalance() was called once per badge
-  // and once per chip, which was O(accounts × transactions) per render.
-  const balanceMap = useMemo(
-    () => getAllAccountBalances(state),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [state.transactions, state.accounts]
-  );
+  // From account_balance/rollup, not a ledger scan — O(accounts), and
+  // re-fetches only when a write anywhere bumps db/version.ts.
+  const { data: balanceMap } = useAccountBalances();
 
   // Pre-built lookup maps so TransactionListItem rows never scan arrays.
   const categoryById = useMemo(
@@ -64,30 +60,15 @@ export default function HomeScreen() {
     [accounts, selectedAccountId]
   );
 
-  // Calculate filtered transactions for the selected account (or all)
-  const filteredTransactions = useMemo(() => {
-    if (!selectedAccountId) return state.transactions;
-    return state.transactions.filter(
-      t => t.accountId === selectedAccountId || t.toAccountId === selectedAccountId
-    );
-  }, [state.transactions, selectedAccountId]);
+  // This month's income/expense for the selected account (or all), from the
+  // rollup — a single indexed query instead of a filter+scan over the ledger.
+  const { data: monthSummary } = useMonthSummary(monthKey, selectedAccountId);
+  const income = monthSummary.income;
+  const expense = monthSummary.expense;
 
-  // Calculate stats for current month for selected account / total
-  const { income, expense } = useMemo(() => {
-    let inc = 0;
-    let exp = 0;
-    filteredTransactions.forEach(t => {
-      // monthKeyOf, not `date.startsWith(monthKey)`: dates are stored as UTC
-      // ISO strings, so a prefix compare buckets by UTC month. East of UTC a
-      // transaction logged just after local midnight on the 1st carries the
-      // previous UTC month and would be counted against the wrong month.
-      if (monthKeyOf(t.date) === monthKey) {
-        if (t.type === 'income') inc += t.amount;
-        if (t.type === 'expense') exp += t.amount;
-      }
-    });
-    return { income: inc, expense: exp };
-  }, [filteredTransactions, monthKey]);
+  // Newest few transactions for the selected account (or all), queried
+  // directly rather than sliced off a full in-memory array.
+  const { data: recent } = useRecentTransactions(selectedAccountId, 4);
 
   const heroValue = formatCurrency(
     selectedAccount ? (balanceMap.get(selectedAccount.id) ?? 0) : totalBalance,
@@ -144,14 +125,6 @@ export default function HomeScreen() {
 
     return [totalBadge, ...remainingBadges];
   }, [accounts, selectedAccountId, balanceMap, totalBalance]);
-
-  // state.transactions is kept sorted newest-first by the reducer and
-  // filteredTransactions preserves that order, so just slice — no copy+sort
-  // of 1,000 items needed to find the top 4.
-  const recent = useMemo(
-    () => filteredTransactions.slice(0, 4),
-    [filteredTransactions]
-  );
 
   return (
     <GradientScreen contours="top">

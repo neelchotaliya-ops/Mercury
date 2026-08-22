@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useState } from 'react';
 import { View, StyleSheet, ScrollView } from 'react-native';
 import { useRouter } from 'expo-router';
 
@@ -13,7 +13,7 @@ import { BudgetsSkeleton } from '@/components/finance/budgets-skeleton';
 import { EmptyState } from '@/components/finance/empty-state';
 import { useScreenReady } from '@/hooks/use-screen-ready';
 import { useFinance } from '@/context/finance-context';
-import { getBudgetProgress } from '@/utils/selectors';
+import { useBudgetProgress } from '@/hooks/use-budget-progress';
 import { formatCurrency } from '@/utils/currency';
 import { toMonthKey } from '@/utils/date';
 import { Colors, Spacing } from '@/constants/theme';
@@ -24,13 +24,9 @@ export default function BudgetsScreen() {
   const [monthKey, setMonthKey] = useState(() => toMonthKey(new Date()));
   const isReady = useScreenReady(180);
 
-  // Scoped to only the slices getBudgetProgress actually reads, so unrelated
-  // changes (settings, presets, accounts) don't trigger a recompute.
-  const progress = useMemo(
-    () => getBudgetProgress(state, monthKey),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [state.transactions, state.budgets, state.categories, monthKey]
-  );
+  // From the rollup, not a ledger scan — see db/entities.ts's
+  // getBudgetProgress. Re-fetches on month change or any write anywhere.
+  const { data: progress } = useBudgetProgress(monthKey);
   const currency = state.settings.currency;
   const numberFormat = state.settings.numberFormat;
 
