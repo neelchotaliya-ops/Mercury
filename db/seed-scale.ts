@@ -2,14 +2,12 @@
  * Configurable-scale, fully-random ledger generator for testing the app at
  * real volume (the Settings → "Fill test data" flow).
  *
- * Deliberately unlike `utils/demo-data.ts`'s `buildDemoState()`: that one
- * builds a small, realistic-looking ledger (recurring rent on the 1st,
- * salary deposits, weekly groceries) meant to make a fresh install look
- * lived-in. This one is the opposite on purpose — every field (date, amount,
- * account, category, type) is drawn independently and uniformly at random
- * within whatever range the caller picks, with no recurring structure at
- * all, because the point is to stress-test charts and lists against noisy,
- * unpatterned data, not to look believable.
+ * Every field (date, amount, account, category, type) is drawn
+ * independently and uniformly at random within whatever range the caller
+ * picks, with no recurring structure at all, because the point is to
+ * stress-test charts and lists against noisy, unpatterned data, not to look
+ * believable — deliberately unlike a realistic-looking demo ledger (recurring
+ * rent, salary deposits) meant to make a fresh install look lived-in.
  *
  * Generated and inserted in bounded-memory batches, the same way Phase 8's
  * streaming import works — never materializing the whole ledger in JS, so

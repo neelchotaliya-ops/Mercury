@@ -92,7 +92,6 @@ interface FinanceActions {
   updateSettings: (settings: Partial<AppSettings>) => Promise<void>;
   completeOnboarding: () => Promise<void>;
   resetAllData: () => Promise<void>;
-  seedDemoData: () => Promise<void>;
 }
 
 interface FinanceContextValue extends FinanceActions {
@@ -302,21 +301,6 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
           }));
           for (let i = 0; i < presets.length; i++) await insertPreset(db, presets[i], i);
           await dbUpdateSettings(db, { currency: entities.settings.currency, hasOnboarded: true });
-          await rebuildRollups(db);
-          bumpDataVersion();
-        }),
-
-      seedDemoData: () =>
-        withDb(async db => {
-          const { buildDemoState } = await import('@/utils/demo-data');
-          const demo = buildDemoState();
-          await db.execAsync(
-            "DELETE FROM transactions; DELETE FROM accounts; DELETE FROM categories; DELETE FROM budgets; DELETE FROM quick_presets; DELETE FROM rollup; DELETE FROM account_balance; UPDATE ledger_stat SET n = 0, net = 0 WHERE key IN ('all','income','expense','transfer');"
-          );
-          for (let i = 0; i < demo.accounts.length; i++) await insertAccount(db, demo.accounts[i], i);
-          for (let i = 0; i < demo.categories.length; i++) await insertCategory(db, demo.categories[i], i);
-          for (let i = 0; i < demo.budgets.length; i++) await insertBudget(db, demo.budgets[i], i);
-          for (const tx of demo.transactions) await insertTransaction(db, tx);
           await rebuildRollups(db);
           bumpDataVersion();
         }),

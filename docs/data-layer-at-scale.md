@@ -65,12 +65,11 @@ after the current batch and keeps whatever's already in (rollups are always
 rebuilt once at the end, cancelled or not, so the app stays correct either
 way).
 
-Unlike `utils/demo-data.ts`'s "Populate sample data" (a small, realistic
-2-year ledger with recurring rent/salary/groceries, meant to make a fresh
-install look lived-in), this generator is deliberately the opposite: every
-field — date, amount, account, category, type — is drawn independently and
-uniformly at random within whatever range is configured, with zero
-recurring structure. That's the point of it: a chart that only ever sees
+This generator is deliberately the opposite of a realistic-looking demo
+ledger (recurring rent/salary/groceries, meant to make a fresh install look
+lived-in): every field — date, amount, account, category, type — is drawn
+independently and uniformly at random within whatever range is configured,
+with zero recurring structure. That's the point of it: a chart that only ever sees
 clean monthly patterns doesn't tell you much about how it handles real,
 noisy data. `scripts/test-seed-scale.ts` checks the distribution actually
 is uniform (no day-of-month clustering, amounts within range, type mix
