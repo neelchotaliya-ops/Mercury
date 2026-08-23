@@ -1,5 +1,5 @@
-import React, { useSyncExternalStore } from 'react';
-import { View, StyleSheet, Pressable, ActivityIndicator } from 'react-native';
+import React, { useEffect, useSyncExternalStore } from 'react';
+import { View, StyleSheet, Pressable, ActivityIndicator, AppState } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Animated from 'react-native-reanimated';
@@ -9,11 +9,20 @@ import { ProgressBar } from '@/components/finance/progress-bar';
 import { Colors, BorderRadius, Shadows } from '@/constants/theme';
 import { useMountPop } from '@/hooks/use-mount-pop';
 import { haptics } from '@/utils/haptics';
+import { notifyOperationComplete } from '@/utils/notifications';
 import {
   cancelOperation,
   getActiveOperation,
   subscribeOperations,
+  subscribeOperationCompletions,
 } from '@/db/operation-status';
+
+const OPERATION_TITLES: Record<string, string> = {
+  import: 'Import finished',
+  export: 'Export finished',
+  'fill-test-data': 'Fill test data finished',
+  reset: 'Reset finished',
+};
 
 /**
  * Root-mounted, always-visible while an operation is running — the same
@@ -32,6 +41,16 @@ export const BackgroundOperationBanner: React.FC = () => {
   const operation = useSyncExternalStore(subscribeOperations, getActiveOperation, getActiveOperation);
   const insets = useSafeAreaInsets();
   const mountStyle = useMountPop();
+
+  // A completion while the app is foregrounded is already visible via this
+  // banner's own "done" state — the notification is specifically for "I
+  // switched away and it finished without me watching."
+  useEffect(() => {
+    return subscribeOperationCompletions(({ id, outcome }) => {
+      if (AppState.currentState === 'active') return;
+      void notifyOperationComplete(OPERATION_TITLES[id] ?? 'Operation finished', outcome.message);
+    });
+  }, []);
 
   if (!operation) return null;
 

@@ -27,6 +27,7 @@ import { useSharedReceipt } from '@/hooks/use-shared-receipt';
 import { PersistErrorBanner } from '@/components/ui/persist-error-banner';
 import { BackgroundOperationBanner } from '@/components/ui/background-operation-banner';
 import { AppSplash } from '@/components/ui/app-splash';
+import { ensureNotificationsReady } from '@/utils/notifications';
 
 SplashScreen.preventAutoHideAsync();
 
@@ -41,6 +42,11 @@ function RootNavigator() {
   useEffect(() => {
     // Hand over from native splash to interactive JS splash immediately
     SplashScreen.hideAsync().catch(() => {});
+    // Requested once up front (rather than lazily on the first completed
+    // operation) so the permission is already granted by the time an
+    // operation finishes while backgrounded — the OS can't show a
+    // permission prompt while the app isn't foregrounded.
+    void ensureNotificationsReady();
   }, []);
 
   // Only route a shared screenshot once accounts and categories exist to match against.
