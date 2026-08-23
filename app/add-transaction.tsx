@@ -226,6 +226,13 @@ export default function AddTransactionScreen() {
   };
 
   const isToday = new Date().toDateString() === date.toDateString();
+  const [showDetails, setShowDetails] = useState(false);
+
+  useEffect(() => {
+    if (payee.trim() || note.trim()) {
+      setShowDetails(true);
+    }
+  }, [payee, note]);
 
   return (
     <GradientScreen edges={['top']} contours="top">
@@ -233,6 +240,25 @@ export default function AddTransactionScreen() {
         title={editing ? 'Edit transaction' : 'New transaction'}
         onClose={() => router.back()}
         onDelete={editing ? handleDelete : undefined}
+        rightAction={
+          !editing && isScanSupported() ? (
+            <Pressable
+              onPress={() => {
+                Alert.alert('Scan Receipt', 'Choose a source', [
+                  { text: 'Take Photo', onPress: () => runScan(captureAndScan) },
+                  { text: 'Choose from Gallery', onPress: () => runScan(pickAndScan) },
+                  { text: 'Cancel', style: 'cancel' },
+                ]);
+              }}
+              style={({ pressed }) => [styles.headerScanBtn, { opacity: pressed ? 0.75 : 1 }]}
+            >
+              <Ionicons name="camera-outline" size={17} color={Colors.primaryDeep} />
+              <AppText variant="caption" color={Colors.primaryDeep} style={{ fontWeight: '700' }}>
+                Scan
+              </AppText>
+            </Pressable>
+          ) : undefined
+        }
       />
 
       <View style={styles.screenBody}>
@@ -241,28 +267,20 @@ export default function AddTransactionScreen() {
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
         >
-          {!editing && isScanSupported() ? (
-            <ScanReceiptButton
-              scanning={scanning}
-              onPickImage={() => runScan(pickAndScan)}
-              onOpenCamera={() => runScan(captureAndScan)}
-            />
-          ) : null}
-
           {scanned ? (
             <View style={styles.scanBanner}>
               <Ionicons
                 name={scanned.confidence >= 0.7 ? 'checkmark-circle' : 'alert-circle'}
-                size={17}
+                size={16}
                 color={scanned.confidence >= 0.7 ? Colors.income : Colors.expense}
               />
-              <AppText variant="micro" style={styles.scanBannerText}>
+              <AppText variant="micro" style={styles.scanBannerText} numberOfLines={1}>
                 {scanned.confidence >= 0.7
-                  ? `Read from screenshot${scanned.merchant ? ` · ${scanned.merchant}` : ''}. Check the details, then save.`
-                  : 'Only part of that screenshot was readable — please check every field before saving.'}
+                  ? `Scanned${scanned.merchant ? `: ${scanned.merchant}` : ''}`
+                  : 'Partially scanned — check details.'}
               </AppText>
               <Pressable onPress={() => setScanned(null)} hitSlop={10}>
-                <Ionicons name="close" size={15} color={Colors.textMuted} />
+                <Ionicons name="close" size={14} color={Colors.textMuted} />
               </Pressable>
             </View>
           ) : null}
@@ -280,7 +298,7 @@ export default function AddTransactionScreen() {
             }}
           />
 
-          <GlassCard strong style={styles.amountCard} elevated>
+          <View style={styles.amountWrap}>
             <AmountDisplay
               value={amount}
               currencySymbol={getCurrencySymbol(
@@ -290,225 +308,223 @@ export default function AddTransactionScreen() {
               numberFormat={state.settings.numberFormat}
               accentColor={TYPE_COLOR[type]}
             />
-          </GlassCard>
+          </View>
 
-          <GlassCard style={styles.formCard} padding={18}>
-            <View style={styles.field}>
-              <AppText variant="label">{type === 'transfer' ? 'From' : 'Account'}</AppText>
+          <View style={styles.sectionWrap}>
+            <View style={styles.sectionHeader}>
+              <AppText variant="micro" color={Colors.textMuted} style={styles.sectionLabel}>
+                {type === 'transfer' ? 'FROM ACCOUNT' : 'ACCOUNT'}
+              </AppText>
+            </View>
+            <AccountPicker
+              accounts={state.accounts}
+              selectedId={accountId}
+              onSelect={a => setAccountId(a.id)}
+            />
+          </View>
+
+          {type === 'transfer' && (
+            <View style={styles.sectionWrap}>
+              <View style={styles.sectionHeader}>
+                <AppText variant="micro" color={Colors.textMuted} style={styles.sectionLabel}>
+                  TO ACCOUNT
+                </AppText>
+              </View>
               <AccountPicker
                 accounts={state.accounts}
-                selectedId={accountId}
-                onSelect={a => setAccountId(a.id)}
+                selectedId={toAccountId}
+                onSelect={a => setToAccountId(a.id)}
+                excludeId={accountId}
               />
             </View>
+          )}
 
-            {type === 'transfer' ? (
-              <View style={styles.field}>
-                <AppText variant="label">To</AppText>
-                <AccountPicker
-                  accounts={state.accounts}
-                  selectedId={toAccountId}
-                  onSelect={a => setToAccountId(a.id)}
-                  excludeId={accountId}
-                />
+          {type !== 'transfer' && (
+            <View style={styles.sectionWrap}>
+              <View style={styles.sectionHeader}>
+                <AppText variant="micro" color={Colors.textMuted} style={styles.sectionLabel}>
+                  CATEGORY
+                </AppText>
               </View>
-            ) : (
-              <View style={styles.field}>
-                <AppText variant="label">Category</AppText>
-                <CategoryPicker
-                  categories={categories}
-                  selectedId={categoryId}
-                  onSelect={c => setCategoryId(c.id)}
-                  onManage={() =>
-                    router.push(`/manage-categories?kind=${type === 'income' ? 'income' : 'expense'}`)
-                  }
-                />
-              </View>
-            )}
+              <CategoryPicker
+                categories={categories}
+                selectedId={categoryId}
+                onSelect={c => {
+                  setCategoryId(c.id);
+                  setSubcategoryId(undefined);
+                }}
+                onManage={() =>
+                  router.push(`/manage-categories?kind=${type === 'income' ? 'income' : 'expense'}`)
+                }
+              />
+            </View>
+          )}
 
-            {type !== 'transfer' && categoryId && (
-              (() => {
-                const categorySubcats = (state.subcategories ?? []).filter(s => s.categoryId === categoryId);
-                return (
-                  <View style={styles.field}>
-                    <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-                      <AppText variant="label">Subcategory</AppText>
-                      <Pressable
-                        onPress={() => router.push(`/manage-subcategories?categoryId=${categoryId}` as any)}
-                        hitSlop={8}
-                      >
-                        <AppText variant="caption" color={Colors.primary}>+ Manage</AppText>
-                      </Pressable>
-                    </View>
-                    <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.subcatScroll}>
-                      {categorySubcats.map(sub => {
-                        const isSelected = subcategoryId === sub.id;
-                        return (
-                          <Pressable
-                            key={sub.id}
-                            onPress={() => {
-                              haptics.selection();
-                              setSubcategoryId(isSelected ? undefined : sub.id);
-                            }}
-                            style={[
-                              styles.subcatChip,
-                              isSelected && { backgroundColor: Colors.primarySoft, borderColor: Colors.primary }
-                            ]}
-                          >
-                            <Ionicons
-                              name={sub.icon}
-                              size={13}
-                              color={isSelected ? Colors.primaryDeep : Colors.textSecondary}
-                            />
-                            <AppText
-                              variant="caption"
-                              color={isSelected ? Colors.primaryDeep : Colors.textPrimary}
-                              style={{ fontWeight: isSelected ? '600' : '400' }}
-                            >
-                              {sub.name}
-                            </AppText>
-                          </Pressable>
-                        );
-                      })}
-                      {categorySubcats.length === 0 && (
+          {type !== 'transfer' && categoryId && (
+            (() => {
+              const categorySubcats = (state.subcategories ?? []).filter(s => s.categoryId === categoryId);
+              return (
+                <View style={styles.subcatSection}>
+                  <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.subcatScroll}>
+                    {categorySubcats.map(sub => {
+                      const isSelected = subcategoryId === sub.id;
+                      return (
                         <Pressable
-                          onPress={() => router.push(`/manage-subcategories?categoryId=${categoryId}` as any)}
-                          style={styles.subcatEmptyChip}
+                          key={sub.id}
+                          onPress={() => {
+                            haptics.selection();
+                            setSubcategoryId(isSelected ? undefined : sub.id);
+                          }}
+                          style={[
+                            styles.subcatChip,
+                            isSelected && { backgroundColor: Colors.primarySoft, borderColor: Colors.primary }
+                          ]}
                         >
-                          <Ionicons name="add-circle-outline" size={13} color={Colors.textMuted} />
-                          <AppText variant="caption" color={Colors.textMuted}>Add subcategory</AppText>
+                          <Ionicons
+                            name={sub.icon}
+                            size={12}
+                            color={isSelected ? Colors.primaryDeep : Colors.textSecondary}
+                          />
+                          <AppText
+                            variant="micro"
+                            color={isSelected ? Colors.primaryDeep : Colors.textPrimary}
+                            style={{ fontWeight: isSelected ? '700' : '500' }}
+                          >
+                            {sub.name}
+                          </AppText>
                         </Pressable>
-                      )}
-                    </ScrollView>
-                  </View>
-                );
-              })()
+                      );
+                    })}
+                    <Pressable
+                      onPress={() => router.push(`/manage-subcategories?categoryId=${categoryId}` as any)}
+                      style={styles.subcatEmptyChip}
+                    >
+                      <Ionicons name="add" size={13} color={Colors.textMuted} />
+                      <AppText variant="micro" color={Colors.textMuted}>
+                        {categorySubcats.length === 0 ? 'Add subcategory' : 'Add'}
+                      </AppText>
+                    </Pressable>
+                  </ScrollView>
+                </View>
+              );
+            })()
+          )}
+
+          <View style={styles.metaRow}>
+            <Pressable
+              onPress={() => {
+                haptics.press();
+                setShowDatePicker(true);
+              }}
+              style={styles.metaChip}
+            >
+              <Ionicons name="calendar-outline" size={14} color={Colors.primary} />
+              <AppText variant="micro" color={Colors.textPrimary} style={{ fontWeight: '600' }}>
+                {isToday
+                  ? 'Today'
+                  : date.toLocaleDateString(undefined, {
+                      month: 'short',
+                      day: 'numeric',
+                    })}
+              </AppText>
+            </Pressable>
+
+            <Pressable
+              onPress={() => setShowDetails(prev => !prev)}
+              style={[
+                styles.metaChip,
+                (payee.trim() || note.trim() || showDetails) && styles.metaChipActive,
+              ]}
+            >
+              <Ionicons
+                name="pricetag-outline"
+                size={14}
+                color={payee.trim() || note.trim() || showDetails ? Colors.primaryDeep : Colors.textSecondary}
+              />
+              <AppText
+                variant="micro"
+                color={payee.trim() || note.trim() || showDetails ? Colors.primaryDeep : Colors.textSecondary}
+                numberOfLines={1}
+                style={{ fontWeight: '600', maxWidth: 100 }}
+              >
+                {payee.trim() ? payee : note.trim() ? note : 'Note / Payee'}
+              </AppText>
+              <Ionicons
+                name={showDetails ? 'chevron-up' : 'chevron-down'}
+                size={12}
+                color={Colors.textMuted}
+              />
+            </Pressable>
+
+            {!editing && type === 'expense' && (
+              <Pressable
+                onPress={() => {
+                  haptics.press();
+                  router.push(
+                    `/add-split?amount=${amount}&categoryId=${categoryId ?? ''}&accountId=${accountId ?? ''}&payee=${encodeURIComponent(payee)}` as any
+                  );
+                }}
+                style={styles.metaChip}
+              >
+                <Ionicons name="people-outline" size={14} color={Colors.primary} />
+                <AppText variant="micro" color={Colors.primaryDeep} style={{ fontWeight: '600' }}>
+                  Split
+                </AppText>
+              </Pressable>
             )}
 
-            {type !== 'transfer' && (
-              <View style={styles.field}>
-                <AppText variant="label">Payee / Merchant</AppText>
+            {!editing && (type === 'expense' || type === 'income') && (
+              <Pressable
+                onPress={() => {
+                  haptics.press();
+                  router.push(
+                    `/add-recurring?amount=${amount}&categoryId=${categoryId ?? ''}&accountId=${accountId ?? ''}&type=${type}&payee=${encodeURIComponent(payee)}` as any
+                  );
+                }}
+                style={styles.metaChip}
+              >
+                <Ionicons name="repeat-outline" size={14} color={Colors.primary} />
+                <AppText variant="micro" color={Colors.primaryDeep} style={{ fontWeight: '600' }}>
+                  Repeat
+                </AppText>
+              </Pressable>
+            )}
+          </View>
+
+          {showDetails && (
+            <GlassCard padding={12} style={styles.detailsCard}>
+              {type !== 'transfer' && (
+                <View style={styles.inlineField}>
+                  <Ionicons name="storefront-outline" size={15} color={Colors.textSecondary} />
+                  <TextInput
+                    value={payee}
+                    onChangeText={setPayee}
+                    placeholder="Payee / Merchant (e.g. Netflix, Uber)"
+                    placeholderTextColor={Colors.textMuted}
+                    style={styles.inlineInput}
+                  />
+                </View>
+              )}
+              <View style={styles.inlineField}>
+                <Ionicons name="create-outline" size={15} color={Colors.textSecondary} />
                 <TextInput
-                  value={payee}
-                  onChangeText={setPayee}
-                  placeholder="e.g. Netflix, Amazon, Landlord"
+                  value={note}
+                  onChangeText={setNote}
+                  placeholder="Note (optional)"
                   placeholderTextColor={Colors.textMuted}
-                  style={styles.input}
+                  style={styles.inlineInput}
                 />
               </View>
-            )}
-
-            <View style={styles.field}>
-              <AppText variant="label">Date</AppText>
-              <View style={styles.dateRow}>
-                <Pressable onPress={() => shiftDay(-1)} hitSlop={10} style={styles.dateArrow}>
-                  <Ionicons name="chevron-back" size={17} color={Colors.textSecondary} />
-                </Pressable>
-                <Pressable
-                  onPress={() => {
-                    haptics.press();
-                    setShowDatePicker(true);
-                  }}
-                  style={({ pressed }) => [
-                    styles.dateButton,
-                    { opacity: pressed ? 0.75 : 1 },
-                  ]}
-                >
-                  <Ionicons name="calendar-outline" size={16} color={Colors.primary} />
-                  <AppText variant="bodyStrong">
-                    {isToday
-                      ? 'Today'
-                      : date.toLocaleDateString(undefined, {
-                          weekday: 'short',
-                          day: 'numeric',
-                          month: 'short',
-                          year:
-                            date.getFullYear() !== new Date().getFullYear()
-                              ? 'numeric'
-                              : undefined,
-                        })}
-                  </AppText>
-                </Pressable>
-                <Pressable
-                  onPress={() => shiftDay(1)}
-                  hitSlop={10}
-                  disabled={isToday}
-                  style={[styles.dateArrow, isToday && styles.dateArrowDisabled]}
-                >
-                  <Ionicons name="chevron-forward" size={17} color={Colors.textSecondary} />
-                </Pressable>
-              </View>
-            </View>
-
-            <View style={styles.field}>
-              <AppText variant="label">Note</AppText>
-              <TextInput
-                value={note}
-                onChangeText={setNote}
-                placeholder="Optional"
-                placeholderTextColor={Colors.textMuted}
-                style={styles.input}
-              />
-            </View>
-
-            {type === 'expense' && !editing && (
-              <View style={styles.actionRow}>
-                <Pressable
-                  onPress={() => {
-                    haptics.press();
-                    router.push({
-                      pathname: '/add-split' as any,
-                      params: {
-                        amount: amount || undefined,
-                        accountId: accountId ?? undefined,
-                        categoryId: categoryId ?? undefined,
-                        payee: payee || undefined,
-                        note: note || undefined,
-                      },
-                    });
-                  }}
-                  style={styles.actionChip}
-                >
-                  <Ionicons name="people-outline" size={15} color={Colors.primary} />
-                  <AppText variant="caption" color={Colors.primaryDeep} style={{ fontWeight: '600' }}>
-                    Split expense
-                  </AppText>
-                </Pressable>
-
-                <Pressable
-                  onPress={() => {
-                    haptics.press();
-                    router.push({
-                      pathname: '/add-recurring' as any,
-                      params: {
-                        amount: amount || undefined,
-                        type: 'expense',
-                        accountId: accountId ?? undefined,
-                        categoryId: categoryId ?? undefined,
-                        subcategoryId: subcategoryId ?? undefined,
-                        payee: payee || undefined,
-                        note: note || undefined,
-                      },
-                    });
-                  }}
-                  style={styles.actionChip}
-                >
-                  <Ionicons name="repeat-outline" size={15} color={Colors.primary} />
-                  <AppText variant="caption" color={Colors.primaryDeep} style={{ fontWeight: '600' }}>
-                    Make recurring
-                  </AppText>
-                </Pressable>
-              </View>
-            )}
-          </GlassCard>
+            </GlassCard>
+          )}
         </ScrollView>
 
         <View style={styles.fixedBottomContainer}>
           <Numpad value={amount} onChangeValue={setAmount} />
           <AppButton
             title={editing ? 'Save changes' : 'Add transaction'}
-            onPress={handleSave}
             size="md"
+            onPress={handleSave}
             disabled={!canSave}
             style={styles.submitBtn}
           />
@@ -528,89 +544,68 @@ export default function AddTransactionScreen() {
 const styles = StyleSheet.create({
   screenBody: {
     flex: 1,
-    position: 'relative',
   },
   content: {
-    paddingHorizontal: 20,
+    paddingHorizontal: 16,
     paddingTop: 4,
-    paddingBottom: 350,
-    gap: Spacing.lg,
+    paddingBottom: 310,
+    gap: 8,
   },
-  amountCard: {
-    paddingVertical: 16,
-    paddingHorizontal: 18,
+  headerScanBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    borderRadius: BorderRadius.pill,
+    backgroundColor: Colors.primarySoft,
+    borderWidth: 1,
+    borderColor: 'rgba(139, 92, 246, 0.25)',
   },
   scanBanner: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 9,
-    paddingVertical: 11,
-    paddingHorizontal: 14,
-    borderRadius: BorderRadius.sm,
+    gap: 6,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: BorderRadius.pill,
     backgroundColor: Colors.primarySoft,
     borderWidth: 1,
-    borderColor: Colors.glassBorderSoft,
-    marginTop: -4,
+    borderColor: 'rgba(139, 92, 246, 0.25)',
   },
   scanBannerText: {
     flex: 1,
-    color: Colors.textSecondary,
-  },
-  formCard: {
-    gap: Spacing.lg,
-  },
-  field: {
-    gap: 10,
-  },
-  dateRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  dateArrow: {
-    width: 38,
-    height: 38,
-    borderRadius: 19,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: Colors.controlBg,
-    borderWidth: 1,
-    borderColor: Colors.glassBorderSoft,
-  },
-  dateArrowDisabled: {
-    opacity: 0.35,
-  },
-  dateButton: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-    height: 38,
-    borderRadius: BorderRadius.pill,
-    backgroundColor: Colors.controlBg,
-    borderWidth: 1,
-    borderColor: Colors.glassBorderSoft,
-  },
-  input: {
-    paddingHorizontal: 16,
-    paddingVertical: 14,
-    borderRadius: BorderRadius.sm,
-    backgroundColor: 'rgba(25, 21, 39, 0.04)',
-    fontSize: 14,
-    fontFamily: 'Manrope_500Medium',
     color: Colors.textPrimary,
   },
-  subcatScroll: {
-    gap: 8,
+  amountWrap: {
+    alignItems: 'center',
+    justifyContent: 'center',
     paddingVertical: 2,
+  },
+  sectionWrap: {
+    gap: 3,
+  },
+  sectionHeader: {
+    paddingHorizontal: 2,
+  },
+  sectionLabel: {
+    fontWeight: '700',
+    letterSpacing: 0.5,
+    fontSize: 10,
+  },
+  subcatSection: {
+    marginTop: -2,
+  },
+  subcatScroll: {
+    gap: 6,
+    paddingVertical: 1,
   },
   subcatChip: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
-    paddingHorizontal: 12,
-    paddingVertical: 7,
+    gap: 4,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
     borderRadius: BorderRadius.pill,
     backgroundColor: Colors.controlBg,
     borderWidth: 1,
@@ -619,32 +614,55 @@ const styles = StyleSheet.create({
   subcatEmptyChip: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
-    paddingHorizontal: 12,
-    paddingVertical: 7,
+    gap: 4,
+    paddingHorizontal: 9,
+    paddingVertical: 5,
     borderRadius: BorderRadius.pill,
     backgroundColor: 'rgba(25, 21, 39, 0.03)',
     borderWidth: 1,
     borderColor: Colors.divider,
     borderStyle: 'dashed',
   },
-  actionRow: {
+  metaRow: {
     flexDirection: 'row',
-    gap: 10,
-    marginTop: 4,
+    flexWrap: 'wrap',
+    gap: 7,
+    marginTop: 2,
   },
-  actionChip: {
-    flex: 1,
+  metaChip: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
-    gap: 6,
-    paddingVertical: 10,
-    paddingHorizontal: 12,
-    borderRadius: BorderRadius.md,
-    backgroundColor: Colors.primarySoft,
+    gap: 5,
+    paddingHorizontal: 11,
+    paddingVertical: 7,
+    borderRadius: BorderRadius.pill,
+    backgroundColor: Colors.controlBg,
     borderWidth: 1,
-    borderColor: 'rgba(139, 92, 246, 0.2)',
+    borderColor: Colors.glassBorderSoft,
+  },
+  metaChipActive: {
+    backgroundColor: Colors.primarySoft,
+    borderColor: 'rgba(139, 92, 246, 0.3)',
+  },
+  detailsCard: {
+    gap: 8,
+    marginTop: 2,
+  },
+  inlineField: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: 'rgba(25, 21, 39, 0.04)',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: BorderRadius.sm,
+  },
+  inlineInput: {
+    flex: 1,
+    fontSize: 13,
+    fontFamily: 'Manrope_500Medium',
+    color: Colors.textPrimary,
+    padding: 0,
   },
   fixedBottomContainer: {
     position: 'absolute',
@@ -652,14 +670,14 @@ const styles = StyleSheet.create({
     right: 0,
     bottom: 0,
     backgroundColor: '#FFFFFF',
-    borderTopLeftRadius: 28,
-    borderTopRightRadius: 28,
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
     borderTopWidth: 1,
     borderColor: Colors.glassBorder,
     paddingHorizontal: 16,
-    paddingTop: 10,
-    paddingBottom: 24,
-    gap: 6,
+    paddingTop: 6,
+    paddingBottom: 18,
+    gap: 4,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: -6 },
     shadowOpacity: 0.06,
@@ -667,6 +685,6 @@ const styles = StyleSheet.create({
     elevation: 12,
   },
   submitBtn: {
-    marginTop: 4,
+    marginTop: 2,
   },
 });

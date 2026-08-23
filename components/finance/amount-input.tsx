@@ -169,21 +169,21 @@ const styles = StyleSheet.create({
   keypad: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    paddingVertical: 4,
+    paddingVertical: 2,
   },
   keySlot: {
     width: '33.333%',
-    paddingVertical: 3,
+    paddingVertical: 1.5,
     paddingHorizontal: 4,
   },
   key: {
-    height: 52,
-    borderRadius: 16,
+    height: 44,
+    borderRadius: 14,
     alignItems: 'center',
     justifyContent: 'center',
   },
   keyLabel: {
-    fontSize: 22,
+    fontSize: 21,
     fontFamily: 'Manrope_700Bold',
     color: Colors.textPrimary,
   },

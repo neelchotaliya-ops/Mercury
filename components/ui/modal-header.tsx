@@ -10,6 +10,7 @@ export interface ModalHeaderProps {
   subtitle?: string;
   onClose: () => void;
   onDelete?: () => void;
+  rightAction?: React.ReactNode;
   closeIcon?: 'close' | 'arrow-back';
 }
 
@@ -18,6 +19,7 @@ export const ModalHeader: React.FC<ModalHeaderProps> = ({
   subtitle,
   onClose,
   onDelete,
+  rightAction,
   closeIcon = 'close',
 }) => (
   <View style={styles.header}>
@@ -36,6 +38,8 @@ export const ModalHeader: React.FC<ModalHeaderProps> = ({
 
     {onDelete ? (
       <IconButton iconName="trash-outline" onPress={onDelete} size={42} color={Colors.expense} />
+    ) : rightAction ? (
+      rightAction
     ) : (
       <View style={styles.spacer} />
     )}

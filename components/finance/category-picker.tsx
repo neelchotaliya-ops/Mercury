@@ -12,6 +12,7 @@ export interface CategoryPickerProps {
   selectedId?: string;
   onSelect: (category: Category) => void;
   onManage?: () => void;
+  size?: number;
 }
 
 export const CategoryPicker: React.FC<CategoryPickerProps> = ({
@@ -19,6 +20,7 @@ export const CategoryPicker: React.FC<CategoryPickerProps> = ({
   selectedId,
   onSelect,
   onManage,
+  size = 46,
 }) => (
   <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.row}>
     {categories.map(category => {
@@ -32,7 +34,7 @@ export const CategoryPicker: React.FC<CategoryPickerProps> = ({
           <IconBadge
             icon={category.icon}
             color={category.color}
-            size={52}
+            size={size}
             solid={selected}
             style={selected ? styles.selectedBadge : undefined}
           />
@@ -41,6 +43,7 @@ export const CategoryPicker: React.FC<CategoryPickerProps> = ({
             align="center"
             numberOfLines={1}
             color={selected ? Colors.textPrimary : Colors.textMuted}
+            style={styles.label}
           >
             {category.name}
           </AppText>
@@ -50,10 +53,10 @@ export const CategoryPicker: React.FC<CategoryPickerProps> = ({
 
     {onManage ? (
       <Pressable onPress={onManage} style={({ pressed }) => [styles.item, { opacity: pressed ? 0.7 : 1 }]}>
-        <View style={styles.addTile}>
-          <Ionicons name="add" size={21} color={Colors.textSecondary} />
+        <View style={[styles.addTile, { width: size, height: size, borderRadius: size * 0.34 }]}>
+          <Ionicons name="add" size={18} color={Colors.textSecondary} />
         </View>
-        <AppText variant="micro" align="center">
+        <AppText variant="micro" align="center" style={styles.label}>
           Manage
         </AppText>
       </Pressable>
@@ -63,25 +66,26 @@ export const CategoryPicker: React.FC<CategoryPickerProps> = ({
 
 const styles = StyleSheet.create({
   row: {
-    gap: 14,
-    paddingVertical: 4,
+    gap: 10,
+    paddingVertical: 2,
     paddingRight: 8,
   },
   item: {
     alignItems: 'center',
-    gap: 7,
-    width: 64,
+    gap: 4,
+    width: 58,
+  },
+  label: {
+    fontSize: 11,
+    lineHeight: 14,
   },
   selectedBadge: {
     shadowColor: '#6D28D9',
-    shadowOffset: { width: 0, height: 6 },
+    shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.25,
-    shadowRadius: 12,
+    shadowRadius: 8,
   },
   addTile: {
-    width: 52,
-    height: 52,
-    borderRadius: 52 * 0.34,
     borderWidth: 1.5,
     borderStyle: 'dashed',
     borderColor: Colors.textMuted,

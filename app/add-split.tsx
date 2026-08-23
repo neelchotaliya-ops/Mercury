@@ -274,8 +274,10 @@ export default function AddSplitScreen() {
             <AppButton
               title="+ Add"
               size="sm"
+              fullWidth={false}
               onPress={addParticipant}
               disabled={!newParticipantName.trim()}
+              style={styles.addParticipantBtn}
             />
           </View>
 
@@ -368,10 +370,10 @@ export default function AddSplitScreen() {
 
         <AppButton
           title="Create Split Expense"
-          size="lg"
+          size="md"
           onPress={handleSave}
           disabled={!canSave}
-          style={{ marginTop: 8 }}
+          style={{ marginTop: 4, marginBottom: 20 }}
         />
       </ScrollView>
 
@@ -437,6 +439,11 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     gap: 8,
     alignItems: 'center',
+  },
+  addParticipantBtn: {
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderRadius: BorderRadius.sm,
   },
   participantsList: {
     gap: 8,
