@@ -145,7 +145,7 @@ export default function SettingsScreen() {
         return;
       }
 
-      const { file, preview } = result;
+      const { file, format, preview } = result;
       const total = preview.summary.transactions;
 
       const commit = async (mode: 'merge' | 'replace') => {
@@ -157,6 +157,7 @@ export default function SettingsScreen() {
         try {
           const db = await getDb();
           const { cancelled } = await applyImport(db, file, mode, {
+            format,
             total,
             onProgress: inserted =>
               updateOperation('import', {

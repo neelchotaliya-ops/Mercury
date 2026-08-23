@@ -39,6 +39,7 @@ import {
   parseTransactionItem,
 } from '@/utils/data-transfer';
 import { readMercuryExport } from '@/utils/json-stream';
+import { readMercuryExportCsv } from '@/utils/csv-stream';
 
 export interface ImportPreview {
   summary: ExportSummary;
@@ -50,6 +51,20 @@ export interface ImportPreview {
 }
 
 export type PreviewOutcome = { ok: true; preview: ImportPreview } | { ok: false; reason: string };
+
+/**
+ * Both formats carry the same meta shape and the same per-transaction
+ * validation (`parseTransactionItem` runs unchanged either way) — only how
+ * raw text becomes "meta + a stream of raw transaction records" differs.
+ * `readMercuryExport`/`readMercuryExportCsv` share the exact same signature
+ * for this reason, so `previewImportChunks`/`applyImportChunks` below don't
+ * need a format-specific branch anywhere except picking which one to call.
+ */
+export type ImportFormat = 'json' | 'csv';
+
+function readerFor(format: ImportFormat) {
+  return format === 'csv' ? readMercuryExportCsv : readMercuryExport;
+}
 
 function coerceSettings(raw: unknown): AppSettings {
   const settings = isRecord(raw) ? raw : {};
@@ -67,13 +82,16 @@ function coerceSettings(raw: unknown): AppSettings {
  * writing anything — what lets Settings show "this backup has N
  * transactions" before the user commits to merge or replace.
  */
-export async function previewImportChunks(chunks: AsyncIterable<string>): Promise<PreviewOutcome> {
+export async function previewImportChunks(
+  chunks: AsyncIterable<string>,
+  format: ImportFormat = 'json'
+): Promise<PreviewOutcome> {
   try {
     let accountIds: Set<string> | undefined;
     let validAccounts: Account[] = [];
     let transactionCount = 0;
 
-    const meta = await readMercuryExport(chunks, (raw, metaSoFar) => {
+    const meta = await readerFor(format)(chunks, (raw, metaSoFar) => {
       if (accountIds === undefined) {
         if (metaSoFar.format !== 'mercury-finance-export') {
           throw new Error('That file was not exported from Mercury.');
@@ -153,6 +171,8 @@ export interface ApplyImportOptions {
   shouldCancel?: () => boolean;
   /** The preview pass's transaction count, if available, forwarded to `onProgress` as the total. */
   total?: number;
+  /** Defaults to 'json'. Must match whatever `previewImportChunks` was called with for the same file. */
+  format?: ImportFormat;
 }
 
 /**
@@ -277,7 +297,7 @@ export async function applyImportChunks(
   await dropBulkIndexes(db);
   let cancelled = false;
   try {
-    const meta = await readMercuryExport(chunks, async (raw, metaSoFar) => {
+    const meta = await readerFor(options?.format ?? 'json')(chunks, async (raw, metaSoFar) => {
       await applySmallEntities(metaSoFar);
       pending.push(parseTransactionItem(raw, accountIds));
       if (pending.length >= TRANSACTION_BATCH_SIZE) {

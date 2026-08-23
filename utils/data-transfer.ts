@@ -159,6 +159,63 @@ export function parseTransactionItem(item: unknown, accountIds: Set<string>): Tr
   };
 }
 
+/**
+ * Fixed column order for the CSV transaction format (see `utils/csv-stream.ts`).
+ * Positional, not name-keyed, so it has to stay in sync with `transactionToCsvRow`
+ * and the header row `exportData` writes — deliberately simple rather than
+ * self-describing, since this app is both the only writer and the only
+ * reader that matters.
+ */
+export const TRANSACTION_CSV_COLUMNS = [
+  'id',
+  'type',
+  'amount',
+  'accountId',
+  'toAccountId',
+  'categoryId',
+  'date',
+  'note',
+  'createdAt',
+] as const;
+
+/** One transaction as a CSV row, in `TRANSACTION_CSV_COLUMNS` order. Optional fields become ''. */
+export function transactionToCsvRow(tx: Transaction): string[] {
+  return [
+    tx.id,
+    tx.type,
+    String(tx.amount),
+    tx.accountId,
+    tx.toAccountId ?? '',
+    tx.categoryId ?? '',
+    tx.date,
+    tx.note ?? '',
+    tx.createdAt,
+  ];
+}
+
+/**
+ * Reverses `transactionToCsvRow`: zips a data row against whatever header
+ * row the file actually had (not the hardcoded constant), so a file column
+ * order does not have to match exactly, and coerces `amount` to a number and
+ * blank optional fields to absent — matching what `parseTransactionItem`
+ * expects from a JSON-parsed record.
+ */
+export function csvRowToRawTransaction(columns: string[], row: string[]): Record<string, unknown> {
+  const raw: Record<string, unknown> = {};
+  for (let i = 0; i < columns.length && i < row.length; i++) {
+    const key = columns[i];
+    const value = row[i];
+    if (key === 'amount') {
+      const n = Number(value);
+      if (!Number.isNaN(n) && value.trim() !== '') raw[key] = n;
+      continue;
+    }
+    if (value === '') continue; // absent, not an empty string — matches JSON's `undefined` fields
+    raw[key] = value;
+  }
+  return raw;
+}
+
 export function parseTransactions(raw: unknown, accountIds: Set<string>): Transaction[] {
   if (!Array.isArray(raw)) return [];
   const out: Transaction[] = [];

@@ -11,6 +11,8 @@ import { applyMigrations } from '../db/schema';
 import { listAccounts, getNetWorth, listAccountBalances } from '../db/entities';
 import { getLedgerStat, pageTransactions } from '../db/transactions';
 import { previewImportChunks, applyImportChunks } from '../utils/import-stream';
+import { csvRow } from '../utils/csv-stream';
+import { transactionToCsvRow, TRANSACTION_CSV_COLUMNS } from '../utils/data-transfer';
 import { Account, Budget, Category, QuickPreset, Transaction } from '../types/finance';
 import { openTestDb } from './support/node-db';
 import { Case, close, eq, runCases } from './support/harness';
@@ -79,6 +81,26 @@ function makeExport(o: ExportShape = {}): string {
       transactions: o.transactions ?? [],
     },
   });
+}
+
+/** Same shape as `makeExport`, but as the CSV format `readMercuryExportCsv` reads. */
+function makeCsvExport(o: ExportShape = {}): string {
+  const meta = {
+    format: o.format ?? 'mercury-finance-export',
+    version: o.version ?? 1,
+    exportedAt: '2025-06-01T00:00:00.000Z',
+    accounts: o.accounts ?? [account('a1'), account('a2')],
+    categories: o.categories ?? [category('c1'), category('c2', 'income')],
+    budgets: o.budgets ?? [],
+    quickPresets: o.quickPresets ?? [],
+    settings: o.settings ?? { currency: 'USD', hasOnboarded: true },
+  };
+  const txs = o.transactions ?? [];
+  return (
+    csvRow([JSON.stringify(meta)]) +
+    csvRow([...TRANSACTION_CSV_COLUMNS]) +
+    txs.map(t => csvRow(transactionToCsvRow(t))).join('')
+  );
 }
 
 const CASES: Case[] = [
@@ -287,6 +309,55 @@ const CASES: Case[] = [
         eq('cancelled flag set', cancelled, true) ??
         eq('only the committed batches landed', page.rows.length, 1000) ??
         close('balances still consistent with what was actually applied', netWorth, -10 * 1000)
+      );
+    },
+  },
+  {
+    name: 'CSV format: preview counts transactions and validates the same way as JSON',
+    run: async () => {
+      const outcome = await previewImportChunks(
+        oneChunk(
+          makeCsvExport({
+            transactions: [tx('t1'), tx('t2', { accountId: 'ghost' }), tx('t3', { type: 'income', categoryId: 'c2' })],
+          })
+        ),
+        'csv'
+      );
+      if (!outcome.ok) return `unexpected rejection: ${outcome.reason}`;
+      return eq('transaction count', outcome.preview.summary.transactions, 2);
+    },
+  },
+  {
+    name: 'CSV format: apply produces the same rollup/balance/ledger_stat result as the equivalent JSON import',
+    run: async () => {
+      const txs = [
+        tx('t1', { type: 'expense', amount: 30, note: 'Coffee, "the usual"' }),
+        tx('t2', { type: 'income', amount: 500, categoryId: 'c2' }),
+        tx('t3', { type: 'transfer', amount: 40, accountId: 'a1', toAccountId: 'a2', categoryId: undefined }),
+      ];
+      const accounts = [account('a1', 100), account('a2', 0)];
+
+      const jsonDb = await freshDb();
+      await applyImportChunks(jsonDb, oneChunk(makeExport({ accounts, transactions: txs })), 'replace');
+
+      const csvDb = await freshDb();
+      await applyImportChunks(csvDb, oneChunk(makeCsvExport({ accounts, transactions: txs })), 'replace', {
+        format: 'csv',
+      });
+
+      const jsonBalances = await listAccountBalances(jsonDb);
+      const csvBalances = await listAccountBalances(csvDb);
+      const jsonStat = await getLedgerStat(jsonDb, 'all');
+      const csvStat = await getLedgerStat(csvDb, 'all');
+      const csvPage = await pageTransactions(csvDb, {}, null, 10);
+      const noteRow = csvPage.rows.find(t => t.id === 't1');
+
+      return (
+        close('a1 balance matches JSON import', csvBalances.get('a1') ?? NaN, jsonBalances.get('a1') ?? NaN) ??
+        close('a2 balance matches JSON import', csvBalances.get('a2') ?? NaN, jsonBalances.get('a2') ?? NaN) ??
+        eq('ledger_stat count matches', csvStat.n, jsonStat.n) ??
+        close('ledger_stat net matches', csvStat.net, jsonStat.net) ??
+        eq('a comma/quote-bearing note survives the CSV round trip', noteRow?.note, 'Coffee, "the usual"')
       );
     },
   },

@@ -26,16 +26,18 @@ import * as DocumentPicker from 'expo-document-picker';
 import { Db } from '@/db/types';
 import { listAccounts, listCategories, listBudgets, listPresets, getSettings } from '@/db/entities';
 import { iterateTransactions } from '@/db/transactions';
-import { EXPORT_FORMAT_VERSION, ExportSummary } from '@/utils/data-transfer';
+import { EXPORT_FORMAT_VERSION, ExportSummary, TRANSACTION_CSV_COLUMNS, transactionToCsvRow } from '@/utils/data-transfer';
+import { csvRow } from '@/utils/csv-stream';
 import {
   applyImportChunks,
   previewImportChunks,
   ApplyImportOptions,
+  ImportFormat,
   ImportMode,
   ImportPreview,
 } from '@/utils/import-stream';
 
-export type { ImportMode, ImportPreview } from '@/utils/import-stream';
+export type { ImportMode, ImportPreview, ImportFormat } from '@/utils/import-stream';
 
 /* ------------------------------------------------------------------ export */
 
@@ -55,14 +57,19 @@ function exportFileName(now: Date): string {
   const stamp = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(
     now.getDate()
   ).padStart(2, '0')}`;
-  return `mercury-backup-${stamp}.json`;
+  return `mercury-backup-${stamp}.csv`;
 }
 
-/** Streams one JSON value's text straight to the file, comma-prefixed after the first. */
-function jsonField(key: string, value: unknown, first = false): string {
-  return `${first ? '' : ','}"${key}":${JSON.stringify(value)}`;
-}
-
+/**
+ * Writes the current ledger as a Mercury CSV export — see
+ * `utils/csv-stream.ts`'s header for the exact row layout. Transactions
+ * (the one entity type that scales into the millions) stream row-by-row
+ * from SQLite straight to the file via `iterateTransactions`, the same
+ * bounded-memory pattern the old JSON export used; accounts/categories/
+ * budgets/presets/settings are always small (tens of rows even for a
+ * multi-million-row ledger) and go into the single meta line as JSON,
+ * exactly as they did in the old export's `data` object.
+ */
 export async function exportData(
   db: Db,
   appVersion?: string,
@@ -90,22 +97,22 @@ export async function exportData(
     let cancelled = false;
     let lastProgressAt = 0;
     try {
-      await put('{');
-      await put(jsonField('format', 'mercury-finance-export', true));
-      await put(jsonField('version', EXPORT_FORMAT_VERSION));
-      await put(jsonField('exportedAt', new Date().toISOString()));
-      if (appVersion) await put(jsonField('appVersion', appVersion));
-      await put(',"data":{');
-      await put(jsonField('accounts', accounts, true));
-      await put(jsonField('categories', categories));
-      await put(jsonField('budgets', budgets));
-      await put(jsonField('quickPresets', quickPresets));
-      await put(jsonField('settings', settings));
-      await put(',"transactions":[');
-      let first = true;
+      const meta = {
+        format: 'mercury-finance-export',
+        version: EXPORT_FORMAT_VERSION,
+        exportedAt: new Date().toISOString(),
+        appVersion,
+        accounts,
+        categories,
+        budgets,
+        quickPresets,
+        settings,
+      };
+      await put(csvRow([JSON.stringify(meta)]));
+      await put(csvRow([...TRANSACTION_CSV_COLUMNS]));
+
       for await (const tx of iterateTransactions(db)) {
-        await put((first ? '' : ',') + JSON.stringify(tx));
-        first = false;
+        await put(csvRow(transactionToCsvRow(tx)));
         transactionCount++;
 
         // Throttled the same way fill-test-data.tsx throttles its own
@@ -121,7 +128,6 @@ export async function exportData(
           }
         }
       }
-      await put(']}}');
     } finally {
       await writer.close();
     }
@@ -135,9 +141,9 @@ export async function exportData(
       return { ok: false, reason: 'Sharing is not available on this device.' };
     }
     await Sharing.shareAsync(file.uri, {
-      mimeType: 'application/json',
+      mimeType: 'text/csv',
       dialogTitle: 'Export Mercury data',
-      UTI: 'public.json',
+      UTI: 'public.comma-separated-values-text',
     });
 
     return {
@@ -179,15 +185,20 @@ async function* readFileAsTextChunks(file: File): AsyncGenerator<string> {
 }
 
 export type PickImportResult =
-  | { ok: true; file: File; preview: ImportPreview }
+  | { ok: true; file: File; format: ImportFormat; preview: ImportPreview }
   | { ok: false; reason: string }
   | { ok: false; cancelled: true; reason: string };
 
-/** Opens the system file picker and previews whatever comes back. */
+/** A `.json` extension means an old-style backup; everything else (`.csv`, no extension) is read as CSV, the current export format. */
+function formatFromFileName(name: string): ImportFormat {
+  return name.toLowerCase().endsWith('.json') ? 'json' : 'csv';
+}
+
+/** Opens the system file picker and previews whatever comes back — a `.csv` (the current export format) or an older `.json` backup. */
 export async function pickAndPreviewImport(): Promise<PickImportResult> {
   try {
     const picked = await DocumentPicker.getDocumentAsync({
-      type: ['application/json', 'text/plain', '*/*'],
+      type: ['text/csv', 'text/comma-separated-values', 'application/json', 'text/plain', '*/*'],
       copyToCacheDirectory: true,
       multiple: false,
     });
@@ -196,10 +207,12 @@ export async function pickAndPreviewImport(): Promise<PickImportResult> {
       return { ok: false, cancelled: true, reason: 'Import cancelled.' };
     }
 
-    const file = new File(picked.assets[0].uri);
-    const outcome = await previewImportChunks(readFileAsTextChunks(file));
+    const asset = picked.assets[0];
+    const format = formatFromFileName(asset.name ?? '');
+    const file = new File(asset.uri);
+    const outcome = await previewImportChunks(readFileAsTextChunks(file), format);
     if (!outcome.ok) return outcome;
-    return { ok: true, file, preview: outcome.preview };
+    return { ok: true, file, format, preview: outcome.preview };
   } catch (error) {
     return {
       ok: false,
@@ -212,6 +225,7 @@ export async function pickAndPreviewImport(): Promise<PickImportResult> {
  * Commits a previewed import: re-reads the same file (a second sequential
  * pass, cheap next to holding it all in memory) and writes it into SQLite —
  * see `utils/import-stream.ts#applyImportChunks` for the actual logic.
+ * `format` must match whatever `pickAndPreviewImport` detected for this file.
  */
 export async function applyImport(
   db: Db,
