@@ -15,20 +15,48 @@ import { CalendarHeatmap } from '@/components/charts/calendar-heatmap';
 import { ReportsSkeleton } from '@/components/finance/reports-skeleton';
 import { useScreenReady } from '@/hooks/use-screen-ready';
 import { useFinance } from '@/context/finance-context';
-import { DEFAULT_INSIGHT_FILTER, InsightFilter } from '@/db/insights';
+import { DEFAULT_INSIGHT_FILTER, InsightFilter, RecurringInsights, SplitInsights, getRecurringInsights, getSplitInsights } from '@/db/insights';
 import { useInsightsData } from '@/hooks/use-insights-data';
 import { formatCurrency, getCurrencySymbol } from '@/utils/currency';
 import { monthKeyLabel } from '@/utils/date';
 import { Colors, BorderRadius, Spacing } from '@/constants/theme';
+import { RecurringInsightsView } from '@/components/finance/recurring-insights';
+import { SplitInsightsView } from '@/components/finance/split-insights';
+import { getDb } from '@/db/client';
 
 type Kind = 'expense' | 'income';
+type InsightsView = 'spending' | 'recurring' | 'splits';
 
 export default function ReportsScreen() {
   const { state } = useFinance();
+  const [activeView, setActiveView] = useState<InsightsView>('spending');
   const [filter, setFilter] = useState<InsightFilter>(DEFAULT_INSIGHT_FILTER);
   const [selectedCategory, setSelectedCategory] = useState<string | undefined>();
   const [selectedMonth, setSelectedMonth] = useState<number | undefined>();
   const [selectedDay, setSelectedDay] = useState<string | undefined>();
+
+  const [recurringData, setRecurringData] = useState<RecurringInsights | null>(null);
+  const [splitData, setSplitData] = useState<SplitInsights | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const db = await getDb();
+        const [rec, spl] = await Promise.all([
+          getRecurringInsights(db),
+          getSplitInsights(db),
+        ]);
+        if (!cancelled) {
+          setRecurringData(rec);
+          setSplitData(spl);
+        }
+      } catch {
+        // Best effort
+      }
+    })();
+    return () => { cancelled = true; };
+  }, []);
 
   const isReady = useScreenReady(180);
 
@@ -61,21 +89,9 @@ export default function ReportsScreen() {
 
   const numberFormat = state.settings.numberFormat;
 
-  // Every chart's data comes from the rollup via useInsightsData, not a scan
-  // over the ledger — each query is O(buckets) in the filtered range and
-  // re-fetches only when the filter changes or a write anywhere bumps
-  // db/version.ts, not on every unrelated app mutation.
   const { totals, breakdown, series, heatmap: heatmapWeeks, weekdays, topNotes, comparison, loading } =
     useInsightsData(effectiveFilter, state.categories);
 
-  // Changing the filter (range/kind/account) re-fires all seven queries, but
-  // useDbQuery deliberately keeps rendering the previous result while they're
-  // in flight rather than flashing empty — good for avoiding jank, but with
-  // nothing else it meant a filter change looked like it had no effect at
-  // all until the numbers silently swapped in. This is the visible "a
-  // refresh is happening" signal for that gap: a brief dim, not the full
-  // mount skeleton (isReady/ReportsSkeleton below), since that would read as
-  // a fresh screen load rather than what it actually is.
   const contentOpacity = useSharedValue(1);
   useEffect(() => {
     contentOpacity.value = withTiming(loading ? 0.5 : 1, { duration: 180 });
@@ -94,21 +110,40 @@ export default function ReportsScreen() {
         <AppText variant="caption">Where your money actually goes</AppText>
       </View>
 
+      {/* Top 3-way view switcher */}
+      <View style={styles.viewModeWrap}>
+        <SegmentedControl<InsightsView>
+          options={[
+            { key: 'spending',  label: 'Spending' },
+            { key: 'recurring', label: 'Recurring' },
+            { key: 'splits',    label: 'Shared' },
+          ]}
+          value={activeView}
+          onChange={setActiveView}
+        />
+      </View>
+
       <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
-        <View style={styles.kindWrap}>
-          <SegmentedControl<Kind>
-            options={[
-              { key: 'expense', label: 'Spending', activeColor: Colors.expense },
-              { key: 'income', label: 'Income', activeColor: Colors.income },
-            ]}
-            value={filter.kind}
-            onChange={kind => {
-              // Category ids belong to one kind, so they cannot carry over.
-              setFilter({ ...filter, kind, categoryIds: [] });
-              setSelectedCategory(undefined);
-            }}
-          />
-        </View>
+        {activeView === 'recurring' ? (
+          <RecurringInsightsView insights={recurringData} />
+        ) : activeView === 'splits' ? (
+          <SplitInsightsView insights={splitData} />
+        ) : (
+          <>
+            <View style={styles.kindWrap}>
+              <SegmentedControl<Kind>
+                options={[
+                  { key: 'expense', label: 'Spending', activeColor: Colors.expense },
+                  { key: 'income', label: 'Income', activeColor: Colors.income },
+                ]}
+                value={filter.kind}
+                onChange={kind => {
+                  // Category ids belong to one kind, so they cannot carry over.
+                  setFilter({ ...filter, kind, categoryIds: [] });
+                  setSelectedCategory(undefined);
+                }}
+              />
+            </View>
 
         {uniqueCurrencies.length > 1 && (
           <View style={styles.currencyBar}>
@@ -335,6 +370,8 @@ export default function ReportsScreen() {
             ) : null}
           </Animated.View>
         )}
+          </>
+        )}
       </ScrollView>
     </GradientScreen>
   );
@@ -346,8 +383,13 @@ const styles = StyleSheet.create({
     paddingTop: 6,
     gap: 3,
   },
+  viewModeWrap: {
+    paddingHorizontal: 20,
+    marginTop: 10,
+    marginBottom: 4,
+  },
   content: {
-    paddingTop: Spacing.lg,
+    paddingTop: Spacing.md,
     paddingBottom: 150,
     gap: Spacing.lg,
   },

@@ -55,6 +55,13 @@ export interface TransactionRow {
   note: string | null;
   note_lc: string | null;
   created_at: string;
+  // v3 additions (nullable on pre-migration rows)
+  payee: string | null;
+  subcategory_id: string | null;
+  // v4 addition
+  recurring_rule_id: string | null;
+  // v5 addition
+  split_expense_id: string | null;
 }
 
 export interface AccountRow {
@@ -80,6 +87,16 @@ export interface CategoryRow {
   sort_order: number;
 }
 
+export interface SubcategoryRow {
+  id: string;
+  category_id: string;
+  name: string;
+  icon: string;
+  color: string;
+  is_default: number;
+  sort_order: number;
+}
+
 export interface BudgetRow {
   id: string;
   category_id: string;
@@ -100,3 +117,39 @@ export interface QuickPresetRow {
   account_id: string | null;
   sort_order: number;
 }
+
+export interface RecurringRuleRow {
+  id: string;
+  type: 'income' | 'expense';
+  amount: number;
+  account_id: string;
+  category_id: string | null;
+  subcategory_id: string | null;
+  payee: string | null;
+  note: string | null;
+  frequency: 'daily' | 'weekly' | 'monthly' | 'yearly' | 'custom';
+  interval_unit: string | null;
+  interval_value: number | null;
+  day_of_week: number | null;
+  day_of_month: number | null;
+  start_date: string;
+  end_date: string | null;
+  next_due: string;
+  auto_create: number;
+  reminder_days: number;
+  active: number;
+  created_at: string;
+}
+
+export interface SplitParticipantRow {
+  id: string;
+  transaction_id: string;
+  name: string;
+  share_amount: number;
+  paid_amount: number;
+  status: 'pending' | 'partial' | 'paid';
+  note: string | null;
+  settled_at: string | null;
+  created_at: string;
+}
+

@@ -68,3 +68,22 @@ export function chunk<T>(items: T[], size: number): T[][] {
   }
   return out;
 }
+
+/**
+ * Named size class for a widget, derived from its dp dimensions.
+ *
+ * - small:  fits in a 2×2 home-screen cell (≤250dp wide or ≤130dp tall)
+ * - medium: standard 4×2 or 4×3 cell  (most users' default)
+ * - large:  expanded — 4×4 or bigger; reveals full detail and breakdowns
+ *
+ * Both widgets use this to switch layout sections rather than duplicating the
+ * same numeric breakpoints in two places.
+ */
+export type WidgetSize = 'small' | 'medium' | 'large';
+
+export function resolveWidgetSize(width: number, height: number): WidgetSize {
+  if (width <= 250 || height <= 130) return 'small';
+  if (width >= 380 && height >= 250) return 'large';
+  return 'medium';
+}
+

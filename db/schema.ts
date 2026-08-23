@@ -184,6 +184,99 @@ const MIGRATIONS: string[] = [
   ALTER TABLE budgets ADD COLUMN account_id TEXT REFERENCES accounts(id) ON DELETE CASCADE;
   ALTER TABLE budgets ADD COLUMN currency TEXT NOT NULL DEFAULT 'INR';
   `,
+
+  // v3 — subcategories table + payee / subcategory_id on transactions
+  //
+  // payee is free-text (merchant name). subcategory_id is optional structure
+  // on top of the flat category. The rollup stays on category_id only —
+  // subcategory/payee filtering uses bounded raw scans (same as minAmount).
+  `
+  CREATE TABLE subcategories (
+    id          TEXT PRIMARY KEY,
+    category_id TEXT NOT NULL REFERENCES categories(id) ON DELETE CASCADE,
+    name        TEXT NOT NULL,
+    icon        TEXT NOT NULL,
+    color       TEXT NOT NULL,
+    is_default  INTEGER NOT NULL DEFAULT 0,
+    sort_order  INTEGER NOT NULL DEFAULT 0
+  );
+
+  ALTER TABLE transactions ADD COLUMN payee TEXT;
+  ALTER TABLE transactions ADD COLUMN subcategory_id TEXT REFERENCES subcategories(id) ON DELETE SET NULL;
+
+  CREATE INDEX idx_tx_payee   ON transactions(payee) WHERE payee IS NOT NULL;
+  CREATE INDEX idx_tx_subcat  ON transactions(subcategory_id) WHERE subcategory_id IS NOT NULL;
+  CREATE INDEX idx_subcat_cat ON subcategories(category_id);
+  `,
+
+  // v4 — recurring rules + link column on transactions
+  //
+  // Each rule stores the full recurrence shape (frequency, interval, day
+  // anchors, start/end dates) and the next due date as a precomputed ISO
+  // string. Processing runs on foreground, computing new due dates in JS
+  // (utils/recurring-engine.ts) rather than in SQL.
+  `
+  CREATE TABLE recurring_rules (
+    id             TEXT PRIMARY KEY,
+    type           TEXT    NOT NULL CHECK (type IN ('income','expense')),
+    amount         REAL    NOT NULL,
+    account_id     TEXT    NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+    category_id    TEXT             REFERENCES categories(id) ON DELETE SET NULL,
+    subcategory_id TEXT             REFERENCES subcategories(id) ON DELETE SET NULL,
+    payee          TEXT,
+    note           TEXT,
+    frequency      TEXT    NOT NULL CHECK (frequency IN ('daily','weekly','monthly','yearly','custom')),
+    -- For 'custom' frequency: the numeric value and its unit
+    interval_unit  TEXT    CHECK (interval_unit IN ('day','week','month','year')),
+    interval_value INTEGER,
+    -- For 'weekly': 0=Sun … 6=Sat
+    day_of_week    INTEGER,
+    -- For 'monthly': 1–31, or -1 for last day of month
+    day_of_month   INTEGER,
+    start_date     TEXT    NOT NULL,
+    end_date       TEXT,
+    next_due       TEXT    NOT NULL,
+    -- 0 = create pending transaction (user confirms); 1 = create silently
+    auto_create    INTEGER NOT NULL DEFAULT 0,
+    -- Days before next_due to fire a reminder notification
+    reminder_days  INTEGER NOT NULL DEFAULT 1,
+    active         INTEGER NOT NULL DEFAULT 1,
+    created_at     TEXT    NOT NULL
+  );
+
+  ALTER TABLE transactions ADD COLUMN recurring_rule_id TEXT REFERENCES recurring_rules(id) ON DELETE SET NULL;
+
+  CREATE INDEX idx_recurring_next ON recurring_rules(next_due) WHERE active = 1;
+  CREATE INDEX idx_tx_recurring   ON transactions(recurring_rule_id) WHERE recurring_rule_id IS NOT NULL;
+  `,
+
+  // v5 — split participants + link column on transactions
+  //
+  // A shared expense is a normal 'expense' transaction. split_participants
+  // tracks each person's share. Repayments are separate 'income' transactions
+  // linked back via split_expense_id, so they don't float as mystery income.
+  `
+  CREATE TABLE split_participants (
+    id             TEXT PRIMARY KEY,
+    transaction_id TEXT NOT NULL REFERENCES transactions(id) ON DELETE CASCADE,
+    name           TEXT NOT NULL,
+    share_amount   REAL NOT NULL,
+    paid_amount    REAL NOT NULL DEFAULT 0,
+    -- Derived status; kept explicit so it can be indexed and filtered cheaply
+    status         TEXT NOT NULL DEFAULT 'pending'
+                   CHECK (status IN ('pending','partial','paid')),
+    note           TEXT,
+    settled_at     TEXT,
+    created_at     TEXT NOT NULL
+  );
+
+  -- Links a repayment income transaction back to the original shared expense
+  ALTER TABLE transactions ADD COLUMN split_expense_id TEXT REFERENCES transactions(id) ON DELETE SET NULL;
+
+  CREATE INDEX idx_split_tx     ON split_participants(transaction_id);
+  CREATE INDEX idx_split_status ON split_participants(transaction_id, status);
+  CREATE INDEX idx_tx_split_ref ON transactions(split_expense_id) WHERE split_expense_id IS NOT NULL;
+  `,
 ];
 
 export const LATEST_SCHEMA_VERSION = MIGRATIONS.length;

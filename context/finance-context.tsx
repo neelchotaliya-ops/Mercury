@@ -47,6 +47,9 @@ import {
   deleteTransaction as dbDeleteTransaction,
 } from '@/db/transactions';
 import { rebuildRollups } from '@/db/rebuild';
+import { listSubcategories } from '@/db/subcategories';
+import { processDueRules } from '@/db/recurring';
+import { notifyOperationComplete } from '@/utils/notifications';
 
 /**
  * The small, bounded entities: accounts, categories, budgets, presets,
@@ -67,6 +70,7 @@ import { rebuildRollups } from '@/db/rebuild';
 export interface FinanceEntities {
   accounts: Account[];
   categories: Category[];
+  subcategories?: import('@/types/finance').Subcategory[];
   budgets: Budget[];
   quickPresets: QuickPreset[];
   settings: AppSettings;
@@ -130,6 +134,7 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
   const [entities, setEntities] = useState<FinanceEntities>({
     accounts: [],
     categories: [],
+    subcategories: [],
     budgets: [],
     quickPresets: [],
     settings: defaultSettings,
@@ -155,6 +160,17 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
     const sub = AppState.addEventListener('change', state => {
       if (state === 'active') {
         bumpDataVersion();
+        // Process recurring rules on every foreground — creates auto-create
+        // transactions and fires reminders for manual-confirm rules.
+        getDb()
+          .then(db =>
+            processDueRules(db, new Date(), (title, body) =>
+              notifyOperationComplete(title, body)
+            )
+          )
+          .catch(() => {
+            // Best-effort: recurring processing failure never surfaces to the user.
+          });
       } else if (state === 'background') {
         // Flushes the WAL into the main database file before Android's Auto
         // Backup (or the OS) can snapshot it — see db/client.ts#checkpoint
@@ -179,6 +195,9 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
           listPresets(db),
           getSettings(db),
         ]);
+        // Load subcategories in parallel — not destructured above to avoid
+        // breaking the existing tuple order.
+        const subcategories = await listSubcategories(db);
         if (cancelled) return;
 
         // First launch: SQLite has no categories yet (the migration only
@@ -199,17 +218,34 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
           }));
           for (let i = 0; i < presets.length; i++) await insertPreset(db, presets[i], i);
 
+          // Seed a default Cash account so new users can add transactions
+          // immediately without the friction of creating an account first.
+          // The user can rename, edit, or delete this account at any time.
+          const defaultAccount: Account = {
+            id: generateId(),
+            name: 'Cash',
+            type: 'cash',
+            icon: 'cash-outline',
+            color: '#22C55E',
+            initialBalance: 0,
+            currency: settings.currency ?? 'INR',
+            createdAt: new Date().toISOString(),
+            archived: false,
+          };
+          await insertAccount(db, defaultAccount, 0);
+
           if (cancelled) return;
           setEntities({
-            accounts: [],
+            accounts: [defaultAccount],
             categories: seededCategories,
+            subcategories: [],
             budgets: [],
             quickPresets: presets,
             settings,
             isLoaded: true,
           });
         } else {
-          setEntities({ accounts, categories, budgets, quickPresets, settings, isLoaded: true });
+          setEntities({ accounts, categories, subcategories, budgets, quickPresets, settings, isLoaded: true });
         }
 
         const migration = await getBlobMigrationResult();

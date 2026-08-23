@@ -167,9 +167,12 @@ function EmptyState() {
 
 /**
  * One-tap expense logging. Each tile emits a QUICK_LOG action handled in the
- * background task, so tapping records the transaction without opening the
- * app. Resizing taller reveals a second row and, with enough room per tile,
- * which account each preset draws from.
+ * background task, so tapping records the transaction without opening the app.
+ *
+ * Three named sizes:
+ * - small  (≤250dp wide or ≤130dp tall): 2 tiles in a single row, no header
+ * - medium (default): 2–4 tiles across 1–2 rows with a "spent this month" header
+ * - large  (≥380dp wide AND ≥250dp tall): 2 rows × 4 tiles, with account names
  */
 export function QuickLogWidget({
   currency,
@@ -182,6 +185,46 @@ export function QuickLogWidget({
   height,
 }: QuickLogWidgetProps) {
   'use no memo';
+
+  // Small: minimal layout — just 2 tiles, no chrome.
+  if (width <= 250 || height <= 130) {
+    const smallPresets = presets.slice(0, 2);
+    return (
+      <FlexWidget
+        style={{
+          height: 'match_parent',
+          width: 'match_parent',
+          flexDirection: 'row',
+          paddingHorizontal: 8,
+          paddingVertical: 8,
+          borderRadius: 24,
+          flexGap: 6,
+          backgroundGradient: {
+            from: WIDGET_COLORS.gradientFrom,
+            to: WIDGET_COLORS.gradientTo,
+            orientation: 'TL_BR',
+          },
+        }}
+      >
+        {smallPresets.length === 0 ? (
+          <EmptyState />
+        ) : (
+          smallPresets.map(preset => (
+            <PresetTile
+              key={preset.id}
+              preset={preset}
+              currency={currency}
+              account={resolvePresetAccount(accounts, preset.accountId)}
+              showAccountLine={false}
+              compact
+            />
+          ))
+        )}
+      </FlexWidget>
+    );
+  }
+
+  // Medium / Large: existing dynamic grid logic.
   const { columns, rows, showAccountLine } = quickLogSizeClass(width, height);
   const visible = presets.slice(0, columns * rows);
   const tileRows = chunk(visible, columns);

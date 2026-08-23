@@ -80,7 +80,9 @@ export default function AddTransactionScreen() {
   const [accountId, setAccountId] = useState<string | undefined>(state.accounts[0]?.id);
   const [toAccountId, setToAccountId] = useState<string | undefined>(undefined);
   const [categoryId, setCategoryId] = useState<string | undefined>(undefined);
+  const [subcategoryId, setSubcategoryId] = useState<string | undefined>(undefined);
   const [note, setNote] = useState('');
+  const [payee, setPayee] = useState('');
   const [date, setDate] = useState<Date>(new Date());
   const [showDatePicker, setShowDatePicker] = useState(false);
 
@@ -91,7 +93,9 @@ export default function AddTransactionScreen() {
     setAccountId(editing.accountId);
     setToAccountId(editing.toAccountId);
     setCategoryId(editing.categoryId);
+    setSubcategoryId(editing.subcategoryId);
     setNote(editing.note ?? '');
+    setPayee(editing.payee ?? '');
     setDate(new Date(editing.date));
   }, [editing]);
 
@@ -127,6 +131,9 @@ export default function AddTransactionScreen() {
 
       const scannedNote = buildNote(receipt);
       if (scannedNote) setNote(scannedNote);
+
+      // Auto-fill payee from merchant name if detected
+      if (receipt.merchant) setPayee(receipt.merchant);
 
       // Category list is keyed off the new type, so always reassign it.
       setCategoryId(guessCategory(receipt, state.categories, kind)?.id);
@@ -190,6 +197,8 @@ export default function AddTransactionScreen() {
       accountId,
       toAccountId: type === 'transfer' ? toAccountId : undefined,
       categoryId: type !== 'transfer' ? categoryId : undefined,
+      subcategoryId: type !== 'transfer' ? subcategoryId : undefined,
+      payee: type !== 'transfer' && payee.trim() ? payee.trim() : undefined,
       date: date.toISOString(),
       note: note.trim() || undefined,
     };
@@ -317,6 +326,78 @@ export default function AddTransactionScreen() {
               </View>
             )}
 
+            {type !== 'transfer' && categoryId && (
+              (() => {
+                const categorySubcats = (state.subcategories ?? []).filter(s => s.categoryId === categoryId);
+                return (
+                  <View style={styles.field}>
+                    <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <AppText variant="label">Subcategory</AppText>
+                      <Pressable
+                        onPress={() => router.push(`/manage-subcategories?categoryId=${categoryId}` as any)}
+                        hitSlop={8}
+                      >
+                        <AppText variant="caption" color={Colors.primary}>+ Manage</AppText>
+                      </Pressable>
+                    </View>
+                    <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.subcatScroll}>
+                      {categorySubcats.map(sub => {
+                        const isSelected = subcategoryId === sub.id;
+                        return (
+                          <Pressable
+                            key={sub.id}
+                            onPress={() => {
+                              haptics.selection();
+                              setSubcategoryId(isSelected ? undefined : sub.id);
+                            }}
+                            style={[
+                              styles.subcatChip,
+                              isSelected && { backgroundColor: Colors.primarySoft, borderColor: Colors.primary }
+                            ]}
+                          >
+                            <Ionicons
+                              name={sub.icon}
+                              size={13}
+                              color={isSelected ? Colors.primaryDeep : Colors.textSecondary}
+                            />
+                            <AppText
+                              variant="caption"
+                              color={isSelected ? Colors.primaryDeep : Colors.textPrimary}
+                              style={{ fontWeight: isSelected ? '600' : '400' }}
+                            >
+                              {sub.name}
+                            </AppText>
+                          </Pressable>
+                        );
+                      })}
+                      {categorySubcats.length === 0 && (
+                        <Pressable
+                          onPress={() => router.push(`/manage-subcategories?categoryId=${categoryId}` as any)}
+                          style={styles.subcatEmptyChip}
+                        >
+                          <Ionicons name="add-circle-outline" size={13} color={Colors.textMuted} />
+                          <AppText variant="caption" color={Colors.textMuted}>Add subcategory</AppText>
+                        </Pressable>
+                      )}
+                    </ScrollView>
+                  </View>
+                );
+              })()
+            )}
+
+            {type !== 'transfer' && (
+              <View style={styles.field}>
+                <AppText variant="label">Payee / Merchant</AppText>
+                <TextInput
+                  value={payee}
+                  onChangeText={setPayee}
+                  placeholder="e.g. Netflix, Amazon, Landlord"
+                  placeholderTextColor={Colors.textMuted}
+                  style={styles.input}
+                />
+              </View>
+            )}
+
             <View style={styles.field}>
               <AppText variant="label">Date</AppText>
               <View style={styles.dateRow}>
@@ -369,6 +450,56 @@ export default function AddTransactionScreen() {
                 style={styles.input}
               />
             </View>
+
+            {type === 'expense' && !editing && (
+              <View style={styles.actionRow}>
+                <Pressable
+                  onPress={() => {
+                    haptics.press();
+                    router.push({
+                      pathname: '/add-split' as any,
+                      params: {
+                        amount: amount || undefined,
+                        accountId: accountId ?? undefined,
+                        categoryId: categoryId ?? undefined,
+                        payee: payee || undefined,
+                        note: note || undefined,
+                      },
+                    });
+                  }}
+                  style={styles.actionChip}
+                >
+                  <Ionicons name="people-outline" size={15} color={Colors.primary} />
+                  <AppText variant="caption" color={Colors.primaryDeep} style={{ fontWeight: '600' }}>
+                    Split expense
+                  </AppText>
+                </Pressable>
+
+                <Pressable
+                  onPress={() => {
+                    haptics.press();
+                    router.push({
+                      pathname: '/add-recurring' as any,
+                      params: {
+                        amount: amount || undefined,
+                        type: 'expense',
+                        accountId: accountId ?? undefined,
+                        categoryId: categoryId ?? undefined,
+                        subcategoryId: subcategoryId ?? undefined,
+                        payee: payee || undefined,
+                        note: note || undefined,
+                      },
+                    });
+                  }}
+                  style={styles.actionChip}
+                >
+                  <Ionicons name="repeat-outline" size={15} color={Colors.primary} />
+                  <AppText variant="caption" color={Colors.primaryDeep} style={{ fontWeight: '600' }}>
+                    Make recurring
+                  </AppText>
+                </Pressable>
+              </View>
+            )}
           </GlassCard>
         </ScrollView>
 
@@ -469,6 +600,51 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontFamily: 'Manrope_500Medium',
     color: Colors.textPrimary,
+  },
+  subcatScroll: {
+    gap: 8,
+    paddingVertical: 2,
+  },
+  subcatChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    borderRadius: BorderRadius.pill,
+    backgroundColor: Colors.controlBg,
+    borderWidth: 1,
+    borderColor: Colors.glassBorderSoft,
+  },
+  subcatEmptyChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    borderRadius: BorderRadius.pill,
+    backgroundColor: 'rgba(25, 21, 39, 0.03)',
+    borderWidth: 1,
+    borderColor: Colors.divider,
+    borderStyle: 'dashed',
+  },
+  actionRow: {
+    flexDirection: 'row',
+    gap: 10,
+    marginTop: 4,
+  },
+  actionChip: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    borderRadius: BorderRadius.md,
+    backgroundColor: Colors.primarySoft,
+    borderWidth: 1,
+    borderColor: 'rgba(139, 92, 246, 0.2)',
   },
   fixedBottomContainer: {
     position: 'absolute',

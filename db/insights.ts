@@ -506,3 +506,80 @@ export async function computeTopNotes(
     .sort((a, b) => b.amount - a.amount)
     .slice(0, limit);
 }
+
+// ---- Recurring Insights -----------------------------------------------------
+
+export interface RecurringInsights {
+  monthlyTotal: number;
+  yearlyTotal: number;
+  activeCount: number;
+  rules: import('@/types/finance').RecurringRule[];
+  upcomingNext30Days: import('./recurring').UpcomingPayment[];
+}
+
+export async function getRecurringInsights(
+  db: Db,
+  now: Date = new Date()
+): Promise<RecurringInsights> {
+  const { listActiveRecurringRules, getUpcomingPayments } = await import('./recurring');
+  const rules = await listActiveRecurringRules(db);
+
+  let monthlyTotal = 0;
+  for (const r of rules) {
+    if (r.type !== 'expense') continue;
+    switch (r.frequency) {
+      case 'daily':   monthlyTotal += r.amount * 30; break;
+      case 'weekly':  monthlyTotal += r.amount * 4.33; break;
+      case 'monthly': monthlyTotal += r.amount; break;
+      case 'yearly':  monthlyTotal += r.amount / 12; break;
+      case 'custom': {
+        const val = r.intervalValue || 1;
+        switch (r.intervalUnit) {
+          case 'day':   monthlyTotal += (r.amount / val) * 30; break;
+          case 'week':  monthlyTotal += (r.amount / val) * 4.33; break;
+          case 'month': monthlyTotal += r.amount / val; break;
+          case 'year':  monthlyTotal += r.amount / (val * 12); break;
+        }
+        break;
+      }
+    }
+  }
+
+  const upcomingNext30Days = getUpcomingPayments(rules, now, 10, 30);
+
+  return {
+    monthlyTotal: Math.round(monthlyTotal * 100) / 100,
+    yearlyTotal: Math.round(monthlyTotal * 12 * 100) / 100,
+    activeCount: rules.length,
+    rules,
+    upcomingNext30Days,
+  };
+}
+
+// ---- Split Insights ---------------------------------------------------------
+
+export interface SplitInsights {
+  totalOwed: number;
+  totalSettled: number;
+  pendingCount: number;
+  partialCount: number;
+  unsettledSplits: Array<{
+    transactionId: string;
+    participants: import('@/types/finance').SplitParticipant[];
+    outstanding: number;
+  }>;
+}
+
+export async function getSplitInsights(db: Db): Promise<SplitInsights> {
+  const { getSplitSummary, listUnsettledSplits } = await import('./splits');
+  const [summary, unsettledSplits] = await Promise.all([
+    getSplitSummary(db),
+    listUnsettledSplits(db),
+  ]);
+
+  return {
+    ...summary,
+    unsettledSplits,
+  };
+}
+

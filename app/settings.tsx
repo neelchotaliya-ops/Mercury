@@ -311,6 +311,12 @@ export default function SettingsScreen() {
               divider
             />
             <Row
+              icon="repeat-outline"
+              label="Recurring payments"
+              onPress={() => router.push('/add-recurring' as any)}
+              divider
+            />
+            <Row
               icon="flash-outline"
               label="Widget quick presets"
               onPress={() => router.push('/quick-presets')}
@@ -323,6 +329,13 @@ export default function SettingsScreen() {
             Data
           </AppText>
           <GlassCard padding={0} style={styles.listCard}>
+            <Row
+              icon="document-text-outline"
+              label="Import bank statement (CSV)"
+              onPress={() => router.push('/bank-import' as any)}
+              disabled={busy !== null}
+              divider
+            />
             <Row
               icon="share-outline"
               label={activeOperation?.id === 'export' ? activeOperation.label : 'Export data'}

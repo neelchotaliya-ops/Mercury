@@ -25,11 +25,16 @@ export function rowToTransaction(row: TransactionRow): Transaction {
     accountId: row.account_id,
     toAccountId: row.to_account_id ?? undefined,
     categoryId: row.category_id ?? undefined,
+    subcategoryId: row.subcategory_id ?? undefined,
+    payee: row.payee ?? undefined,
     date: row.date,
     note: row.note ?? undefined,
     createdAt: row.created_at,
+    recurringRuleId: row.recurring_rule_id ?? undefined,
+    splitExpenseId: row.split_expense_id ?? undefined,
   };
 }
+
 
 function toRollupInput(tx: Transaction): RollupInput {
   return {
@@ -175,17 +180,23 @@ export async function countAndSumFiltered(
   return { n: row?.n ?? 0, net: row?.net ?? 0 };
 }
 
-export async function insertTransaction(db: Db, tx: Transaction): Promise<void> {
+export async function insertTransaction(
+  db: Db,
+  tx: Omit<Transaction, 'createdAt'> & { createdAt?: string }
+): Promise<void> {
   const monthKey = monthKeyOf(tx.date);
   const dayKey = dayKeyOf(tx.date);
   const dateMs = Date.parse(tx.date);
   const noteLc = tx.note ? tx.note.toLowerCase() : null;
+  const createdAt = tx.createdAt ?? new Date().toISOString();
 
   await db.withTransaction(async txn => {
     await txn.runAsync(
       `INSERT INTO transactions
-         (id, type, amount, account_id, to_account_id, category_id, date, date_ms, month_key, day_key, note, note_lc, created_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+         (id, type, amount, account_id, to_account_id, category_id,
+          date, date_ms, month_key, day_key, note, note_lc, created_at,
+          payee, subcategory_id, recurring_rule_id, split_expense_id)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         tx.id,
         tx.type,
@@ -199,10 +210,14 @@ export async function insertTransaction(db: Db, tx: Transaction): Promise<void> 
         dayKey,
         tx.note ?? null,
         noteLc,
-        tx.createdAt,
+        createdAt,
+        tx.payee ?? null,
+        tx.subcategoryId ?? null,
+        tx.recurringRuleId ?? null,
+        tx.splitExpenseId ?? null,
       ]
     );
-    await applyRow(txn, toRollupInput(tx));
+    await applyRow(txn, toRollupInput({ ...tx, createdAt }));
   });
   bumpDataVersion();
 }
@@ -332,7 +347,8 @@ export async function updateTransaction(db: Db, next: Transaction): Promise<void
     await txn.runAsync(
       `UPDATE transactions SET
          type = ?, amount = ?, account_id = ?, to_account_id = ?, category_id = ?,
-         date = ?, date_ms = ?, month_key = ?, day_key = ?, note = ?, note_lc = ?
+         date = ?, date_ms = ?, month_key = ?, day_key = ?, note = ?, note_lc = ?,
+         payee = ?, subcategory_id = ?, recurring_rule_id = ?, split_expense_id = ?
        WHERE id = ?`,
       [
         next.type,
@@ -346,6 +362,10 @@ export async function updateTransaction(db: Db, next: Transaction): Promise<void
         dayKey,
         next.note ?? null,
         noteLc,
+        next.payee ?? null,
+        next.subcategoryId ?? null,
+        next.recurringRuleId ?? null,
+        next.splitExpenseId ?? null,
         next.id,
       ]
     );
