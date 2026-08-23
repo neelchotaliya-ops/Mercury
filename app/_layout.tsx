@@ -25,6 +25,7 @@ import { AppThemeProvider } from '@/context/theme-context';
 import { FinanceProvider, useFinance } from '@/context/finance-context';
 import { useSharedReceipt } from '@/hooks/use-shared-receipt';
 import { PersistErrorBanner } from '@/components/ui/persist-error-banner';
+import { BackgroundOperationBanner } from '@/components/ui/background-operation-banner';
 import { AppSplash } from '@/components/ui/app-splash';
 
 SplashScreen.preventAutoHideAsync();
@@ -76,6 +77,7 @@ function RootNavigator() {
       ) : null}
 
       <PersistErrorBanner />
+      <BackgroundOperationBanner />
       <StatusBar style="dark" />
     </View>
   );

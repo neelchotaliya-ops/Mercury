@@ -250,6 +250,46 @@ const CASES: Case[] = [
       );
     },
   },
+  {
+    name: 'onProgress fires per batch with the running count and the passed-through total',
+    run: async () => {
+      const db = await freshDb();
+      const txs = Array.from({ length: 1200 }, (_, i) => tx(`t${i}`, { amount: 10 }));
+      const calls: { inserted: number; total?: number }[] = [];
+      await applyImportChunks(db, oneChunk(makeExport({ transactions: txs })), 'replace', {
+        total: 1200,
+        onProgress: (inserted, total) => calls.push({ inserted, total }),
+      });
+      // TRANSACTION_BATCH_SIZE is 500, so 1200 rows means batches of 500, 500, 200.
+      return (
+        eq('number of progress calls', calls.length, 3) ??
+        eq('first call running count', calls[0]?.inserted, 500) ??
+        eq('last call running count', calls[2]?.inserted, 1200) ??
+        eq('total forwarded unchanged', calls[0]?.total, 1200)
+      );
+    },
+  },
+  {
+    name: 'shouldCancel stops the run early but leaves a consistent, queryable state',
+    run: async () => {
+      const db = await freshDb();
+      const txs = Array.from({ length: 1200 }, (_, i) => tx(`t${i}`, { amount: 10 }));
+      let seenBatches = 0;
+      const { cancelled } = await applyImportChunks(db, oneChunk(makeExport({ transactions: txs })), 'replace', {
+        shouldCancel: () => {
+          seenBatches++;
+          return seenBatches >= 2; // stop after the second batch commits
+        },
+      });
+      const page = await pageTransactions(db, {}, null, 2000);
+      const netWorth = await getNetWorth(db);
+      return (
+        eq('cancelled flag set', cancelled, true) ??
+        eq('only the committed batches landed', page.rows.length, 1000) ??
+        close('balances still consistent with what was actually applied', netWorth, -10 * 1000)
+      );
+    },
+  },
 ];
 
 runCases(CASES, 'import stream cases');

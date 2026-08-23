@@ -30,6 +30,7 @@ import { EXPORT_FORMAT_VERSION, ExportSummary } from '@/utils/data-transfer';
 import {
   applyImportChunks,
   previewImportChunks,
+  ApplyImportOptions,
   ImportMode,
   ImportPreview,
 } from '@/utils/import-stream';
@@ -40,7 +41,15 @@ export type { ImportMode, ImportPreview } from '@/utils/import-stream';
 
 export type ExportResult =
   | { ok: true; fileName: string; summary: ExportSummary }
-  | { ok: false; reason: string };
+  | { ok: false; reason: string }
+  | { ok: false; cancelled: true; reason: string };
+
+export interface ExportOptions {
+  /** Called roughly every 200ms while streaming transactions, with the running count. */
+  onProgress?: (written: number) => void;
+  /** Checked periodically; returning true aborts the write — a partial backup is never shared. */
+  shouldCancel?: () => boolean;
+}
 
 function exportFileName(now: Date): string {
   const stamp = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(
@@ -54,7 +63,11 @@ function jsonField(key: string, value: unknown, first = false): string {
   return `${first ? '' : ','}"${key}":${JSON.stringify(value)}`;
 }
 
-export async function exportData(db: Db, appVersion?: string): Promise<ExportResult> {
+export async function exportData(
+  db: Db,
+  appVersion?: string,
+  options?: ExportOptions
+): Promise<ExportResult> {
   try {
     const fileName = exportFileName(new Date());
     const file = new File(Paths.cache, fileName);
@@ -74,6 +87,8 @@ export async function exportData(db: Db, appVersion?: string): Promise<ExportRes
     const put = (s: string) => writer.write(encoder.encode(s));
 
     let transactionCount = 0;
+    let cancelled = false;
+    let lastProgressAt = 0;
     try {
       await put('{');
       await put(jsonField('format', 'mercury-finance-export', true));
@@ -92,10 +107,28 @@ export async function exportData(db: Db, appVersion?: string): Promise<ExportRes
         await put((first ? '' : ',') + JSON.stringify(tx));
         first = false;
         transactionCount++;
+
+        // Throttled the same way fill-test-data.tsx throttles its own
+        // progress UI — every row would mean a setState per row on the
+        // caller's end for no visible benefit.
+        const now = Date.now();
+        if (now - lastProgressAt > 200) {
+          lastProgressAt = now;
+          options?.onProgress?.(transactionCount);
+          if (options?.shouldCancel?.()) {
+            cancelled = true;
+            break;
+          }
+        }
       }
       await put(']}}');
     } finally {
       await writer.close();
+    }
+
+    if (cancelled) {
+      if (file.exists) file.delete();
+      return { ok: false, cancelled: true, reason: 'Export cancelled.' };
     }
 
     if (!(await Sharing.isAvailableAsync())) {
@@ -180,6 +213,11 @@ export async function pickAndPreviewImport(): Promise<PickImportResult> {
  * pass, cheap next to holding it all in memory) and writes it into SQLite —
  * see `utils/import-stream.ts#applyImportChunks` for the actual logic.
  */
-export async function applyImport(db: Db, file: File, mode: ImportMode): Promise<void> {
-  await applyImportChunks(db, readFileAsTextChunks(file), mode);
+export async function applyImport(
+  db: Db,
+  file: File,
+  mode: ImportMode,
+  options?: ApplyImportOptions
+): Promise<{ cancelled: boolean }> {
+  return applyImportChunks(db, readFileAsTextChunks(file), mode, options);
 }

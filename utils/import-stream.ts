@@ -143,6 +143,18 @@ export type ImportMode = 'merge' | 'replace';
 
 const TRANSACTION_BATCH_SIZE = 500;
 
+/** Thrown from inside the parse loop to unwind cleanly on cancellation — caught below, never surfaced as a real error. */
+class ImportCancelledError extends Error {}
+
+export interface ApplyImportOptions {
+  /** Called after each committed batch, with the running insert count and (if known, from the preview pass) the total. */
+  onProgress?: (inserted: number, total?: number) => void;
+  /** Checked after each batch; returning true stops the run — already-applied rows are kept, same contract as `seedScaleData`. */
+  shouldCancel?: () => boolean;
+  /** The preview pass's transaction count, if available, forwarded to `onProgress` as the total. */
+  total?: number;
+}
+
 /**
  * Commits an import to SQLite: reads the export as chunks and writes
  * straight through, batching transactions and rebuilding the rollup tables
@@ -158,8 +170,9 @@ const TRANSACTION_BATCH_SIZE = 500;
 export async function applyImportChunks(
   db: Db,
   chunks: AsyncIterable<string>,
-  mode: ImportMode
-): Promise<void> {
+  mode: ImportMode,
+  options?: ApplyImportOptions
+): Promise<{ cancelled: boolean }> {
   if (mode === 'replace') {
     await db.withTransaction(async txn => {
       await txn.execAsync(
@@ -240,31 +253,58 @@ export async function applyImportChunks(
     }
   }
 
+  let inserted = 0;
   let pending: ReturnType<typeof parseTransactionItem>[] = [];
   const flush = async () => {
     if (pending.length === 0) return;
     const batch = pending.filter((t): t is NonNullable<typeof t> => t !== null);
     pending = [];
-    if (batch.length > 0) await bulkInsertTransactionRows(db, batch);
+    if (batch.length > 0) {
+      await bulkInsertTransactionRows(db, batch);
+      inserted += batch.length;
+      options?.onProgress?.(inserted, options.total);
+      // Yield to the JS event loop between batches, same reason
+      // db/seed-scale.ts does — keeps the UI (progress bar, a Cancel tap)
+      // responsive across an import that can take a while, and is what
+      // makes shouldCancel actually get observed in time below.
+      await new Promise(resolve => setTimeout(resolve, 0));
+    }
   };
 
   // Dropped for the load and rebuilt once at the end — see
   // db/schema.ts#dropBulkIndexes. A large import pays the same per-row
   // index-maintenance cost a bulk seed does.
   await dropBulkIndexes(db);
+  let cancelled = false;
   try {
     const meta = await readMercuryExport(chunks, async (raw, metaSoFar) => {
       await applySmallEntities(metaSoFar);
       pending.push(parseTransactionItem(raw, accountIds));
-      if (pending.length >= TRANSACTION_BATCH_SIZE) await flush();
+      if (pending.length >= TRANSACTION_BATCH_SIZE) {
+        await flush();
+        // Checked once per committed batch, not per row — same cadence
+        // db/seed-scale.ts checks shouldCancel at, so "cancelled" always
+        // means "everything up to a batch boundary landed", never a
+        // half-written batch.
+        if (options?.shouldCancel?.()) throw new ImportCancelledError();
+      }
     });
 
     await applySmallEntities(meta); // no-op unless the backup had zero transactions
     await flush();
+  } catch (error) {
+    if (error instanceof ImportCancelledError) {
+      cancelled = true;
+    } else {
+      throw error;
+    }
   } finally {
     await ensureBulkIndexes(db);
   }
 
+  // Rebuild regardless of cancellation — whatever got applied should still
+  // read correctly rather than leaving the aggregate tables partially stale.
   await rebuildRollups(db);
   bumpDataVersion();
+  return { cancelled };
 }
