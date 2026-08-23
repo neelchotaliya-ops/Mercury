@@ -1,8 +1,7 @@
 import React from 'react';
-import { View, StyleSheet, Pressable, Platform } from 'react-native';
+import { View, StyleSheet, Pressable } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { BottomTabBarProps } from '@react-navigation/bottom-tabs';
-import { BlurView } from 'expo-blur';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
@@ -10,10 +9,9 @@ import Animated, {
   useSharedValue,
   useAnimatedStyle,
   withSpring,
-  withTiming,
 } from 'react-native-reanimated';
 
-import { Colors, Gradients, BorderRadius, Shadows } from '@/constants/theme';
+import { Colors, Gradients, BorderRadius } from '@/constants/theme';
 import { haptics } from '@/utils/haptics';
 import { PressScale, Spring } from '@/constants/motion';
 
@@ -25,17 +23,8 @@ interface TabItemProps {
 
 const TabItem: React.FC<TabItemProps> = ({ focused, onPress, renderIcon }) => {
   const scale = useSharedValue(1);
-  const dot = useSharedValue(focused ? 1 : 0);
-
-  React.useEffect(() => {
-    dot.value = withTiming(focused ? 1 : 0, { duration: 220 });
-  }, [focused, dot]);
 
   const iconStyle = useAnimatedStyle(() => ({ transform: [{ scale: scale.value }] }));
-  const dotStyle = useAnimatedStyle(() => ({
-    opacity: dot.value,
-    transform: [{ scale: 0.4 + dot.value * 0.6 }],
-  }));
 
   const handlePress = () => {
     haptics.selection();
@@ -57,7 +46,6 @@ const TabItem: React.FC<TabItemProps> = ({ focused, onPress, renderIcon }) => {
       <Animated.View style={iconStyle}>
         {renderIcon(focused ? Colors.navIconActive : Colors.navIconInactive)}
       </Animated.View>
-      <Animated.View style={[styles.activeDot, dotStyle]} />
     </Pressable>
   );
 };
@@ -121,27 +109,15 @@ export const FloatingTabBar: React.FC<BottomTabBarProps> = ({ state, descriptors
         focused={focused}
         onPress={onPress}
         renderIcon={color =>
-          options.tabBarIcon ? options.tabBarIcon({ focused, color, size: 23 }) : null
+          options.tabBarIcon ? options.tabBarIcon({ focused, color, size: 22 }) : null
         }
       />
     );
   };
 
   return (
-    <View style={[styles.wrapper, { paddingBottom: insets.bottom > 0 ? insets.bottom : 16 }]} pointerEvents="box-none">
+    <View style={[styles.wrapper, { paddingBottom: insets.bottom > 0 ? insets.bottom : 12 }]} pointerEvents="box-none">
       <View style={styles.bar}>
-        <View style={styles.barSurface}>
-          {Platform.OS !== 'android' && (
-            <BlurView intensity={40} tint="light" style={StyleSheet.absoluteFill} />
-          )}
-          <LinearGradient
-            colors={['rgba(255,255,255,0.82)', 'rgba(255,255,255,0.58)']}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 0, y: 1 }}
-            style={StyleSheet.absoluteFill}
-          />
-        </View>
-
         <View style={styles.group}>{left.map(renderTab)}</View>
         <CenterAction onPress={() => router.push('/add-transaction')} />
         <View style={styles.group}>{right.map(renderTab)}</View>
@@ -156,22 +132,23 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     bottom: 0,
-    paddingHorizontal: 18,
+    paddingHorizontal: 20,
     alignItems: 'center',
   },
   bar: {
     flexDirection: 'row',
     alignItems: 'center',
     width: '100%',
-    height: 68,
-    ...Shadows.lifted,
-  },
-  barSurface: {
-    ...StyleSheet.absoluteFillObject,
+    height: 64,
+    backgroundColor: '#FFFFFF',
     borderRadius: BorderRadius.pill,
     borderWidth: 1,
-    borderColor: Colors.glassBorder,
-    overflow: 'hidden',
+    borderColor: 'rgba(25, 21, 39, 0.08)',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.09,
+    shadowRadius: 16,
+    elevation: 10,
   },
   group: {
     flex: 1,
@@ -183,31 +160,26 @@ const styles = StyleSheet.create({
   tabItem: {
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 5,
-    width: 52,
+    width: 48,
     height: '100%',
   },
-  activeDot: {
-    width: 5,
-    height: 5,
-    borderRadius: 2.5,
-    backgroundColor: Colors.navIconActive,
-  },
   centerSlot: {
-    width: 62,
+    width: 56,
+    height: '100%',
     alignItems: 'center',
     justifyContent: 'center',
   },
   centerButton: {
-    width: 56,
-    height: 56,
-    borderRadius: 28,
+    width: 48,
+    height: 48,
+    borderRadius: 24,
     alignItems: 'center',
     justifyContent: 'center',
     overflow: 'hidden',
-    marginTop: -18,
-    borderWidth: 3,
-    borderColor: 'rgba(255,255,255,0.9)',
-    ...Shadows.floating,
+    shadowColor: '#17131F',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.2,
+    shadowRadius: 8,
+    elevation: 6,
   },
 });

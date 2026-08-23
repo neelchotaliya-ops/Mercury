@@ -1,8 +1,8 @@
 import { Tabs } from 'expo-router';
 import React from 'react';
-import { Ionicons } from '@expo/vector-icons';
 
 import { FloatingTabBar } from '@/components/navigation/floating-tab-bar';
+import { TabGradientIcon } from '@/components/navigation/tab-gradient-icon';
 
 export default function TabLayout() {
   return (
@@ -21,28 +21,36 @@ export default function TabLayout() {
         name="index"
         options={{
           title: 'Home',
-          tabBarIcon: ({ color, size }) => <Ionicons name="home-outline" size={size} color={color} />,
+          tabBarIcon: ({ focused, size }) => (
+            <TabGradientIcon name="home" focused={focused} size={size ?? 24} />
+          ),
         }}
       />
       <Tabs.Screen
         name="transactions"
         options={{
           title: 'Activity',
-          tabBarIcon: ({ color, size }) => <Ionicons name="swap-vertical-outline" size={size} color={color} />,
+          tabBarIcon: ({ focused, size }) => (
+            <TabGradientIcon name="activity" focused={focused} size={size ?? 24} />
+          ),
         }}
       />
       <Tabs.Screen
         name="budgets"
         options={{
           title: 'Budgets',
-          tabBarIcon: ({ color, size }) => <Ionicons name="pie-chart-outline" size={size} color={color} />,
+          tabBarIcon: ({ focused, size }) => (
+            <TabGradientIcon name="budgets" focused={focused} size={size ?? 24} />
+          ),
         }}
       />
       <Tabs.Screen
         name="reports"
         options={{
           title: 'Insights',
-          tabBarIcon: ({ color, size }) => <Ionicons name="stats-chart-outline" size={size} color={color} />,
+          tabBarIcon: ({ focused, size }) => (
+            <TabGradientIcon name="reports" focused={focused} size={size ?? 24} />
+          ),
         }}
       />
     </Tabs>

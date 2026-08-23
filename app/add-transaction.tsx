@@ -298,7 +298,8 @@ export default function AddTransactionScreen() {
             }}
           />
 
-          <View style={styles.amountWrap}>
+          {/* Amount Card */}
+          <GlassCard strong elevated padding={10} style={styles.amountCard}>
             <AmountDisplay
               value={amount}
               currencySymbol={getCurrencySymbol(
@@ -308,7 +309,7 @@ export default function AddTransactionScreen() {
               numberFormat={state.settings.numberFormat}
               accentColor={TYPE_COLOR[type]}
             />
-          </View>
+          </GlassCard>
 
           <View style={styles.sectionWrap}>
             <View style={styles.sectionHeader}>
@@ -577,10 +578,11 @@ const styles = StyleSheet.create({
     flex: 1,
     color: Colors.textPrimary,
   },
-  amountWrap: {
+  amountCard: {
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: 2,
+    borderRadius: BorderRadius.lg,
+    backgroundColor: '#FFFFFF',
   },
   sectionWrap: {
     gap: 3,
