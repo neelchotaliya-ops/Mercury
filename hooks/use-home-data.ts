@@ -9,6 +9,6 @@ export function useMonthSummary(monthKey: string, accountId: string | null) {
   });
 }
 
-export function useRecentTransactions(accountId: string | null, limit = 4) {
+export function useRecentTransactions(accountId: string | null, limit = 5) {
   return useDbQuery(`${accountId ?? ''}|${limit}`, db => getRecentTransactions(db, accountId, limit), []);
 }

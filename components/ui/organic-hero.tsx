@@ -13,7 +13,6 @@ import Animated, {
   useSharedValue,
   useAnimatedStyle,
   useAnimatedProps,
-  useFrameCallback,
   withDelay,
   withRepeat,
   withSequence,
@@ -40,6 +39,12 @@ import { getCurrencySymbol } from '@/utils/currency';
 const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
 const AnimatedEllipse = Animated.createAnimatedComponent(Ellipse);
 const AnimatedPath = Animated.createAnimatedComponent(Path);
+
+// 4 organic fluid liquid shapes for continuous seamless bezier morphing
+const SHAPE_0 = [104, 7, 144, 4, 180, 28, 190, 66, 199, 101, 176, 128, 157, 153, 134, 182, 101, 199, 68, 188, 32, 176, 11, 145, 8, 108, 5, 68, 24, 33, 57, 17, 72, 10, 89, 8, 104, 7];
+const SHAPE_1 = [96, 6, 136, 3, 174, 22, 187, 57, 200, 93, 182, 126, 160, 150, 136, 176, 98, 197, 65, 184, 30, 170, 13, 138, 10, 102, 7, 64, 30, 31, 62, 16, 73, 10, 85, 7, 96, 6];
+const SHAPE_2 = [112, 12, 158, 8, 196, 35, 192, 78, 188, 118, 194, 142, 166, 170, 138, 198, 94, 200, 62, 182, 28, 164, 10, 135, 12, 96, 14, 56, 38, 24, 72, 14, 86, 9, 99, 10, 112, 12];
+const SHAPE_3 = [90, 10, 126, 4, 164, 16, 188, 50, 212, 84, 182, 132, 150, 160, 118, 188, 74, 194, 44, 172, 14, 150, 8, 118, 12, 80, 16, 42, 34, 22, 64, 14, 74, 11, 82, 10, 90, 10];
 
 export type BadgeSlot = 'topLeft' | 'topRight' | 'bottomLeft' | 'bottomRight';
 
@@ -105,170 +110,6 @@ function formatShortCurrency(amount: number, currency: string, numberFormat?: Nu
     return `${sign}${sym}${(abs / 1000).toFixed(1)}k`;
   }
   return `${sign}${sym}${abs.toFixed(0)}`;
-}
-
-/**
- * 38-number control structures for hand-crafted resting and alternate lobes.
- */
-function extractNumbers(path: string): number[] {
-  return (path.match(/-?\d+(?:\.\d+)?/g) ?? []).map(Number);
-}
-
-const RESTING_NUMS = extractNumbers(BLOB_PATH);
-const ALT_NUMS = extractNumbers(BLOB_PATH_ALT);
-
-function pathFromNumbers(n: number[]): string {
-  'worklet';
-  return (
-    'M' +
-    n[0].toFixed(1) +
-    ' ' +
-    n[1].toFixed(1) +
-    ' C' +
-    n[2].toFixed(1) +
-    ' ' +
-    n[3].toFixed(1) +
-    ' ' +
-    n[4].toFixed(1) +
-    ' ' +
-    n[5].toFixed(1) +
-    ' ' +
-    n[6].toFixed(1) +
-    ' ' +
-    n[7].toFixed(1) +
-    ' C' +
-    n[8].toFixed(1) +
-    ' ' +
-    n[9].toFixed(1) +
-    ' ' +
-    n[10].toFixed(1) +
-    ' ' +
-    n[11].toFixed(1) +
-    ' ' +
-    n[12].toFixed(1) +
-    ' ' +
-    n[13].toFixed(1) +
-    ' C' +
-    n[14].toFixed(1) +
-    ' ' +
-    n[15].toFixed(1) +
-    ' ' +
-    n[16].toFixed(1) +
-    ' ' +
-    n[17].toFixed(1) +
-    ' ' +
-    n[18].toFixed(1) +
-    ' ' +
-    n[19].toFixed(1) +
-    ' C' +
-    n[20].toFixed(1) +
-    ' ' +
-    n[21].toFixed(1) +
-    ' ' +
-    n[22].toFixed(1) +
-    ' ' +
-    n[23].toFixed(1) +
-    ' ' +
-    n[24].toFixed(1) +
-    ' ' +
-    n[25].toFixed(1) +
-    ' C' +
-    n[26].toFixed(1) +
-    ' ' +
-    n[27].toFixed(1) +
-    ' ' +
-    n[28].toFixed(1) +
-    ' ' +
-    n[29].toFixed(1) +
-    ' ' +
-    n[30].toFixed(1) +
-    ' ' +
-    n[31].toFixed(1) +
-    ' C' +
-    n[32].toFixed(1) +
-    ' ' +
-    n[33].toFixed(1) +
-    ' ' +
-    n[34].toFixed(1) +
-    ' ' +
-    n[35].toFixed(1) +
-    ' ' +
-    n[36].toFixed(1) +
-    ' ' +
-    n[37].toFixed(1) +
-    ' Z'
-  );
-}
-
-/**
- * Calculates dynamic fluid morphed blob paths in real-time.
- */
-function getMorphBlobPath(t: number): string {
-  'worklet';
-  const wave1 = (Math.sin(t * 1.2) + 1) / 2; // Smooth 0 to 1 cycle (~5.2s)
-  const wave2 = Math.sin(t * 2.0) * 0.12;
-  const p = Math.max(0, Math.min(1, wave1 + wave2));
-
-  const n = new Array(38);
-  for (let i = 0; i < 38; i++) {
-    let val = RESTING_NUMS[i] + (ALT_NUMS[i] - RESTING_NUMS[i]) * p;
-    // Harmonic liquid surface tension wave across control points
-    const angle = (i / 38) * Math.PI * 4;
-    const ripple = Math.sin(angle + t * 1.6) * 2.2;
-    val += ripple;
-    n[i] = val;
-  }
-  return pathFromNumbers(n);
-}
-
-/**
- * Hook that drives real-time 60fps shape morphing across all Android & iOS devices.
- *
- * Was a `requestAnimationFrame` loop calling `setState` on every frame — a
- * full React re-render (of this component and every orbiting badge) roughly
- * every 16ms, indefinitely, for as long as Home was focused. That's real
- * JS-thread work competing with everything else on the same thread (gesture
- * handling included), independent of transaction count entirely, which is
- * why it showed up as lag even on a near-empty ledger and got worse the
- * moment the user started scrolling. Rewritten to match the pattern already
- * used correctly elsewhere in this file (`timeVal`, `mainPathProps`,
- * `rippleProps`): a UI-thread clock (`useFrameCallback`, Reanimated's
- * worklet-driven per-frame hook) feeding worklet-tagged path math directly
- * into `useAnimatedProps`, so the whole thing — including the string-heavy
- * `pathFromNumbers` — runs on the UI thread and never touches React state or
- * causes a JS-thread re-render.
- */
-function useDynamicBlobPath(reducedMotion: boolean): {
-  blobPathProps: ReturnType<typeof useAnimatedProps>;
-  auraPathProps: ReturnType<typeof useAnimatedProps>;
-} {
-  const elapsed = useSharedValue(0);
-
-  const frameCallback = useFrameCallback(frameInfo => {
-    if (frameInfo.timeSincePreviousFrame != null) {
-      elapsed.value += frameInfo.timeSincePreviousFrame / 1000;
-    }
-  }, false);
-
-  useFocusEffect(
-    useCallback(() => {
-      if (reducedMotion) return;
-      elapsed.value = 0;
-      frameCallback.setActive(true);
-      return () => frameCallback.setActive(false);
-      // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [reducedMotion])
-  );
-
-  const blobPathProps = useAnimatedProps(() => ({
-    d: reducedMotion ? BLOB_PATH : getMorphBlobPath(elapsed.value),
-  }));
-
-  const auraPathProps = useAnimatedProps(() => ({
-    d: reducedMotion ? BLOB_PATH_ALT : getMorphBlobPath(elapsed.value * 0.85 + 1.8),
-  }));
-
-  return { blobPathProps, auraPathProps };
 }
 
 interface SmallFloatingBubbleProps {
@@ -458,11 +299,10 @@ export const OrganicHero: React.FC<OrganicHeroProps> = ({
   children,
 }) => {
   const reducedMotion = useReducedMotion();
-  // Real-time 60fps shape morphing hook — UI-thread driven, see its own comment
-  const { blobPathProps, auraPathProps } = useDynamicBlobPath(reducedMotion);
 
   // Time clock for buoyant floating & satellite drift
   const timeVal = useSharedValue(0);
+  const morphVal = useSharedValue(0);
   const swapAnim = useSharedValue(1);
 
   // Reactive touch squash and press response
@@ -490,11 +330,81 @@ export const OrganicHero: React.FC<OrganicHeroProps> = ({
         false
       );
 
+      morphVal.value = 0;
+      morphVal.value = withRepeat(
+        withTiming(4, { duration: 7000, easing: Easing.linear }),
+        -1,
+        false
+      );
+
       return () => {
         cancelAnimation(timeVal);
+        cancelAnimation(morphVal);
       };
-    }, [timeVal, reducedMotion])
+    }, [timeVal, morphVal, reducedMotion])
   );
+
+  /**
+   * Ultra-fast zero-allocation cubic shape morphing on UI thread
+   */
+  const blobPathProps = useAnimatedProps(() => {
+    'worklet';
+    if (reducedMotion) return { d: BLOB_PATH };
+
+    const t = morphVal.value;
+    const seg = Math.floor(t) % 4;
+    const frac = t - Math.floor(t);
+    // Smooth cubic easing across keyframes
+    const p = frac * frac * (3 - 2 * frac);
+
+    let from = SHAPE_0, to = SHAPE_1;
+    if (seg === 1) { from = SHAPE_1; to = SHAPE_2; }
+    else if (seg === 2) { from = SHAPE_2; to = SHAPE_3; }
+    else if (seg === 3) { from = SHAPE_3; to = SHAPE_0; }
+
+    const c0 = (from[0] + (to[0] - from[0]) * p) | 0;
+    const c1 = (from[1] + (to[1] - from[1]) * p) | 0;
+    const c2 = (from[2] + (to[2] - from[2]) * p) | 0;
+    const c3 = (from[3] + (to[3] - from[3]) * p) | 0;
+    const c4 = (from[4] + (to[4] - from[4]) * p) | 0;
+    const c5 = (from[5] + (to[5] - from[5]) * p) | 0;
+    const c6 = (from[6] + (to[6] - from[6]) * p) | 0;
+    const c7 = (from[7] + (to[7] - from[7]) * p) | 0;
+    const c8 = (from[8] + (to[8] - from[8]) * p) | 0;
+    const c9 = (from[9] + (to[9] - from[9]) * p) | 0;
+    const c10 = (from[10] + (to[10] - from[10]) * p) | 0;
+    const c11 = (from[11] + (to[11] - from[11]) * p) | 0;
+    const c12 = (from[12] + (to[12] - from[12]) * p) | 0;
+    const c13 = (from[13] + (to[13] - from[13]) * p) | 0;
+    const c14 = (from[14] + (to[14] - from[14]) * p) | 0;
+    const c15 = (from[15] + (to[15] - from[15]) * p) | 0;
+    const c16 = (from[16] + (to[16] - from[16]) * p) | 0;
+    const c17 = (from[17] + (to[17] - from[17]) * p) | 0;
+    const c18 = (from[18] + (to[18] - from[18]) * p) | 0;
+    const c19 = (from[19] + (to[19] - from[19]) * p) | 0;
+    const c20 = (from[20] + (to[20] - from[20]) * p) | 0;
+    const c21 = (from[21] + (to[21] - from[21]) * p) | 0;
+    const c22 = (from[22] + (to[22] - from[22]) * p) | 0;
+    const c23 = (from[23] + (to[23] - from[23]) * p) | 0;
+    const c24 = (from[24] + (to[24] - from[24]) * p) | 0;
+    const c25 = (from[25] + (to[25] - from[25]) * p) | 0;
+    const c26 = (from[26] + (to[26] - from[26]) * p) | 0;
+    const c27 = (from[27] + (to[27] - from[27]) * p) | 0;
+    const c28 = (from[28] + (to[28] - from[28]) * p) | 0;
+    const c29 = (from[29] + (to[29] - from[29]) * p) | 0;
+    const c30 = (from[30] + (to[30] - from[30]) * p) | 0;
+    const c31 = (from[31] + (to[31] - from[31]) * p) | 0;
+    const c32 = (from[32] + (to[32] - from[32]) * p) | 0;
+    const c33 = (from[33] + (to[33] - from[33]) * p) | 0;
+    const c34 = (from[34] + (to[34] - from[34]) * p) | 0;
+    const c35 = (from[35] + (to[35] - from[35]) * p) | 0;
+    const c36 = (from[36] + (to[36] - from[36]) * p) | 0;
+    const c37 = (from[37] + (to[37] - from[37]) * p) | 0;
+
+    return {
+      d: `M${c0} ${c1} C${c2} ${c3} ${c4} ${c5} ${c6} ${c7} C${c8} ${c9} ${c10} ${c11} ${c12} ${c13} C${c14} ${c15} ${c16} ${c17} ${c18} ${c19} C${c20} ${c21} ${c22} ${c23} ${c24} ${c25} C${c26} ${c27} ${c28} ${c29} ${c30} ${c31} C${c32} ${c33} ${c34} ${c35} ${c36} ${c37} Z`
+    };
+  });
 
   /**
    * Main blob buoyancy floating & volume breathing
@@ -509,29 +419,31 @@ export const OrganicHero: React.FC<OrganicHeroProps> = ({
 
     const t = timeVal.value;
 
-    // Buoyancy floating (±6.5px)
-    const floatY = Math.sin(t) * 6.5;
-    // Gentle horizontal drift (±3.0px)
-    const floatX = Math.cos(t * 0.7) * 3.0;
+    // Buoyancy floating
+    const floatY = Math.sin(t * 0.8) * 5.0;
+    const floatX = Math.cos(t * 0.6) * 2.5;
+
     // Fluid volume breathing
-    const stretchY = (1 + Math.sin(t) * 0.04) * swapScale * squashY.value;
-    const stretchX = (1 - Math.sin(t) * 0.035) * swapScale * squashX.value;
+    const stretchY = (1 + Math.sin(t * 1.2) * 0.035) * swapScale * squashY.value;
+    const stretchX = (1 - Math.sin(t * 1.2) * 0.03) * swapScale * squashX.value;
+    const rotate = Math.sin(t * 0.5) * 4.0;
 
     return {
       transform: [
         { translateX: floatX },
         { translateY: floatY },
+        { rotate: `${rotate}deg` },
         { scaleX: stretchX },
         { scaleY: stretchY },
       ],
     };
   });
 
-  /** Aura: soft translucent halo that gently breathes behind main bubble */
+  /** Aura: asynchronous counter-morphing translucent halo */
   const auraStyle = useAnimatedStyle(() => {
     const t = timeVal.value;
-    const rotate = Math.sin(t * 0.65 + 1.2) * 10;
-    const scale = 1.06 + Math.sin(t * 0.85) * 0.05;
+    const rotate = Math.cos(t * 0.55 + 1.2) * -12.0;
+    const scale = 1.05 + Math.sin(t * 0.8) * 0.04;
 
     return {
       transform: [
@@ -604,11 +516,11 @@ export const OrganicHero: React.FC<OrganicHeroProps> = ({
                 <Stop offset="100%" stopColor="#DCE4FB" stopOpacity="0.35" />
               </SvgLinearGradient>
             </Defs>
-            <AnimatedPath animatedProps={auraPathProps} fill="url(#heroAuraFill)" />
+            <Path d={BLOB_PATH_ALT} fill="url(#heroAuraFill)" />
           </Svg>
         </Animated.View>
 
-        {/* Main hero blob with real-time continuous shape morphing, glow, and pearlescent gradient */}
+        {/* Main hero blob with glow, and pearlescent gradient */}
         <Svg width={size} height={size} viewBox={`0 0 ${BLOB_VIEWBOX} ${BLOB_VIEWBOX}`}>
           <Defs>
             <SvgLinearGradient id="heroBlobFill" x1="15%" y1="0%" x2="85%" y2="100%">

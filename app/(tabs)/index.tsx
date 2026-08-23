@@ -2,6 +2,15 @@ import React, { useState, useMemo } from 'react';
 import { View, StyleSheet, ScrollView, Pressable } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
+import { LinearGradient } from 'expo-linear-gradient';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import Animated, {
+  useSharedValue,
+  useAnimatedStyle,
+  useAnimatedScrollHandler,
+  interpolate,
+  Extrapolation,
+} from 'react-native-reanimated';
 
 import { AppText } from '@/components/ui/app-text';
 import { IconButton } from '@/components/ui/icon-button';
@@ -21,6 +30,7 @@ import { Colors, BorderRadius } from '@/constants/theme';
 
 export default function HomeScreen() {
   const router = useRouter();
+  const insets = useSafeAreaInsets();
   const { state } = useFinance();
   const [selectedAccountId, setSelectedAccountId] = useState<string | null>(null);
 
@@ -84,7 +94,7 @@ export default function HomeScreen() {
 
   // Newest few transactions for the selected account (or all), queried
   // directly rather than sliced off a full in-memory array.
-  const { data: recent } = useRecentTransactions(selectedAccountId, 4);
+  const { data: recent } = useRecentTransactions(selectedAccountId, 5);
 
   const heroCurrency = selectedAccount ? (selectedAccount.currency ?? activeCurrency) : activeCurrency;
   const heroValue = formatCurrency(
@@ -153,9 +163,57 @@ export default function HomeScreen() {
     return [totalBadge, ...remainingBadges];
   }, [accounts, selectedAccountId, balanceMap, currencyTotal, activeCurrency, numberFormat]);
 
+  const scrollY = useSharedValue(0);
+  const scrollHandler = useAnimatedScrollHandler({
+    onScroll: event => {
+      scrollY.value = event.contentOffset.y;
+    },
+  });
+
+  /**
+   * Smooth, synchronous 1:1 scroll responsiveness:
+   * Moves precisely at finger speed with no animation delay or dual-step snapping.
+   */
+  const heroFadeStyle = useAnimatedStyle(() => {
+    const y = scrollY.value;
+
+    const opacity = interpolate(
+      y,
+      [0, 150],
+      [1.0, 0.0],
+      Extrapolation.CLAMP
+    );
+
+    const scale = interpolate(
+      y,
+      [-100, 0, 150],
+      [1.12, 1.0, 0.92],
+      Extrapolation.CLAMP
+    );
+
+    const translateY = interpolate(
+      y,
+      [-100, 0],
+      [35, 0],
+      Extrapolation.CLAMP
+    );
+
+    return {
+      opacity,
+      transform: [{ translateY }, { scale }],
+    };
+  });
+
   return (
-    <GradientScreen contours="top">
-      <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
+    <GradientScreen contours="top" edges={[]}>
+      {/* Pinned top header with seamless feathering gradient */}
+      <View style={[styles.headerWrapper, { paddingTop: insets.top + 8 }]}>
+        <LinearGradient
+          colors={['#EFE4FC', 'rgba(239, 228, 252, 0.96)', 'rgba(239, 228, 252, 0)']}
+          locations={[0, 0.7, 1]}
+          style={styles.headerGradient}
+          pointerEvents="none"
+        />
         <View style={styles.header}>
           <View style={styles.headerText}>
             <AppText variant="h2" style={styles.brandTitle}>
@@ -167,26 +225,35 @@ export default function HomeScreen() {
           </View>
           <IconButton iconName="settings-outline" onPress={() => router.push('/settings')} />
         </View>
+      </View>
 
-        <OrganicHero
-          label={heroLabel}
-          value={heroValue}
-          sub={heroSub}
-          currency={heroCurrency}
-          numberFormat={numberFormat}
-          badges={orbitBadges}
-          onPressMain={() => setSelectedAccountId(null)}
-        />
+      <Animated.ScrollView
+        onScroll={scrollHandler}
+        scrollEventThrottle={16}
+        contentContainerStyle={[styles.content, { paddingTop: insets.top + 68 }]}
+        showsVerticalScrollIndicator={false}
+      >
+        <Animated.View style={heroFadeStyle}>
+          <OrganicHero
+            label={heroLabel}
+            value={heroValue}
+            sub={heroSub}
+            currency={heroCurrency}
+            numberFormat={numberFormat}
+            badges={orbitBadges}
+            onPressMain={() => setSelectedAccountId(null)}
+          />
 
-        {selectedAccount ? (
-          <Pressable onPress={() => setSelectedAccountId(null)} style={styles.filterChip}>
-            <Ionicons name="filter" size={13} color={Colors.primary} />
-            <AppText variant="micro" color={Colors.primary} style={styles.filterText}>
-              Filtered by {selectedAccount.name}
-            </AppText>
-            <Ionicons name="close-circle" size={14} color={Colors.primary} />
-          </Pressable>
-        ) : null}
+          {selectedAccount ? (
+            <Pressable onPress={() => setSelectedAccountId(null)} style={styles.filterChip}>
+              <Ionicons name="filter" size={13} color={Colors.primary} />
+              <AppText variant="micro" color={Colors.primary} style={styles.filterText}>
+                Filtered by {selectedAccount.name}
+              </AppText>
+              <Ionicons name="close-circle" size={14} color={Colors.primary} />
+            </Pressable>
+          ) : null}
+        </Animated.View>
 
         <View style={styles.statsRow}>
           <StatCard
@@ -286,24 +353,37 @@ export default function HomeScreen() {
             </GlassCard>
           )}
         </View>
-      </ScrollView>
+      </Animated.ScrollView>
     </GradientScreen>
   );
 }
 
 const styles = StyleSheet.create({
+  headerWrapper: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    paddingHorizontal: 20,
+    paddingBottom: 22,
+    zIndex: 10,
+  },
+  headerGradient: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    top: 0,
+    bottom: 0,
+  },
   content: {
     paddingHorizontal: 20,
-    paddingTop: 4,
-    paddingBottom: 110,
+    paddingBottom: 140,
   },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     gap: 12,
-    marginTop: 4,
-    marginBottom: 6,
   },
   headerText: {
     gap: 2,
@@ -317,8 +397,8 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
-    marginTop: 14,
-    marginBottom: -8,
+    marginTop: 8,
+    marginBottom: 0,
     paddingHorizontal: 14,
     paddingVertical: 7,
     borderRadius: 20,
@@ -332,7 +412,7 @@ const styles = StyleSheet.create({
   statsRow: {
     flexDirection: 'row',
     gap: 12,
-    marginTop: 26,
+    marginTop: 14,
   },
   section: {
     marginTop: 18,
