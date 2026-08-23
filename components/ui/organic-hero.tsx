@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect } from 'react';
 import { Pressable, View, StyleSheet, ViewStyle } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import Svg, {
@@ -13,6 +13,7 @@ import Animated, {
   useSharedValue,
   useAnimatedStyle,
   useAnimatedProps,
+  useFrameCallback,
   withDelay,
   withRepeat,
   withSequence,
@@ -38,6 +39,7 @@ import { getCurrencySymbol } from '@/utils/currency';
 
 const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
 const AnimatedEllipse = Animated.createAnimatedComponent(Ellipse);
+const AnimatedPath = Animated.createAnimatedComponent(Path);
 
 export type BadgeSlot = 'topLeft' | 'topRight' | 'bottomLeft' | 'bottomRight';
 
@@ -116,6 +118,7 @@ const RESTING_NUMS = extractNumbers(BLOB_PATH);
 const ALT_NUMS = extractNumbers(BLOB_PATH_ALT);
 
 function pathFromNumbers(n: number[]): string {
+  'worklet';
   return (
     'M' +
     n[0].toFixed(1) +
@@ -201,6 +204,7 @@ function pathFromNumbers(n: number[]): string {
  * Calculates dynamic fluid morphed blob paths in real-time.
  */
 function getMorphBlobPath(t: number): string {
+  'worklet';
   const wave1 = (Math.sin(t * 1.2) + 1) / 2; // Smooth 0 to 1 cycle (~5.2s)
   const wave2 = Math.sin(t * 2.0) * 0.12;
   const p = Math.max(0, Math.min(1, wave1 + wave2));
@@ -219,38 +223,52 @@ function getMorphBlobPath(t: number): string {
 
 /**
  * Hook that drives real-time 60fps shape morphing across all Android & iOS devices.
+ *
+ * Was a `requestAnimationFrame` loop calling `setState` on every frame — a
+ * full React re-render (of this component and every orbiting badge) roughly
+ * every 16ms, indefinitely, for as long as Home was focused. That's real
+ * JS-thread work competing with everything else on the same thread (gesture
+ * handling included), independent of transaction count entirely, which is
+ * why it showed up as lag even on a near-empty ledger and got worse the
+ * moment the user started scrolling. Rewritten to match the pattern already
+ * used correctly elsewhere in this file (`timeVal`, `mainPathProps`,
+ * `rippleProps`): a UI-thread clock (`useFrameCallback`, Reanimated's
+ * worklet-driven per-frame hook) feeding worklet-tagged path math directly
+ * into `useAnimatedProps`, so the whole thing — including the string-heavy
+ * `pathFromNumbers` — runs on the UI thread and never touches React state or
+ * causes a JS-thread re-render.
  */
-function useDynamicBlobPath(reducedMotion: boolean): { blobPath: string; auraPath: string } {
-  const [paths, setPaths] = useState(() => ({
-    blobPath: BLOB_PATH,
-    auraPath: BLOB_PATH_ALT,
-  }));
+function useDynamicBlobPath(reducedMotion: boolean): {
+  blobPathProps: ReturnType<typeof useAnimatedProps>;
+  auraPathProps: ReturnType<typeof useAnimatedProps>;
+} {
+  const elapsed = useSharedValue(0);
+
+  const frameCallback = useFrameCallback(frameInfo => {
+    if (frameInfo.timeSincePreviousFrame != null) {
+      elapsed.value += frameInfo.timeSincePreviousFrame / 1000;
+    }
+  }, false);
 
   useFocusEffect(
     useCallback(() => {
       if (reducedMotion) return;
-
-      let rafId: number;
-      const startTime = Date.now();
-
-      const updateFrame = () => {
-        const elapsed = (Date.now() - startTime) / 1000;
-        const blobPath = getMorphBlobPath(elapsed);
-        const auraPath = getMorphBlobPath(elapsed * 0.85 + 1.8);
-
-        setPaths({ blobPath, auraPath });
-        rafId = requestAnimationFrame(updateFrame);
-      };
-
-      rafId = requestAnimationFrame(updateFrame);
-
-      return () => {
-        cancelAnimationFrame(rafId);
-      };
+      elapsed.value = 0;
+      frameCallback.setActive(true);
+      return () => frameCallback.setActive(false);
+      // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [reducedMotion])
   );
 
-  return paths;
+  const blobPathProps = useAnimatedProps(() => ({
+    d: reducedMotion ? BLOB_PATH : getMorphBlobPath(elapsed.value),
+  }));
+
+  const auraPathProps = useAnimatedProps(() => ({
+    d: reducedMotion ? BLOB_PATH_ALT : getMorphBlobPath(elapsed.value * 0.85 + 1.8),
+  }));
+
+  return { blobPathProps, auraPathProps };
 }
 
 interface SmallFloatingBubbleProps {
@@ -262,7 +280,7 @@ interface SmallFloatingBubbleProps {
   timeShared: { value: number };
 }
 
-const SmallFloatingBubble: React.FC<SmallFloatingBubbleProps> = ({
+const SmallFloatingBubbleBase: React.FC<SmallFloatingBubbleProps> = ({
   badge,
   index,
   proportionalScale = 1,
@@ -425,6 +443,9 @@ const SmallFloatingBubble: React.FC<SmallFloatingBubbleProps> = ({
   );
 };
 
+/** Re-rendered by the parent on every data refresh; memoized so it doesn't also re-render on every animation frame. */
+const SmallFloatingBubble = React.memo(SmallFloatingBubbleBase);
+
 export const OrganicHero: React.FC<OrganicHeroProps> = ({
   label,
   value,
@@ -437,8 +458,8 @@ export const OrganicHero: React.FC<OrganicHeroProps> = ({
   children,
 }) => {
   const reducedMotion = useReducedMotion();
-  // Real-time 60fps shape morphing hook
-  const { blobPath, auraPath } = useDynamicBlobPath(reducedMotion);
+  // Real-time 60fps shape morphing hook — UI-thread driven, see its own comment
+  const { blobPathProps, auraPathProps } = useDynamicBlobPath(reducedMotion);
 
   // Time clock for buoyant floating & satellite drift
   const timeVal = useSharedValue(0);
@@ -583,7 +604,7 @@ export const OrganicHero: React.FC<OrganicHeroProps> = ({
                 <Stop offset="100%" stopColor="#DCE4FB" stopOpacity="0.35" />
               </SvgLinearGradient>
             </Defs>
-            <Path d={auraPath} fill="url(#heroAuraFill)" />
+            <AnimatedPath animatedProps={auraPathProps} fill="url(#heroAuraFill)" />
           </Svg>
         </Animated.View>
 
@@ -617,8 +638,8 @@ export const OrganicHero: React.FC<OrganicHeroProps> = ({
           />
 
           {/* Main real-time morphing organic bubble path */}
-          <Path
-            d={blobPath}
+          <AnimatedPath
+            animatedProps={blobPathProps}
             fill="url(#heroBlobFill)"
             stroke="rgba(255,255,255,0.96)"
             strokeWidth={1.6}
