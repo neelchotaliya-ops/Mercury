@@ -1,5 +1,6 @@
-import React, { useMemo, useState } from 'react';
-import { View, StyleSheet, ScrollView, Pressable } from 'react-native';
+import React, { useEffect, useMemo, useState } from 'react';
+import { View, StyleSheet, ScrollView, Pressable, ActivityIndicator } from 'react-native';
+import Animated, { useSharedValue, useAnimatedStyle, withTiming } from 'react-native-reanimated';
 
 import { AppText } from '@/components/ui/app-text';
 import { GradientScreen } from '@/components/ui/gradient-screen';
@@ -64,8 +65,22 @@ export default function ReportsScreen() {
   // over the ledger — each query is O(buckets) in the filtered range and
   // re-fetches only when the filter changes or a write anywhere bumps
   // db/version.ts, not on every unrelated app mutation.
-  const { totals, breakdown, series, heatmap: heatmapWeeks, weekdays, topNotes, comparison } =
+  const { totals, breakdown, series, heatmap: heatmapWeeks, weekdays, topNotes, comparison, loading } =
     useInsightsData(effectiveFilter, state.categories);
+
+  // Changing the filter (range/kind/account) re-fires all seven queries, but
+  // useDbQuery deliberately keeps rendering the previous result while they're
+  // in flight rather than flashing empty — good for avoiding jank, but with
+  // nothing else it meant a filter change looked like it had no effect at
+  // all until the numbers silently swapped in. This is the visible "a
+  // refresh is happening" signal for that gap: a brief dim, not the full
+  // mount skeleton (isReady/ReportsSkeleton below), since that would read as
+  // a fresh screen load rather than what it actually is.
+  const contentOpacity = useSharedValue(1);
+  useEffect(() => {
+    contentOpacity.value = withTiming(loading ? 0.5 : 1, { duration: 180 });
+  }, [loading, contentOpacity]);
+  const refreshingStyle = useAnimatedStyle(() => ({ opacity: contentOpacity.value }));
 
   const isEmpty = totals.count === 0;
   const changePercent =
@@ -137,6 +152,15 @@ export default function ReportsScreen() {
           }}
         />
 
+        {isReady && loading ? (
+          <View style={styles.refreshingRow}>
+            <ActivityIndicator size="small" color={Colors.primary} />
+            <AppText variant="micro" color={Colors.textSecondary}>
+              Updating…
+            </AppText>
+          </View>
+        ) : null}
+
         {!isReady ? (
           <ReportsSkeleton />
         ) : isEmpty ? (
@@ -150,7 +174,7 @@ export default function ReportsScreen() {
             </GlassCard>
           </View>
         ) : (
-          <>
+          <Animated.View style={refreshingStyle}>
             {/* The headline is one number, so it gets a stat tile rather than a chart. */}
             <View style={styles.section}>
               <GlassCard strong elevated style={styles.heroCard} animateIndex={0}>
@@ -309,7 +333,7 @@ export default function ReportsScreen() {
                 </GlassCard>
               </View>
             ) : null}
-          </>
+          </Animated.View>
         )}
       </ScrollView>
     </GradientScreen>
@@ -334,6 +358,12 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     paddingHorizontal: 20,
     gap: 8,
+  },
+  refreshingRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingHorizontal: 24,
   },
   currencyChip: {
     flexDirection: 'row',
