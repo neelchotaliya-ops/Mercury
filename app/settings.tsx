@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useSyncExternalStore } from 'react';
 import { View, StyleSheet, ScrollView, Pressable, Alert } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
@@ -14,6 +14,14 @@ import { haptics } from '@/utils/haptics';
 import { applyImport, exportData, pickAndPreviewImport } from '@/utils/data-transfer-io';
 import { CURRENCIES } from '@/utils/currency';
 import { Colors, Spacing } from '@/constants/theme';
+import {
+  startOperation,
+  updateOperation,
+  finishOperation,
+  isCancelled,
+  getActiveOperation,
+  subscribeOperations,
+} from '@/db/operation-status';
 
 interface RowProps {
   icon: keyof typeof Ionicons.glyphMap;
@@ -22,12 +30,18 @@ interface RowProps {
   onPress: () => void;
   trailing?: React.ReactNode;
   divider?: boolean;
+  disabled?: boolean;
 }
 
-const Row: React.FC<RowProps> = ({ icon, label, tint, onPress, trailing, divider }) => (
+const Row: React.FC<RowProps> = ({ icon, label, tint, onPress, trailing, divider, disabled }) => (
   <Pressable
     onPress={onPress}
-    style={({ pressed }) => [styles.row, divider && styles.rowDivider, { opacity: pressed ? 0.6 : 1 }]}
+    disabled={disabled}
+    style={({ pressed }) => [
+      styles.row,
+      divider && styles.rowDivider,
+      { opacity: disabled ? 0.4 : pressed ? 0.6 : 1 },
+    ]}
   >
     <View style={[styles.rowIcon, { backgroundColor: `${tint ?? Colors.primary}1A` }]}>
       <Ionicons name={icon} size={16} color={tint ?? Colors.primary} />
@@ -41,8 +55,13 @@ const Row: React.FC<RowProps> = ({ icon, label, tint, onPress, trailing, divider
 
 export default function SettingsScreen() {
   const router = useRouter();
-  const { state, updateSettings, resetAllData, seedDemoData } = useFinance();
-  const [busy, setBusy] = useState<'export' | 'import' | null>(null);
+  const { state, updateSettings, resetAllData } = useFinance();
+  // Single source of truth for "is a bulk operation running" — the same
+  // store the root-mounted banner reads, so these rows and the banner never
+  // disagree, and the state survives this screen unmounting/remounting
+  // (e.g. the user backs out mid-export and reopens Settings).
+  const activeOperation = useSyncExternalStore(subscribeOperations, getActiveOperation, getActiveOperation);
+  const busy = activeOperation?.id ?? null;
 
   const activeCurrency = CURRENCIES.find(c => c.code === state.settings.currency);
   const currentNumberFormat =
@@ -72,76 +91,100 @@ export default function SettingsScreen() {
     ]);
   };
 
-  const handleSeedDemoData = () => {
-    Alert.alert('Populate 2-Year Sample Data', 'This will populate 2 full years of realistic accounts, transactions, and budgets.', [
-      { text: 'Cancel', style: 'cancel' },
-      {
-        text: 'Populate 2-Year Data',
-        onPress: async () => {
-          if (busy) return;
-          setBusy('import');
-          try {
-            await seedDemoData();
-            haptics.success();
-            Alert.alert('Sample data populated', '2 full years of sample data have been added.');
-          } catch (e) {
-            haptics.error();
-            Alert.alert('Populate failed', e instanceof Error ? e.message : 'Could not seed sample data.');
-          } finally {
-            setBusy(null);
-          }
-        },
-      },
-    ]);
-  };
-
   const handleExport = async () => {
     if (busy) return;
-    setBusy('export');
+    startOperation({ id: 'export', label: 'Exporting…', progress: null, cancellable: true });
     try {
       const db = await getDb();
-      const result = await exportData(db);
+      const result = await exportData(db, undefined, {
+        onProgress: written =>
+          updateOperation('export', { detail: `${written.toLocaleString()} transaction(s) so far` }),
+        shouldCancel: () => isCancelled('export'),
+      });
       if (result.ok) {
         haptics.success();
+        finishOperation('export', {
+          ok: true,
+          message: `Exported ${result.summary.transactions.toLocaleString()} transaction(s).`,
+        });
+      } else if ('cancelled' in result && result.cancelled) {
+        haptics.warning();
+        finishOperation('export', { ok: false, message: 'Export cancelled.' });
       } else {
         haptics.error();
+        finishOperation('export', { ok: false, message: result.reason });
         Alert.alert('Export failed', result.reason);
       }
-    } finally {
-      setBusy(null);
+    } catch (e) {
+      haptics.error();
+      const message = e instanceof Error ? e.message : 'Could not write the export file.';
+      finishOperation('export', { ok: false, message });
+      Alert.alert('Export failed', message);
     }
   };
 
   const handleImport = async () => {
     if (busy) return;
-    setBusy('import');
+    // Covers the whole flow — the read/preview pass, the user picking
+    // merge-vs-replace, and the actual write — as one continuous operation.
+    // Previously `busy` was cleared the moment the preview resolved, so the
+    // real batched-write commit() below ran with no busy/progress state at
+    // all; keeping the operation open until commit's own finally fixes that.
+    startOperation({ id: 'import', label: 'Reading file…', progress: null, cancellable: false });
     try {
       const result = await pickAndPreviewImport();
 
       if (!result.ok) {
-        if (!('cancelled' in result)) {
+        if ('cancelled' in result) {
+          finishOperation('import', { ok: false, message: 'Import cancelled.' });
+        } else {
           haptics.error();
+          finishOperation('import', { ok: false, message: result.reason });
           Alert.alert('Import failed', result.reason);
         }
         return;
       }
 
-      const { file, preview } = result;
+      const { file, format, preview } = result;
+      const total = preview.summary.transactions;
+
       const commit = async (mode: 'merge' | 'replace') => {
+        updateOperation('import', {
+          label: mode === 'replace' ? 'Replacing data…' : 'Importing…',
+          progress: total > 0 ? 0 : null,
+          cancellable: total > 0,
+        });
         try {
           const db = await getDb();
-          await applyImport(db, file, mode);
+          const { cancelled } = await applyImport(db, file, mode, {
+            format,
+            total,
+            onProgress: inserted =>
+              updateOperation('import', {
+                progress: total > 0 ? inserted / total : null,
+                detail: total > 0 ? `${inserted.toLocaleString()} / ${total.toLocaleString()}` : undefined,
+              }),
+            shouldCancel: () => isCancelled('import'),
+          });
+          if (cancelled) {
+            haptics.warning();
+            finishOperation('import', { ok: false, message: 'Import cancelled.' });
+            Alert.alert('Import cancelled', 'Whatever had already been applied was kept.');
+            return;
+          }
           if (mode === 'replace') haptics.warning();
           else haptics.success();
-          Alert.alert(
-            'Imported',
+          const message =
             mode === 'replace'
-              ? `Replaced with this backup's ${preview.summary.transactions} transaction(s).`
-              : `Merged in this backup's ${preview.summary.transactions} transaction(s).`
-          );
+              ? `Replaced with this backup's ${total} transaction(s).`
+              : `Merged in this backup's ${total} transaction(s).`;
+          finishOperation('import', { ok: true, message });
+          Alert.alert('Imported', message);
         } catch (e) {
           haptics.error();
-          Alert.alert('Import failed', e instanceof Error ? e.message : 'Could not apply that backup.');
+          const message = e instanceof Error ? e.message : 'Could not apply that backup.';
+          finishOperation('import', { ok: false, message });
+          Alert.alert('Import failed', message);
         }
       };
 
@@ -149,17 +192,31 @@ export default function SettingsScreen() {
       // and always states what is about to be lost.
       Alert.alert(
         'Import data',
-        `This backup has ${preview.summary.accounts} accounts, ${preview.summary.transactions} transactions ` +
+        `This backup has ${preview.summary.accounts} accounts, ${total} transactions ` +
           `and ${preview.summary.budgets} budgets.\n\nMerge keeps what you already have and adds ` +
           `anything new. Replace deletes your current data first.`,
         [
-          { text: 'Cancel', style: 'cancel' },
+          {
+            text: 'Cancel',
+            style: 'cancel',
+            onPress: () => finishOperation('import', { ok: false, message: 'Import cancelled.' }),
+          },
           { text: 'Merge', onPress: () => void commit('merge') },
           { text: 'Replace', style: 'destructive', onPress: () => void commit('replace') },
-        ]
+        ],
+        {
+          cancelable: true,
+          // Android's back gesture/hardware back can dismiss this without
+          // any button firing — without this the operation would stay
+          // "active" (and the banner visible) indefinitely.
+          onDismiss: () => finishOperation('import', { ok: false, message: 'Import cancelled.' }),
+        }
       );
-    } finally {
-      setBusy(null);
+    } catch (e) {
+      haptics.error();
+      const message = e instanceof Error ? e.message : 'Could not read that file.';
+      finishOperation('import', { ok: false, message });
+      Alert.alert('Import failed', message);
     }
   };
 
@@ -171,16 +228,20 @@ export default function SettingsScreen() {
         style: 'destructive',
         onPress: async () => {
           if (busy) return;
-          setBusy('export');
+          // Indeterminate: a single DELETE-FROM batch has no natural batch
+          // boundary to report a percentage against (see resetAllData) — the
+          // point here is showing "this is happening" immediately, not a bar.
+          startOperation({ id: 'reset', label: 'Resetting…', progress: null, cancellable: false });
           try {
             await resetAllData();
             haptics.warning();
+            finishOperation('reset', { ok: true, message: 'All data has been cleared.' });
             Alert.alert('Reset complete', 'All data has been cleared.');
           } catch (e) {
             haptics.error();
-            Alert.alert('Reset failed', e instanceof Error ? e.message : 'Could not reset data.');
-          } finally {
-            setBusy(null);
+            const message = e instanceof Error ? e.message : 'Could not reset data.';
+            finishOperation('reset', { ok: false, message });
+            Alert.alert('Reset failed', message);
           }
         },
       },
@@ -264,33 +325,31 @@ export default function SettingsScreen() {
           <GlassCard padding={0} style={styles.listCard}>
             <Row
               icon="share-outline"
-              label={busy === 'export' ? 'Preparing export…' : 'Export data'}
+              label={activeOperation?.id === 'export' ? activeOperation.label : 'Export data'}
               onPress={handleExport}
+              disabled={busy !== null}
               divider
             />
             <Row
               icon="download-outline"
-              label={busy === 'import' ? 'Reading file…' : 'Import data'}
+              label={activeOperation?.id === 'import' ? activeOperation.label : 'Import data'}
               onPress={handleImport}
-              divider
-            />
-            <Row
-              icon="sparkles-outline"
-              label="Populate sample data"
-              onPress={handleSeedDemoData}
+              disabled={busy !== null}
               divider
             />
             <Row
               icon="speedometer-outline"
               label="Fill test data (custom size)"
               onPress={() => router.push('/fill-test-data' as any)}
+              disabled={busy !== null}
               divider
             />
             <Row
               icon="trash-outline"
-              label="Reset all data"
+              label={activeOperation?.id === 'reset' ? activeOperation.label : 'Reset all data'}
               tint={Colors.expense}
               onPress={handleReset}
+              disabled={busy !== null}
               trailing={<View />}
             />
           </GlassCard>

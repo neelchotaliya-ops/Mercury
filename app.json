@@ -22,7 +22,8 @@
       "targetSdkVersion": 36,
       "minSdkVersion": 24,
       "permissions": [
-        "android.permission.RECORD_AUDIO"
+        "android.permission.RECORD_AUDIO",
+        "android.permission.POST_NOTIFICATIONS"
       ],
       "package": "com.anonymous.Mercury"
     },
@@ -96,6 +97,12 @@
               "updatePeriodMillis": 1800000
             }
           ]
+        }
+      ],
+      [
+        "expo-notifications",
+        {
+          "color": "#8B5CF6"
         }
       ],
       "./plugins/with-async-storage-size"

@@ -11,30 +11,31 @@
  * calls straight through.
  */
 
-import { AppSettings, Account, Budget, Category, QuickPreset } from '@/types/finance';
-import { Db } from '@/db/types';
 import {
-  listAccounts,
-  listCategories,
-  listBudgets,
-  listPresets,
   insertAccountRow,
-  insertCategoryRow,
   insertBudgetRow,
+  insertCategoryRow,
   insertPresetRow,
+  listAccounts,
+  listBudgets,
+  listCategories,
+  listPresets,
   updateSettings,
 } from '@/db/entities';
-import { bulkInsertTransactionRows } from '@/db/transactions';
 import { rebuildRollups } from '@/db/rebuild';
-import { bumpDataVersion } from '@/db/version';
 import { dropBulkIndexes, ensureBulkIndexes } from '@/db/schema';
+import { bulkInsertTransactionRows } from '@/db/transactions';
+import { Db } from '@/db/types';
+import { bumpDataVersion } from '@/db/version';
+import { Account, AppSettings, Budget, Category, QuickPreset } from '@/types/finance';
+import { readMercuryExportCsv } from '@/utils/csv-stream';
 import {
   EXPORT_FORMAT_VERSION,
   ExportSummary,
   isRecord,
   parseAccounts,
-  parseCategories,
   parseBudgets,
+  parseCategories,
   parsePresets,
   parseTransactionItem,
 } from '@/utils/data-transfer';
@@ -50,6 +51,20 @@ export interface ImportPreview {
 }
 
 export type PreviewOutcome = { ok: true; preview: ImportPreview } | { ok: false; reason: string };
+
+/**
+ * Both formats carry the same meta shape and the same per-transaction
+ * validation (`parseTransactionItem` runs unchanged either way) — only how
+ * raw text becomes "meta + a stream of raw transaction records" differs.
+ * `readMercuryExport`/`readMercuryExportCsv` share the exact same signature
+ * for this reason, so `previewImportChunks`/`applyImportChunks` below don't
+ * need a format-specific branch anywhere except picking which one to call.
+ */
+export type ImportFormat = 'json' | 'csv';
+
+function readerFor(format: ImportFormat) {
+  return format === 'csv' ? readMercuryExportCsv : readMercuryExport;
+}
 
 function coerceSettings(raw: unknown): AppSettings {
   const settings = isRecord(raw) ? raw : {};
@@ -67,13 +82,16 @@ function coerceSettings(raw: unknown): AppSettings {
  * writing anything — what lets Settings show "this backup has N
  * transactions" before the user commits to merge or replace.
  */
-export async function previewImportChunks(chunks: AsyncIterable<string>): Promise<PreviewOutcome> {
+export async function previewImportChunks(
+  chunks: AsyncIterable<string>,
+  format: ImportFormat = 'json'
+): Promise<PreviewOutcome> {
   try {
     let accountIds: Set<string> | undefined;
     let validAccounts: Account[] = [];
     let transactionCount = 0;
 
-    const meta = await readMercuryExport(chunks, (raw, metaSoFar) => {
+    const meta = await readerFor(format)(chunks, (raw, metaSoFar) => {
       if (accountIds === undefined) {
         if (metaSoFar.format !== 'mercury-finance-export') {
           throw new Error('That file was not exported from Mercury.');
@@ -143,6 +161,20 @@ export type ImportMode = 'merge' | 'replace';
 
 const TRANSACTION_BATCH_SIZE = 500;
 
+/** Thrown from inside the parse loop to unwind cleanly on cancellation — caught below, never surfaced as a real error. */
+class ImportCancelledError extends Error { }
+
+export interface ApplyImportOptions {
+  /** Called after each committed batch, with the running insert count and (if known, from the preview pass) the total. */
+  onProgress?: (inserted: number, total?: number) => void;
+  /** Checked after each batch; returning true stops the run — already-applied rows are kept, same contract as `seedScaleData`. */
+  shouldCancel?: () => boolean;
+  /** The preview pass's transaction count, if available, forwarded to `onProgress` as the total. */
+  total?: number;
+  /** Defaults to 'json'. Must match whatever `previewImportChunks` was called with for the same file. */
+  format?: ImportFormat;
+}
+
 /**
  * Commits an import to SQLite: reads the export as chunks and writes
  * straight through, batching transactions and rebuilding the rollup tables
@@ -158,8 +190,9 @@ const TRANSACTION_BATCH_SIZE = 500;
 export async function applyImportChunks(
   db: Db,
   chunks: AsyncIterable<string>,
-  mode: ImportMode
-): Promise<void> {
+  mode: ImportMode,
+  options?: ApplyImportOptions
+): Promise<{ cancelled: boolean }> {
   if (mode === 'replace') {
     await db.withTransaction(async txn => {
       await txn.execAsync(
@@ -240,6 +273,7 @@ export async function applyImportChunks(
     }
   }
 
+  let inserted = 0;
   let pending: ReturnType<typeof parseTransactionItem>[] = [];
   const flush = async () => {
     if (pending.length === 0) return;
@@ -247,11 +281,13 @@ export async function applyImportChunks(
     pending = [];
     if (batch.length > 0) {
       await bulkInsertTransactionRows(db, batch);
-      // Bound WAL growth on a large import the same way db/seed-scale.ts
-      // does for the Fill-test-data path — see that file's comment for why
-      // an un-checkpointed WAL is a plausible cause of a run that starts
-      // fast and gets catastrophically slower well before it finishes.
-      await db.execAsync('PRAGMA wal_checkpoint(PASSIVE)').catch(() => {});
+      inserted += batch.length;
+      options?.onProgress?.(inserted, options.total);
+      // Yield to the JS event loop between batches, same reason
+      // db/seed-scale.ts does — keeps the UI (progress bar, a Cancel tap)
+      // responsive across an import that can take a while, and is what
+      // makes shouldCancel actually get observed in time below.
+      await new Promise(resolve => setTimeout(resolve, 0));
     }
   };
 
@@ -259,19 +295,36 @@ export async function applyImportChunks(
   // db/schema.ts#dropBulkIndexes. A large import pays the same per-row
   // index-maintenance cost a bulk seed does.
   await dropBulkIndexes(db);
+  let cancelled = false;
   try {
-    const meta = await readMercuryExport(chunks, async (raw, metaSoFar) => {
+    const meta = await readerFor(options?.format ?? 'json')(chunks, async (raw, metaSoFar) => {
       await applySmallEntities(metaSoFar);
       pending.push(parseTransactionItem(raw, accountIds));
-      if (pending.length >= TRANSACTION_BATCH_SIZE) await flush();
+      if (pending.length >= TRANSACTION_BATCH_SIZE) {
+        await flush();
+        // Checked once per committed batch, not per row — same cadence
+        // db/seed-scale.ts checks shouldCancel at, so "cancelled" always
+        // means "everything up to a batch boundary landed", never a
+        // half-written batch.
+        if (options?.shouldCancel?.()) throw new ImportCancelledError();
+      }
     });
 
     await applySmallEntities(meta); // no-op unless the backup had zero transactions
     await flush();
+  } catch (error) {
+    if (error instanceof ImportCancelledError) {
+      cancelled = true;
+    } else {
+      throw error;
+    }
   } finally {
     await ensureBulkIndexes(db);
   }
 
+  // Rebuild regardless of cancellation — whatever got applied should still
+  // read correctly rather than leaving the aggregate tables partially stale.
   await rebuildRollups(db);
   bumpDataVersion();
+  return { cancelled };
 }

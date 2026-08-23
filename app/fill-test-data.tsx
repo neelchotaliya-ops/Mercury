@@ -1,5 +1,5 @@
-import React, { useRef, useState } from 'react';
-import { View, StyleSheet, ScrollView, Pressable, TextInput, Alert } from 'react-native';
+import React, { useState } from 'react';
+import { View, StyleSheet, ScrollView, Pressable, TextInput, Alert, KeyboardAvoidingView, Platform } from 'react-native';
 import { useRouter } from 'expo-router';
 
 import { AppText } from '@/components/ui/app-text';
@@ -11,6 +11,7 @@ import { ProgressBar } from '@/components/finance/progress-bar';
 import { getDb } from '@/db/client';
 import { seedScaleData } from '@/db/seed-scale';
 import { haptics } from '@/utils/haptics';
+import { startOperation, updateOperation, finishOperation, cancelOperation, isCancelled } from '@/db/operation-status';
 import { Colors, BorderRadius, Spacing } from '@/constants/theme';
 
 const COUNT_PRESETS: { label: string; value: number }[] = [
@@ -85,7 +86,6 @@ export default function FillTestDataScreen() {
   const [progress, setProgress] = useState<{ inserted: number; total: number } | null>(null);
   const [startedAt, setStartedAt] = useState<number | null>(null);
   const [outcome, setOutcome] = useState<{ inserted: number; cancelled: boolean } | null>(null);
-  const cancelRef = useRef(false);
 
   const count = Math.max(1, Math.round(Number(countText) || 0));
   const years = Math.max(0.1, Number(yearsText) || 0);
@@ -109,9 +109,14 @@ export default function FillTestDataScreen() {
   const runSeed = async () => {
     setSeeding(true);
     setOutcome(null);
-    cancelRef.current = false;
     setStartedAt(Date.now());
     setProgress({ inserted: 0, total: count });
+    // Also pushed to the shared store (not just local state) so the
+    // root-mounted banner shows this run's progress too — the operation
+    // already keeps running if this screen were ever dismissed mid-run
+    // (nothing here cancels on unmount); this is what makes that visible
+    // from anywhere else in the app, not just while this screen is open.
+    startOperation({ id: 'fill-test-data', label: 'Filling test data…', progress: 0, cancellable: true });
 
     let lastUiUpdate = 0;
     try {
@@ -130,19 +135,33 @@ export default function FillTestDataScreen() {
           if (now - lastUiUpdate > 200 || inserted >= total) {
             lastUiUpdate = now;
             setProgress({ inserted, total });
+            updateOperation('fill-test-data', {
+              progress: inserted / Math.max(total, 1),
+              detail: `${inserted.toLocaleString()} / ${total.toLocaleString()}`,
+            });
           }
         },
-        shouldCancel: () => cancelRef.current,
+        shouldCancel: () => isCancelled('fill-test-data'),
       });
       setOutcome(result);
       if (result.cancelled) {
         haptics.warning();
+        finishOperation('fill-test-data', {
+          ok: false,
+          message: `Cancelled — ${result.inserted.toLocaleString()} transaction(s) kept.`,
+        });
       } else {
         haptics.success();
+        finishOperation('fill-test-data', {
+          ok: true,
+          message: `Filled ${result.inserted.toLocaleString()} transaction(s).`,
+        });
       }
     } catch (e) {
       haptics.error();
-      Alert.alert('Failed', e instanceof Error ? e.message : 'Could not fill test data.');
+      const message = e instanceof Error ? e.message : 'Could not fill test data.';
+      finishOperation('fill-test-data', { ok: false, message });
+      Alert.alert('Failed', message);
       setProgress(null);
     } finally {
       setSeeding(false);
@@ -169,7 +188,8 @@ export default function FillTestDataScreen() {
   };
 
   const handleCancel = () => {
-    cancelRef.current = true;
+    haptics.warning();
+    cancelOperation('fill-test-data');
   };
 
   const handleClose = () => {
@@ -229,7 +249,11 @@ export default function FillTestDataScreen() {
           </View>
         </>
       ) : (
-        <>
+        <KeyboardAvoidingView
+          style={styles.formWrap}
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+          keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 24}
+        >
           <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
             <GlassCard style={styles.formCard} padding={18}>
               <AppText variant="label">How much data</AppText>
@@ -305,13 +329,16 @@ export default function FillTestDataScreen() {
               disabled={!canStart}
             />
           </View>
-        </>
+        </KeyboardAvoidingView>
       )}
     </GradientScreen>
   );
 }
 
 const styles = StyleSheet.create({
+  formWrap: {
+    flex: 1,
+  },
   content: {
     paddingHorizontal: 20,
     paddingBottom: 20,
