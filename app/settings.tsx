@@ -379,7 +379,7 @@ export default function SettingsScreen() {
 const styles = StyleSheet.create({
   content: {
     paddingHorizontal: 20,
-    paddingBottom: 40,
+    paddingBottom: 90,
     gap: Spacing.xl,
   },
   summary: {

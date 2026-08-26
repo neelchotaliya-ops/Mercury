@@ -122,6 +122,20 @@ function buildDefaultCategories(): Category[] {
   }));
 }
 
+function buildDefaultAccount(currency = 'INR'): Account {
+  return {
+    id: generateId(),
+    name: 'Cash',
+    type: 'cash',
+    icon: 'cash-outline',
+    color: '#22C55E',
+    initialBalance: 0,
+    currency,
+    createdAt: new Date().toISOString(),
+    archived: false,
+  };
+}
+
 /** Starting points for the home screen widget, all editable in Settings. */
 const PRESET_SEEDS: { label: string; emoji: string; amount: number; category: string }[] = [
   { label: 'Coffee', emoji: '☕', amount: 50, category: 'Food & Dining' },
@@ -221,17 +235,7 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
           // Seed a default Cash account so new users can add transactions
           // immediately without the friction of creating an account first.
           // The user can rename, edit, or delete this account at any time.
-          const defaultAccount: Account = {
-            id: generateId(),
-            name: 'Cash',
-            type: 'cash',
-            icon: 'cash-outline',
-            color: '#22C55E',
-            initialBalance: 0,
-            currency: settings.currency ?? 'INR',
-            createdAt: new Date().toISOString(),
-            archived: false,
-          };
+          const defaultAccount = buildDefaultAccount(settings.currency ?? 'INR');
           await insertAccount(db, defaultAccount, 0);
 
           if (cancelled) return;
@@ -332,7 +336,7 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
       resetAllData: () =>
         withDb(async db => {
           await db.execAsync(
-            "DELETE FROM transactions; DELETE FROM accounts; DELETE FROM categories; DELETE FROM budgets; DELETE FROM quick_presets; DELETE FROM rollup; DELETE FROM account_balance; DELETE FROM settings; UPDATE ledger_stat SET n = 0, net = 0 WHERE key IN ('all','income','expense','transfer');"
+            "DELETE FROM split_participants; DELETE FROM recurring_rules; DELETE FROM subcategories; DELETE FROM transactions; DELETE FROM accounts; DELETE FROM categories; DELETE FROM budgets; DELETE FROM quick_presets; DELETE FROM rollup; DELETE FROM account_balance; DELETE FROM settings; UPDATE ledger_stat SET n = 0, net = 0 WHERE key IN ('all','income','expense','transfer');"
           );
           const seeded = buildDefaultCategories();
           for (let i = 0; i < seeded.length; i++) await insertCategory(db, seeded[i], i);
@@ -345,6 +349,11 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
             categoryId: seeded.find(c => c.kind === 'expense' && c.name === seed.category)?.id,
           }));
           for (let i = 0; i < presets.length; i++) await insertPreset(db, presets[i], i);
+
+          // Seed default Cash account
+          const defaultAccount = buildDefaultAccount(entities.settings.currency ?? 'INR');
+          await insertAccount(db, defaultAccount, 0);
+
           await dbUpdateSettings(db, { currency: entities.settings.currency, hasOnboarded: true });
           await rebuildRollups(db);
           bumpDataVersion();

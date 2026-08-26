@@ -2,7 +2,8 @@ import React, { useEffect, useSyncExternalStore } from 'react';
 import { View, StyleSheet, Pressable, ActivityIndicator, AppState } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import Animated from 'react-native-reanimated';
+import { useSegments } from 'expo-router';
+import Animated, { useSharedValue, useAnimatedStyle, withSpring } from 'react-native-reanimated';
 
 import { AppText } from '@/components/ui/app-text';
 import { ProgressBar } from '@/components/finance/progress-bar';
@@ -24,6 +25,17 @@ const OPERATION_TITLES: Record<string, string> = {
   reset: 'Reset finished',
 };
 
+const HIDDEN_SCREENS = new Set([
+  'add-transaction',
+  'add-budget',
+  'add-account',
+  'add-split',
+  'add-recurring',
+  'split-detail',
+  'fill-test-data',
+  'bank-import',
+]);
+
 /**
  * Root-mounted, always-visible while an operation is running — the same
  * pattern as `PersistErrorBanner` (absolute, safe-area aware, mounted once in
@@ -34,13 +46,38 @@ const OPERATION_TITLES: Record<string, string> = {
  * it, a running operation's own screen had to stay open and mounted for its
  * progress to be visible at all.
  *
- * Pinned to the bottom (a `PersistErrorBanner`, if also showing, sits near
- * the top) so the two never overlap.
+ * Positioned cleanly above the FloatingTabBar on tab screens (so navigation
+ * and the center '+' button are never obstructed) and just above the bottom
+ * safe area on general screens (Settings, Accounts, etc.). Hidden on focused
+ * modal creation/numpad screens to avoid blocking keypads or submit buttons.
  */
 export const BackgroundOperationBanner: React.FC = () => {
   const operation = useSyncExternalStore(subscribeOperations, getActiveOperation, getActiveOperation);
   const insets = useSafeAreaInsets();
+  const segments = useSegments();
   const mountStyle = useMountPop();
+
+  const currentScreen = segments.length > 0 ? segments[0] : '';
+  const isTabBarVisible = currentScreen === '(tabs)';
+  const shouldHideOnScreen = HIDDEN_SCREENS.has(currentScreen);
+
+  const bottomInset = insets.bottom > 0 ? insets.bottom : 12;
+  // FloatingTabBar height is 64 + bottomInset; add 12px breathing room above it on tab screens
+  const targetBottom = isTabBarVisible ? 64 + bottomInset + 12 : bottomInset + 12;
+
+  const animatedBottom = useSharedValue(targetBottom);
+
+  useEffect(() => {
+    animatedBottom.value = withSpring(targetBottom, {
+      damping: 24,
+      stiffness: 220,
+      mass: 0.8,
+    });
+  }, [targetBottom, animatedBottom]);
+
+  const positionStyle = useAnimatedStyle(() => ({
+    bottom: animatedBottom.value,
+  }));
 
   // A completion while the app is foregrounded is already visible via this
   // banner's own "done" state — the notification is specifically for "I
@@ -52,7 +89,8 @@ export const BackgroundOperationBanner: React.FC = () => {
     });
   }, []);
 
-  if (!operation) return null;
+  // Don't show if no active operation or if on a focused modal/numpad screen
+  if (!operation || shouldHideOnScreen) return null;
 
   const handleCancel = () => {
     haptics.warning();
@@ -61,7 +99,7 @@ export const BackgroundOperationBanner: React.FC = () => {
 
   return (
     <Animated.View
-      style={[styles.wrap, { bottom: insets.bottom + 12 }, mountStyle]}
+      style={[styles.wrap, positionStyle, mountStyle]}
       pointerEvents="box-none"
     >
       <View style={styles.banner}>
@@ -145,3 +183,4 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.controlBg,
   },
 });
+

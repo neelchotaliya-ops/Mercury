@@ -193,10 +193,6 @@ export default function FillTestDataScreen() {
   };
 
   const handleClose = () => {
-    if (seeding) {
-      Alert.alert('Still filling data', 'Cancel the run first, or wait for it to finish.');
-      return;
-    }
     router.back();
   };
 
