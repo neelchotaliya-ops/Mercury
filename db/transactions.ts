@@ -49,7 +49,7 @@ function toRollupInput(tx: Transaction): RollupInput {
 }
 
 const ROW_COLUMNS =
-  'seq, id, type, amount, account_id, to_account_id, category_id, date, date_ms, month_key, day_key, note, note_lc, created_at';
+  'seq, id, type, amount, account_id, to_account_id, category_id, date, date_ms, month_key, day_key, note, note_lc, created_at, payee, subcategory_id, recurring_rule_id, split_expense_id';
 
 export interface TxCursor {
   dateMs: number;
@@ -223,8 +223,8 @@ export async function insertTransaction(
 }
 
 const BULK_INSERT_COLUMNS =
-  'id, type, amount, account_id, to_account_id, category_id, date, date_ms, month_key, day_key, note, note_lc, created_at';
-const BULK_INSERT_PLACEHOLDERS = '(?,?,?,?,?,?,?,?,?,?,?,?,?)';
+  'id, type, amount, account_id, to_account_id, category_id, date, date_ms, month_key, day_key, note, note_lc, created_at, payee, subcategory_id, recurring_rule_id, split_expense_id';
+const BULK_INSERT_PLACEHOLDERS = '(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)';
 
 /**
  * Inserts many rows with multi-row batched statements instead of one
@@ -294,7 +294,11 @@ export async function bulkInsertTransactionRows(
           dayKeyOf(tx.date),
           tx.note ?? null,
           tx.note ? tx.note.toLowerCase() : null,
-          tx.createdAt
+          tx.createdAt,
+          tx.payee ?? null,
+          tx.subcategoryId ?? null,
+          tx.recurringRuleId ?? null,
+          tx.splitExpenseId ?? null
         );
       }
       await txn.runAsync(sql, params);

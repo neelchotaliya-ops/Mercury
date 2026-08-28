@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
-import { View, StyleSheet, ScrollView, Pressable, TextInput, Alert, KeyboardAvoidingView, Platform } from 'react-native';
+import { View, StyleSheet, ScrollView, Pressable, TextInput, Alert, KeyboardAvoidingView, Platform, Switch } from 'react-native';
 import { useRouter } from 'expo-router';
+import { Ionicons } from '@expo/vector-icons';
 
 import { AppText } from '@/components/ui/app-text';
 import { AppButton } from '@/components/ui/app-button';
@@ -9,28 +10,21 @@ import { GlassCard } from '@/components/ui/glass-card';
 import { ModalHeader } from '@/components/ui/modal-header';
 import { ProgressBar } from '@/components/finance/progress-bar';
 import { getDb } from '@/db/client';
-import { seedScaleData } from '@/db/seed-scale';
+import { seedScaleData, ScaleSeedResult } from '@/db/seed-scale';
 import { haptics } from '@/utils/haptics';
 import { startOperation, updateOperation, finishOperation, cancelOperation, isCancelled } from '@/db/operation-status';
 import { Colors, BorderRadius, Spacing } from '@/constants/theme';
+import { IconName } from '@/types/finance';
 
-const COUNT_PRESETS: { label: string; value: number }[] = [
-  { label: '100K', value: 100_000 },
-  { label: '1M', value: 1_000_000 },
-  { label: '2M', value: 2_000_000 },
-  { label: '5M', value: 5_000_000 },
-  { label: '10M', value: 10_000_000 },
-  { label: '50M', value: 50_000_000 },
-  { label: '100M', value: 100_000_000 },
+const COUNT_PRESETS: { label: string; value: number; years?: number }[] = [
+  { label: 'Demo 500', value: 500, years: 1 },
+  { label: '5K', value: 5_000, years: 2 },
+  { label: '100K', value: 100_000, years: 5 },
+  { label: '1M', value: 1_000_000, years: 10 },
+  { label: '5M', value: 5_000_000, years: 10 },
+  { label: '10M', value: 10_000_000, years: 10 },
 ];
 
-/**
- * A rough pre-run estimate, not a promise — real throughput depends heavily
- * on the device (a desktop `node:sqlite` benchmark hits 20-25k rows/sec with
- * no JS↔native bridge to cross; an on-device run crossing that bridge for
- * every insert statement is meaningfully slower). The live rows/sec shown
- * once a run is underway is the number to trust.
- */
 const ESTIMATED_ROWS_PER_SEC = 5_000;
 
 function formatDuration(seconds: number): string {
@@ -70,11 +64,41 @@ const NumberField: React.FC<FieldProps> = ({ label, value, onChangeText, suffix 
   </View>
 );
 
+interface ToggleItemProps {
+  icon: IconName;
+  title: string;
+  subtitle: string;
+  value: boolean;
+  onValueChange: (val: boolean) => void;
+}
+
+const FeatureToggleItem: React.FC<ToggleItemProps> = ({ icon, title, subtitle, value, onValueChange }) => (
+  <View style={styles.toggleRow}>
+    <View style={styles.toggleIconWrap}>
+      <Ionicons name={icon} size={18} color={value ? Colors.accent : Colors.textMuted} />
+    </View>
+    <View style={styles.toggleContent}>
+      <AppText variant="body" style={styles.toggleTitle}>
+        {title}
+      </AppText>
+      <AppText variant="micro" color={Colors.textMuted}>
+        {subtitle}
+      </AppText>
+    </View>
+    <Switch
+      value={value}
+      onValueChange={onValueChange}
+      trackColor={{ false: Colors.controlBg, true: Colors.ctaBg }}
+      thumbColor={value ? Colors.ctaText : '#f4f3f4'}
+    />
+  </View>
+);
+
 export default function FillTestDataScreen() {
   const router = useRouter();
 
-  const [countText, setCountText] = useState('1000000');
-  const [yearsText, setYearsText] = useState('10');
+  const [countText, setCountText] = useState('5000');
+  const [yearsText, setYearsText] = useState('2');
   const [minAmountText, setMinAmountText] = useState('1');
   const [maxAmountText, setMaxAmountText] = useState('5000');
   const [expenseWeightText, setExpenseWeightText] = useState('60');
@@ -82,10 +106,17 @@ export default function FillTestDataScreen() {
   const [transferWeightText, setTransferWeightText] = useState('15');
   const [accountCountText, setAccountCountText] = useState('4');
 
+  // Feature Toggles
+  const [includeSubcategories, setIncludeSubcategories] = useState(true);
+  const [includeBudgets, setIncludeBudgets] = useState(true);
+  const [includeQuickPresets, setIncludeQuickPresets] = useState(true);
+  const [includeRecurringRules, setIncludeRecurringRules] = useState(true);
+  const [includeSplitExpenses, setIncludeSplitExpenses] = useState(true);
+
   const [seeding, setSeeding] = useState(false);
   const [progress, setProgress] = useState<{ inserted: number; total: number } | null>(null);
   const [startedAt, setStartedAt] = useState<number | null>(null);
-  const [outcome, setOutcome] = useState<{ inserted: number; cancelled: boolean } | null>(null);
+  const [outcome, setOutcome] = useState<ScaleSeedResult | null>(null);
 
   const count = Math.max(1, Math.round(Number(countText) || 0));
   const years = Math.max(0.1, Number(yearsText) || 0);
@@ -106,16 +137,19 @@ export default function FillTestDataScreen() {
   const remainingSeconds =
     progress && rowsPerSec > 0 ? (progress.total - progress.inserted) / rowsPerSec : undefined;
 
+  const handlePresetSelect = (preset: { label: string; value: number; years?: number }) => {
+    setCountText(String(preset.value));
+    if (preset.years) {
+      setYearsText(String(preset.years));
+    }
+  };
+
   const runSeed = async () => {
     setSeeding(true);
     setOutcome(null);
     setStartedAt(Date.now());
     setProgress({ inserted: 0, total: count });
-    // Also pushed to the shared store (not just local state) so the
-    // root-mounted banner shows this run's progress too — the operation
-    // already keeps running if this screen were ever dismissed mid-run
-    // (nothing here cancels on unmount); this is what makes that visible
-    // from anywhere else in the app, not just while this screen is open.
+
     startOperation({ id: 'fill-test-data', label: 'Filling test data…', progress: 0, cancellable: true });
 
     let lastUiUpdate = 0;
@@ -130,6 +164,11 @@ export default function FillTestDataScreen() {
         incomeWeight,
         transferWeight,
         accountCount,
+        includeSubcategories,
+        includeBudgets,
+        includeQuickPresets,
+        includeRecurringRules,
+        includeSplitExpenses,
         onProgress: (inserted, total) => {
           const now = Date.now();
           if (now - lastUiUpdate > 200 || inserted >= total) {
@@ -154,7 +193,7 @@ export default function FillTestDataScreen() {
         haptics.success();
         finishOperation('fill-test-data', {
           ok: true,
-          message: `Filled ${result.inserted.toLocaleString()} transaction(s).`,
+          message: `Filled ${result.inserted.toLocaleString()} transaction(s) and app features.`,
         });
       }
     } catch (e) {
@@ -200,18 +239,22 @@ export default function FillTestDataScreen() {
 
   return (
     <GradientScreen edges={['top', 'bottom']} contours="top">
-      <ModalHeader title="Fill test data" subtitle="Random, unpatterned ledger for testing" onClose={handleClose} />
+      <ModalHeader
+        title="Fill test data"
+        subtitle="Advanced multi-feature generator for testing & demo"
+        onClose={handleClose}
+      />
 
       {showProgress ? (
         <>
-          <View style={styles.progressWrap}>
+          <ScrollView contentContainerStyle={styles.progressScrollContent}>
             <GlassCard strong style={styles.progressCard} padding={24} elevated>
               <AppText variant="h3" align="center">
-                {outcome ? (outcome.cancelled ? 'Cancelled' : 'Done') : 'Filling test data…'}
+                {outcome ? (outcome.cancelled ? 'Cancelled' : 'Dataset Ready') : 'Generating test data…'}
               </AppText>
               <AppText variant="caption" align="center" color={Colors.textMuted} style={styles.progressSub}>
                 {outcome
-                  ? `${outcome.inserted.toLocaleString()} transaction(s) inserted`
+                  ? `${outcome.inserted.toLocaleString()} transaction(s) and all entities populated`
                   : `${(progress?.inserted ?? 0).toLocaleString()} / ${(progress?.total ?? count).toLocaleString()}`}
               </AppText>
 
@@ -232,9 +275,49 @@ export default function FillTestDataScreen() {
                     {remainingSeconds !== undefined ? `ETA ${formatDuration(remainingSeconds)}` : ''}
                   </AppText>
                 </View>
-              ) : null}
+              ) : (
+                <View style={styles.statsSummaryGrid}>
+                  <View style={styles.statSummaryItem}>
+                    <Ionicons name="wallet-outline" size={16} color={Colors.accent} />
+                    <AppText variant="caption" style={styles.statSummaryText}>
+                      <AppText variant="captionBold">{outcome.accounts}</AppText> Accounts
+                    </AppText>
+                  </View>
+                  <View style={styles.statSummaryItem}>
+                    <Ionicons name="pricetags-outline" size={16} color={Colors.accent} />
+                    <AppText variant="caption" style={styles.statSummaryText}>
+                      <AppText variant="captionBold">{outcome.categories}</AppText> Categories (
+                      <AppText variant="captionBold">{outcome.subcategories}</AppText> subcats)
+                    </AppText>
+                  </View>
+                  <View style={styles.statSummaryItem}>
+                    <Ionicons name="pie-chart-outline" size={16} color={Colors.accent} />
+                    <AppText variant="caption" style={styles.statSummaryText}>
+                      <AppText variant="captionBold">{outcome.budgets}</AppText> Active Budgets
+                    </AppText>
+                  </View>
+                  <View style={styles.statSummaryItem}>
+                    <Ionicons name="flash-outline" size={16} color={Colors.accent} />
+                    <AppText variant="caption" style={styles.statSummaryText}>
+                      <AppText variant="captionBold">{outcome.presets}</AppText> Quick Presets
+                    </AppText>
+                  </View>
+                  <View style={styles.statSummaryItem}>
+                    <Ionicons name="repeat-outline" size={16} color={Colors.accent} />
+                    <AppText variant="caption" style={styles.statSummaryText}>
+                      <AppText variant="captionBold">{outcome.recurringRules}</AppText> Recurring Rules
+                    </AppText>
+                  </View>
+                  <View style={styles.statSummaryItem}>
+                    <Ionicons name="people-outline" size={16} color={Colors.accent} />
+                    <AppText variant="caption" style={styles.statSummaryText}>
+                      <AppText variant="captionBold">{outcome.splitExpenses}</AppText> Split Expenses
+                    </AppText>
+                  </View>
+                </View>
+              )}
             </GlassCard>
-          </View>
+          </ScrollView>
 
           <View style={styles.footer}>
             {!outcome ? (
@@ -255,15 +338,16 @@ export default function FillTestDataScreen() {
             keyboardShouldPersistTaps="handled"
             automaticallyAdjustKeyboardInsets={true}
           >
+            {/* Scale Preset Selector */}
             <GlassCard style={styles.formCard} padding={18}>
-              <AppText variant="label">How much data</AppText>
+              <AppText variant="label">Dataset Size</AppText>
               <View style={styles.chipRow}>
                 {COUNT_PRESETS.map(p => {
                   const active = String(p.value) === countText;
                   return (
                     <Pressable
                       key={p.label}
-                      onPress={() => setCountText(String(p.value))}
+                      onPress={() => handlePresetSelect(p)}
                       style={[styles.chip, active && styles.chipActive]}
                     >
                       <AppText variant="micro" color={active ? Colors.ctaText : Colors.textSecondary}>
@@ -273,15 +357,58 @@ export default function FillTestDataScreen() {
                   );
                 })}
               </View>
-              <NumberField label="Exact count" value={countText} onChangeText={setCountText} suffix="transactions" />
+              <NumberField label="Custom transaction count" value={countText} onChangeText={setCountText} suffix="txs" />
             </GlassCard>
 
+            {/* Advanced Features To Populate */}
             <GlassCard style={styles.formCard} padding={18}>
-              <AppText variant="label">Randomness</AppText>
+              <AppText variant="label">App Features to Populate</AppText>
               <AppText variant="caption" color={Colors.textMuted}>
-                Every date, amount, account and category is drawn independently and uniformly at random within
-                these ranges — no recurring monthly pattern, on purpose, so charts see real noise.
+                Generates realistic demo and test data across all Mercury features.
               </AppText>
+
+              <View style={styles.toggleList}>
+                <FeatureToggleItem
+                  icon="pricetags-outline"
+                  title="Subcategories & Payees"
+                  subtitle="Hierarchical sub-items, real merchants (Swiggy, Amazon, Netflix) & contextual notes"
+                  value={includeSubcategories}
+                  onValueChange={setIncludeSubcategories}
+                />
+                <FeatureToggleItem
+                  icon="pie-chart-outline"
+                  title="Category Budgets"
+                  subtitle="Realistic monthly limits for Food, Groceries, Shopping & Transport"
+                  value={includeBudgets}
+                  onValueChange={setIncludeBudgets}
+                />
+                <FeatureToggleItem
+                  icon="flash-outline"
+                  title="Quick Presets"
+                  subtitle="1-tap logging shortcuts for widgets and quick actions (Coffee, Groceries, Cab)"
+                  value={includeQuickPresets}
+                  onValueChange={setIncludeQuickPresets}
+                />
+                <FeatureToggleItem
+                  icon="repeat-outline"
+                  title="Recurring Rules & Subscriptions"
+                  subtitle="Monthly salary, rent, Netflix, Spotify, gym pass & broadband rules"
+                  value={includeRecurringRules}
+                  onValueChange={setIncludeRecurringRules}
+                />
+                <FeatureToggleItem
+                  icon="people-outline"
+                  title="Split Expenses & Repayments"
+                  subtitle="Shared group bills with pending, partial & settled friends + linked repayment entries"
+                  value={includeSplitExpenses}
+                  onValueChange={setIncludeSplitExpenses}
+                />
+              </View>
+            </GlassCard>
+
+            {/* Configuration Parameters */}
+            <GlassCard style={styles.formCard} padding={18}>
+              <AppText variant="label">Ledger Parameters</AppText>
 
               <View style={styles.row}>
                 <View style={styles.rowItem}>
@@ -302,7 +429,7 @@ export default function FillTestDataScreen() {
               </View>
 
               <AppText variant="label" style={styles.mixLabel}>
-                Type mix (relative weights, any scale)
+                Type mix (relative weights)
               </AppText>
               <View style={styles.row}>
                 <View style={styles.rowItem}>
@@ -318,13 +445,13 @@ export default function FillTestDataScreen() {
             </GlassCard>
 
             <AppText variant="micro" color={Colors.textMuted} align="center" style={styles.warning}>
-              This replaces every account, category, budget and transaction currently in the app.
+              ⚠️ This will replace existing accounts, categories, budgets, recurring rules, splits and transactions.
             </AppText>
           </ScrollView>
 
           <View style={styles.footer}>
             <AppButton
-              title={`Fill ${count.toLocaleString()} transactions`}
+              title={`Fill ${count.toLocaleString()} transactions & features`}
               onPress={handleStart}
               disabled={!canStart}
             />
@@ -383,6 +510,32 @@ const styles = StyleSheet.create({
     color: Colors.textPrimary,
     paddingVertical: 0,
   },
+  toggleList: {
+    gap: 12,
+    marginTop: 4,
+  },
+  toggleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 6,
+    gap: 10,
+  },
+  toggleIconWrap: {
+    width: 32,
+    height: 32,
+    borderRadius: 8,
+    backgroundColor: 'rgba(155, 114, 232, 0.08)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  toggleContent: {
+    flex: 1,
+    gap: 2,
+  },
+  toggleTitle: {
+    fontFamily: 'Manrope_600SemiBold',
+    fontSize: 13,
+  },
   row: {
     flexDirection: 'row',
     gap: 10,
@@ -395,14 +548,15 @@ const styles = StyleSheet.create({
   },
   warning: {
     marginTop: -4,
+    paddingHorizontal: 16,
   },
   footer: {
     paddingHorizontal: 20,
     paddingTop: 10,
     paddingBottom: 12,
   },
-  progressWrap: {
-    flex: 1,
+  progressScrollContent: {
+    flexGrow: 1,
     justifyContent: 'center',
     paddingHorizontal: 20,
   },
@@ -420,5 +574,21 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     paddingHorizontal: 2,
+  },
+  statsSummaryGrid: {
+    marginTop: 10,
+    paddingTop: 12,
+    borderTopWidth: 1,
+    borderTopColor: Colors.glassBorder,
+    gap: 10,
+  },
+  statSummaryItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  statSummaryText: {
+    color: Colors.textSecondary,
+    fontSize: 13,
   },
 });

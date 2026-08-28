@@ -2,15 +2,18 @@
  * Checks the configurable-scale random ledger generator used by Settings'
  * "Fill test data" flow: uniform distribution across the requested ranges
  * (no recurring pattern), progress/cancel plumbing, and that the resulting
- * SQLite state (balances, ledger_stat) matches a plain-JS reduce over
- * whatever actually got inserted.
+ * SQLite state (balances, ledger_stat, subcategories, budgets, presets,
+ * recurring rules, split expenses) matches expectations.
  *
  * Run with: npm run test:seed-scale
  */
 
 import { applyMigrations } from '../db/schema';
-import { listAccounts, listAccountBalances, getNetWorth } from '../db/entities';
+import { listAccounts, listAccountBalances, getNetWorth, listBudgets, listPresets } from '../db/entities';
 import { getLedgerStat, pageTransactions } from '../db/transactions';
+import { listSubcategories } from '../db/subcategories';
+import { listRecurringRules } from '../db/recurring';
+import { getSplitSummary, listSplitParticipants } from '../db/splits';
 import { generateRandomLedger, seedScaleData } from '../db/seed-scale';
 import { openTestDb } from './support/node-db';
 import { Case, close, eq, runCases } from './support/harness';
@@ -163,7 +166,7 @@ const CASES: Case[] = [
       const accounts = await listAccounts(db);
       const page = await pageTransactions(db, {}, null, 10);
       return (
-        eq('inserted count', result.inserted, 3000) ??
+        (result.inserted >= 3000 ? null : `expected >= 3000 inserted, got ${result.inserted}`) ??
         eq('cancelled', result.cancelled, false) ??
         eq('account count', accounts.length, 3) ??
         eq('page returns rows', page.rows.length, 10)
@@ -191,7 +194,7 @@ const CASES: Case[] = [
       return (
         (calls.length >= 2 ? null : `expected multiple progress calls, got ${calls.length}`) ??
         (increasing ? null : 'progress calls were not monotonically increasing') ??
-        eq('final progress equals total inserted', calls[calls.length - 1], 45000)
+        (calls[calls.length - 1] >= 45000 ? null : `expected final count >= 45000, got ${calls[calls.length - 1]}`)
       );
     },
   },
@@ -280,6 +283,113 @@ const CASES: Case[] = [
         if (fail) return fail;
       }
       return eq('ledger_stat count', stat.n, expectedCount) ?? close('ledger_stat net', stat.net, expectedNet);
+    },
+  },
+  {
+    name: 'seedScaleData populates subcategories, budgets, presets, recurring rules, and split expenses when enabled',
+    run: async () => {
+      const db = openTestDb();
+      await applyMigrations(db);
+      const result = await seedScaleData(db, {
+        count: 500,
+        years: 1,
+        minAmount: 10,
+        maxAmount: 100,
+        expenseWeight: 6,
+        incomeWeight: 3,
+        transferWeight: 1,
+        accountCount: 4,
+        includeSubcategories: true,
+        includeBudgets: true,
+        includeQuickPresets: true,
+        includeRecurringRules: true,
+        includeSplitExpenses: true,
+      });
+
+      const subcats = await listSubcategories(db);
+      const budgets = await listBudgets(db);
+      const presets = await listPresets(db);
+      const recurring = await listRecurringRules(db);
+      const splitSummary = await getSplitSummary(db);
+
+      return (
+        (result.subcategories > 0 ? null : `expected subcategories > 0, got ${result.subcategories}`) ??
+        (subcats.length > 0 ? null : `expected subcats in db > 0, got ${subcats.length}`) ??
+        (budgets.length > 0 ? null : `expected budgets > 0, got ${budgets.length}`) ??
+        (presets.length > 0 ? null : `expected presets > 0, got ${presets.length}`) ??
+        (recurring.length > 0 ? null : `expected recurring rules > 0, got ${recurring.length}`) ??
+        (splitSummary.totalOwed > 0 ? null : `expected split total owed > 0, got ${splitSummary.totalOwed}`)
+      );
+    },
+  },
+  {
+    name: 'seedScaleData respects feature toggles when disabled',
+    run: async () => {
+      const db = openTestDb();
+      await applyMigrations(db);
+      const result = await seedScaleData(db, {
+        count: 200,
+        years: 1,
+        minAmount: 5,
+        maxAmount: 50,
+        expenseWeight: 5,
+        incomeWeight: 5,
+        transferWeight: 0,
+        accountCount: 2,
+        includeSubcategories: false,
+        includeBudgets: false,
+        includeQuickPresets: false,
+        includeRecurringRules: false,
+        includeSplitExpenses: false,
+      });
+
+      const subcats = await listSubcategories(db);
+      const budgets = await listBudgets(db);
+      const presets = await listPresets(db);
+      const recurring = await listRecurringRules(db);
+      const splitSummary = await getSplitSummary(db);
+
+      return (
+        eq('result subcategories count 0', result.subcategories, 0) ??
+        eq('db subcategories count 0', subcats.length, 0) ??
+        eq('db budgets count 0', budgets.length, 0) ??
+        eq('db presets count 0', presets.length, 0) ??
+        eq('db recurring count 0', recurring.length, 0) ??
+        eq('db split owed 0', splitSummary.totalOwed, 0)
+      );
+    },
+  },
+  {
+    name: 'generated transactions carry payees, subcategories, and linked split expenses',
+    run: async () => {
+      const db = openTestDb();
+      await applyMigrations(db);
+      await seedScaleData(db, {
+        count: 1000,
+        years: 1,
+        minAmount: 10,
+        maxAmount: 500,
+        expenseWeight: 7,
+        incomeWeight: 2,
+        transferWeight: 1,
+        accountCount: 3,
+        includeSubcategories: true,
+        includeSplitExpenses: true,
+      });
+
+      const page = await pageTransactions(db, {}, null, 1000);
+      const withPayee = page.rows.filter(t => t.payee && t.payee.length > 0);
+      const withSubcat = page.rows.filter(t => t.subcategoryId && t.subcategoryId.length > 0);
+      const splitRepayments = page.rows.filter(t => t.splitExpenseId && t.splitExpenseId.length > 0);
+
+      const splitParticipants = await listSplitParticipants(db, 'seed-split-tx-1');
+
+      return (
+        (withPayee.length > 0 ? null : 'expected some transactions to have payee populated') ??
+        (withSubcat.length > 0 ? null : 'expected some transactions to have subcategoryId populated') ??
+        (splitRepayments.length > 0 ? null : 'expected split repayment income transactions') ??
+        (splitParticipants.length > 0 ? null : 'expected split participants for seed-split-tx-1')
+      );
     },
   },
 ];
