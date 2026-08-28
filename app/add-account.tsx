@@ -73,7 +73,11 @@ export default function AddAccountScreen() {
         onDelete={editing ? handleDelete : undefined}
       />
 
-      <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
+      <ScrollView
+        contentContainerStyle={styles.content}
+        keyboardShouldPersistTaps="handled"
+        automaticallyAdjustKeyboardInsets={true}
+      >
         <GlassCard strong style={styles.preview} elevated>
           <IconBadge icon={ACCOUNT_TYPE_META[type].icon} color={color} size={64} solid />
           <AppText variant="h3">{name.trim() || 'Account name'}</AppText>
@@ -208,7 +212,7 @@ export default function AddAccountScreen() {
 const styles = StyleSheet.create({
   content: {
     paddingHorizontal: 20,
-    paddingBottom: 20,
+    paddingBottom: 60,
     gap: Spacing.lg,
   },
   preview: {

@@ -92,7 +92,11 @@ export default function ManageCategoriesScreen() {
         />
       </View>
 
-      <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
+      <ScrollView
+        contentContainerStyle={styles.content}
+        keyboardShouldPersistTaps="handled"
+        automaticallyAdjustKeyboardInsets={true}
+      >
         <GlassCard padding={18}>
           <View style={styles.grid}>
             {categories.map(category => {
@@ -203,7 +207,7 @@ const styles = StyleSheet.create({
   content: {
     paddingHorizontal: 20,
     paddingTop: Spacing.lg,
-    paddingBottom: 40,
+    paddingBottom: 80,
     gap: Spacing.lg,
   },
   grid: {

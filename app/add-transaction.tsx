@@ -14,11 +14,18 @@ import { CategoryPicker } from '@/components/finance/category-picker';
 import { AccountPicker } from '@/components/finance/account-picker';
 import { DatePickerModal } from '@/components/finance/date-picker-modal';
 import { ScanReceiptButton } from '@/components/finance/scan-receipt-button';
+import { SplitSheet, SplitSheetResult } from '@/components/finance/split-sheet';
+import { RepeatSheet, RepeatSheetConfig } from '@/components/finance/repeat-sheet';
+import { useKeyboardBottomInset } from '@/hooks/use-keyboard-bottom-inset';
 import { useFinance } from '@/context/finance-context';
 import { getDb } from '@/db/client';
 import { getTransactionById } from '@/db/transactions';
+import { insertSplitParticipantsBatch, listSplitParticipants } from '@/db/splits';
+import { insertRecurringRule } from '@/db/recurring';
+import { computeNextDue, formatDateIso, describeFrequency } from '@/utils/recurring-engine';
 import { Transaction, TransactionType } from '@/types/finance';
-import { getCurrencySymbol } from '@/utils/currency';
+import { getCurrencySymbol, formatCurrency } from '@/utils/currency';
+import { generateId } from '@/utils/id';
 import { haptics } from '@/utils/haptics';
 import { buildNote } from '@/utils/receipt-parser';
 import { guessAccount, guessCategory } from '@/utils/receipt-match';
@@ -30,7 +37,7 @@ import {
   pickAndScan,
   scanImage,
 } from '@/utils/receipt-scan';
-import { Colors, BorderRadius, Spacing } from '@/constants/theme';
+import { Colors, BorderRadius, Spacing, Shadows } from '@/constants/theme';
 
 const TYPE_COLOR: Record<TransactionType, string> = {
   expense: Colors.expense,
@@ -40,51 +47,47 @@ const TYPE_COLOR: Record<TransactionType, string> = {
 
 export default function AddTransactionScreen() {
   const router = useRouter();
-  const params = useLocalSearchParams<{
-    id?: string;
-    type?: string;
-    imageUri?: string;
-    scan?: string;
-  }>();
+  const params = useLocalSearchParams<{ id?: string; fromScan?: string; imageUri?: string }>();
   const { state, addTransaction, updateTransaction, deleteTransaction } = useFinance();
 
-  // Transactions no longer live in FinanceContext's state (that was the
-  // point of the migration — the ledger is queried, not held in memory), so
-  // the transaction being edited is fetched here rather than found in an
-  // array. Since the form's useState initializers can no longer read it
-  // synchronously, they start at their "new transaction" defaults and an
-  // effect below fills them in once the fetch resolves — a brief flash on
-  // opening an edit rather than the instant fill the old synchronous lookup
-  // gave. A form-component split that gates rendering until the fetch
-  // resolves would remove that flash entirely; left as a follow-up rather
-  // than done here.
   const [editing, setEditing] = useState<Transaction | undefined>(undefined);
 
   useEffect(() => {
     if (!params.id) return;
     let cancelled = false;
     (async () => {
-      const db = await getDb();
-      const tx = await getTransactionById(db, params.id!);
-      if (!cancelled && tx) setEditing(tx);
+      try {
+        const db = await getDb();
+        const tx = await getTransactionById(db, params.id!);
+        if (!cancelled && tx) {
+          setEditing(tx);
+          const participants = await listSplitParticipants(db, tx.id);
+          setExistingSplitCount(participants.length);
+        }
+      } catch {}
     })();
     return () => {
       cancelled = true;
     };
   }, [params.id]);
 
-  const [type, setType] = useState<TransactionType>(
-    params.type === 'transfer' || params.type === 'income' ? (params.type as TransactionType) : 'expense'
-  );
+  const [type, setType] = useState<TransactionType>('expense');
   const [amount, setAmount] = useState('');
   const [accountId, setAccountId] = useState<string | undefined>(state.accounts[0]?.id);
-  const [toAccountId, setToAccountId] = useState<string | undefined>(undefined);
+  const [toAccountId, setToAccountId] = useState<string | undefined>(state.accounts[1]?.id);
   const [categoryId, setCategoryId] = useState<string | undefined>(undefined);
   const [subcategoryId, setSubcategoryId] = useState<string | undefined>(undefined);
   const [note, setNote] = useState('');
   const [payee, setPayee] = useState('');
   const [date, setDate] = useState<Date>(new Date());
   const [showDatePicker, setShowDatePicker] = useState(false);
+
+  const [splitConfig, setSplitConfig] = useState<SplitSheetResult | null>(null);
+  const [repeatConfig, setRepeatConfig] = useState<RepeatSheetConfig | null>(null);
+  const [showSplitSheet, setShowSplitSheet] = useState(false);
+  const [showRepeatSheet, setShowRepeatSheet] = useState(false);
+  const [existingSplitCount, setExistingSplitCount] = useState<number>(0);
+  const { keyboardVisible, keyboardHeight } = useKeyboardBottomInset();
 
   useEffect(() => {
     if (!editing) return;
@@ -99,17 +102,10 @@ export default function AddTransactionScreen() {
     setDate(new Date(editing.date));
   }, [editing]);
 
-  const [scanning, setScanning] = useState(false);
+  // Handle scanned receipt auto-fill
   const [scanned, setScanned] = useState<{ merchant?: string; confidence: number } | null>(null);
+  const [scanning, setScanning] = useState(false);
 
-  const categories = state.categories.filter(
-    c => c.kind === (type === 'income' ? 'income' : 'expense')
-  );
-
-  /**
-   * Applies a scan to the form. Nothing is saved here — the fields are filled
-   * in and the user still has to confirm, so a misread never lands silently.
-   */
   const applyScanResult = useCallback(
     (result: ScanResult) => {
       if (result.status !== 'ok') {
@@ -132,66 +128,52 @@ export default function AddTransactionScreen() {
       const scannedNote = buildNote(receipt);
       if (scannedNote) setNote(scannedNote);
 
-      // Auto-fill payee from merchant name if detected
       if (receipt.merchant) setPayee(receipt.merchant);
 
-      // Category list is keyed off the new type, so always reassign it.
       setCategoryId(guessCategory(receipt, state.categories, kind)?.id);
-
-      const matchedAccount = guessAccount(receipt, state.accounts);
-      if (matchedAccount) setAccountId(matchedAccount.id);
+      setAccountId(guessAccount(receipt, state.accounts)?.id ?? state.accounts[0]?.id);
 
       setScanned({ merchant: receipt.merchant, confidence: receipt.confidence });
       haptics.success();
     },
-    [state.accounts, state.categories]
+    [state.categories, state.accounts]
   );
 
-  const runScan = useCallback(
-    async (scan: () => Promise<ScanResult>) => {
+  const runScan = async (pickerFn: () => Promise<ScanResult | null>) => {
+    try {
       setScanning(true);
-      try {
-        applyScanResult(await scan());
-      } finally {
-        setScanning(false);
-      }
-    },
-    [applyScanResult]
-  );
+      const res = await pickerFn();
+      if (res) applyScanResult(res);
+    } catch (err: any) {
+      Alert.alert('Scan failed', describeScanFailure(err));
+    } finally {
+      setScanning(false);
+    }
+  };
 
-  // A screenshot shared into Mercury arrives as a URI param; scan it on entry.
-  const handledImageRef = useRef<string | undefined>(undefined);
-  useEffect(() => {
-    const uri = params.imageUri;
-    if (!uri || handledImageRef.current === uri) return;
-    handledImageRef.current = uri;
-    runScan(() => scanImage(uri));
-  }, [params.imageUri, runScan]);
+  const categories = state.categories.filter(c => c.kind === (type === 'income' ? 'income' : 'expense'));
 
-  // The home screen widget's Scan shortcut opens the picker straight away.
-  const autoPickedRef = useRef(false);
+  // Default category on switch
   useEffect(() => {
-    if (params.scan !== '1' || autoPickedRef.current || !isScanSupported()) return;
-    autoPickedRef.current = true;
-    runScan(pickAndScan);
-  }, [params.scan, runScan]);
+    if (type === 'transfer') {
+      setCategoryId(undefined);
+      setSubcategoryId(undefined);
+    } else if (categories.length > 0 && !categoryId) {
+      setCategoryId(categories[0].id);
+    }
+  }, [type, categories, categoryId]);
+
   const numericAmount = parseFloat(amount || '0');
-
   const canSave =
     numericAmount > 0 &&
     !!accountId &&
     (type !== 'transfer' ? !!categoryId : !!toAccountId && toAccountId !== accountId);
 
-  const shiftDay = (delta: number) =>
-    setDate(prev => {
-      const next = new Date(prev);
-      next.setDate(prev.getDate() + delta);
-      return next;
-    });
-
-  const handleSave = () => {
+  const handleSave = async () => {
     if (!canSave || !accountId) return;
-    const payload = {
+    const txId = editing?.id ?? generateId();
+    const payload: Omit<Transaction, 'createdAt'> = {
+      id: txId,
       type,
       amount: numericAmount,
       accountId,
@@ -203,10 +185,72 @@ export default function AddTransactionScreen() {
       note: note.trim() || undefined,
     };
 
-    if (editing) void updateTransaction({ ...editing, ...payload });
-    else void addTransaction(payload);
-    haptics.success();
-    router.back();
+    try {
+      if (editing) {
+        await updateTransaction({ ...editing, ...payload });
+      } else {
+        await addTransaction(payload);
+
+        // If Split is configured: save split participants atomically
+        if (splitConfig && splitConfig.participants.length > 0 && type === 'expense') {
+          const db = await getDb();
+          await insertSplitParticipantsBatch(
+            db,
+            splitConfig.participants.map(p => ({
+              id: generateId(),
+              transactionId: txId,
+              name: p.name,
+              shareAmount: p.share,
+              paidAmount: p.isYou ? p.share : 0,
+              status: p.isYou ? 'paid' : 'pending',
+              note: note.trim() || (payee ? `Split: ${payee}` : undefined),
+            }))
+          );
+        }
+
+        // If Recurring is configured: save recurring rule
+        if (repeatConfig && type !== 'transfer') {
+          const db = await getDb();
+          const nextDue = computeNextDue(
+            {
+              frequency: repeatConfig.frequency,
+              intervalUnit: repeatConfig.intervalUnit,
+              intervalValue: repeatConfig.intervalValue,
+              dayOfWeek: repeatConfig.dayOfWeek,
+              dayOfMonth: repeatConfig.dayOfMonth,
+            } as any,
+            date
+          );
+
+          await insertRecurringRule(db, {
+            id: generateId(),
+            type,
+            amount: numericAmount,
+            accountId,
+            categoryId,
+            subcategoryId,
+            payee: payee.trim() || undefined,
+            note: note.trim() || undefined,
+            frequency: repeatConfig.frequency,
+            intervalUnit: repeatConfig.intervalUnit,
+            intervalValue: repeatConfig.intervalValue,
+            dayOfWeek: repeatConfig.dayOfWeek,
+            dayOfMonth: repeatConfig.dayOfMonth,
+            startDate: date.toISOString().slice(0, 10),
+            nextDue: formatDateIso(nextDue),
+            autoCreate: repeatConfig.autoCreate,
+            reminderDays: repeatConfig.reminderDays,
+            active: true,
+            createdAt: new Date().toISOString(),
+          });
+        }
+      }
+
+      haptics.success();
+      router.back();
+    } catch {
+      Alert.alert('Error', 'Failed to save transaction.');
+    }
   };
 
   const handleDelete = () => {
@@ -263,9 +307,13 @@ export default function AddTransactionScreen() {
 
       <View style={styles.screenBody}>
         <ScrollView
-          contentContainerStyle={styles.content}
+          contentContainerStyle={[
+            styles.content,
+            keyboardVisible && { paddingBottom: keyboardHeight + 80 },
+          ]}
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
+          automaticallyAdjustKeyboardInsets={true}
         >
           {scanned ? (
             <View style={styles.scanBanner}>
@@ -457,79 +505,154 @@ export default function AddTransactionScreen() {
               />
             </Pressable>
 
-            {!editing && type === 'expense' && (
+            {/* Existing split on this transaction when editing */}
+            {editing && existingSplitCount > 0 && (
               <Pressable
                 onPress={() => {
                   haptics.press();
-                  router.push(
-                    `/add-split?amount=${amount}&categoryId=${categoryId ?? ''}&accountId=${accountId ?? ''}&payee=${encodeURIComponent(payee)}` as any
-                  );
+                  router.push(`/split-detail?id=${editing.id}` as any);
                 }}
-                style={styles.metaChip}
+                style={[styles.metaChip, styles.metaChipActive]}
               >
-                <Ionicons name="people-outline" size={14} color={Colors.primary} />
-                <AppText variant="micro" color={Colors.primaryDeep} style={{ fontWeight: '600' }}>
-                  Split
+                <Ionicons name="people" size={14} color={Colors.primary} />
+                <AppText variant="micro" color={Colors.primaryDeep} style={{ fontWeight: '700' }}>
+                  Split Details ({existingSplitCount} people)
                 </AppText>
+                <Ionicons name="chevron-forward" size={12} color={Colors.primary} />
               </Pressable>
             )}
 
-            {!editing && (type === 'expense' || type === 'income') && (
-              <Pressable
-                onPress={() => {
-                  haptics.press();
-                  router.push(
-                    `/add-recurring?amount=${amount}&categoryId=${categoryId ?? ''}&accountId=${accountId ?? ''}&type=${type}&payee=${encodeURIComponent(payee)}` as any
-                  );
-                }}
-                style={styles.metaChip}
-              >
-                <Ionicons name="repeat-outline" size={14} color={Colors.primary} />
-                <AppText variant="micro" color={Colors.primaryDeep} style={{ fontWeight: '600' }}>
-                  Repeat
-                </AppText>
-              </Pressable>
+            {/* Split Bill chip / active status */}
+            {!editing && type === 'expense' && (
+              splitConfig ? (
+                <View style={[styles.metaChip, styles.metaChipActive, { paddingRight: 6 }]}>
+                  <Pressable
+                    onPress={() => {
+                      haptics.press();
+                      setShowSplitSheet(true);
+                    }}
+                    style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}
+                  >
+                    <Ionicons name="people" size={14} color={Colors.primary} />
+                    <AppText variant="micro" color={Colors.primaryDeep} style={{ fontWeight: '700' }}>
+                      Split ({splitConfig.participants.length} people · +{formatCurrency(
+                        splitConfig.participants.slice(1).reduce((s, p) => s + p.share, 0),
+                        state.settings.currency ?? 'INR'
+                      )} owed)
+                    </AppText>
+                  </Pressable>
+                  <Pressable
+                    onPress={() => {
+                      haptics.press();
+                      setSplitConfig(null);
+                    }}
+                    hitSlop={8}
+                    style={{ marginLeft: 4, padding: 2 }}
+                  >
+                    <Ionicons name="close-circle" size={16} color={Colors.textMuted} />
+                  </Pressable>
+                </View>
+              ) : (
+                <Pressable
+                  onPress={() => {
+                    haptics.press();
+                    setShowSplitSheet(true);
+                  }}
+                  style={styles.metaChip}
+                >
+                  <Ionicons name="people-outline" size={14} color={Colors.primary} />
+                  <AppText variant="micro" color={Colors.primaryDeep} style={{ fontWeight: '600' }}>
+                    Split
+                  </AppText>
+                </Pressable>
+              )
+            )}
+
+            {/* Repeat / Recurrence chip / active status */}
+            {!editing && type !== 'transfer' && (
+              repeatConfig ? (
+                <View style={[styles.metaChip, styles.metaChipActive, { paddingRight: 6 }]}>
+                  <Pressable
+                    onPress={() => {
+                      haptics.press();
+                      setShowRepeatSheet(true);
+                    }}
+                    style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}
+                  >
+                    <Ionicons name="repeat" size={14} color={Colors.primary} />
+                    <AppText variant="micro" color={Colors.primaryDeep} style={{ fontWeight: '700' }}>
+                      {describeFrequency(repeatConfig as any)}
+                    </AppText>
+                  </Pressable>
+                  <Pressable
+                    onPress={() => {
+                      haptics.press();
+                      setRepeatConfig(null);
+                    }}
+                    hitSlop={8}
+                    style={{ marginLeft: 4, padding: 2 }}
+                  >
+                    <Ionicons name="close-circle" size={16} color={Colors.textMuted} />
+                  </Pressable>
+                </View>
+              ) : (
+                <Pressable
+                  onPress={() => {
+                    haptics.press();
+                    setShowRepeatSheet(true);
+                  }}
+                  style={styles.metaChip}
+                >
+                  <Ionicons name="repeat-outline" size={14} color={Colors.primary} />
+                  <AppText variant="micro" color={Colors.primaryDeep} style={{ fontWeight: '600' }}>
+                    Repeat
+                  </AppText>
+                </Pressable>
+              )
             )}
           </View>
 
           {showDetails && (
-            <GlassCard padding={12} style={styles.detailsCard}>
+            <GlassCard style={styles.detailsCard} padding={12}>
               {type !== 'transfer' && (
-                <View style={styles.inlineField}>
-                  <Ionicons name="storefront-outline" size={15} color={Colors.textSecondary} />
+                <View style={styles.field}>
+                  <AppText variant="label">Payee / Merchant</AppText>
                   <TextInput
                     value={payee}
                     onChangeText={setPayee}
-                    placeholder="Payee / Merchant (e.g. Netflix, Uber)"
+                    placeholder="e.g. Starbucks, Amazon"
                     placeholderTextColor={Colors.textMuted}
-                    style={styles.inlineInput}
+                    style={styles.input}
                   />
                 </View>
               )}
-              <View style={styles.inlineField}>
-                <Ionicons name="create-outline" size={15} color={Colors.textSecondary} />
+
+              <View style={styles.field}>
+                <AppText variant="label">Note</AppText>
                 <TextInput
                   value={note}
                   onChangeText={setNote}
-                  placeholder="Note (optional)"
+                  placeholder="Add a note..."
                   placeholderTextColor={Colors.textMuted}
-                  style={styles.inlineInput}
+                  style={styles.input}
                 />
               </View>
             </GlassCard>
           )}
         </ScrollView>
 
-        <View style={styles.fixedBottomContainer}>
-          <Numpad value={amount} onChangeValue={setAmount} />
-          <AppButton
-            title={editing ? 'Save changes' : 'Add transaction'}
-            size="md"
-            onPress={handleSave}
-            disabled={!canSave}
-            style={styles.submitBtn}
-          />
-        </View>
+        {!keyboardVisible && (
+          <View style={styles.fixedBottomContainer}>
+            <Numpad value={amount} onChangeValue={setAmount} />
+            <AppButton
+              title={editing ? 'Save changes' : 'Add transaction'}
+              size="md"
+              onPress={handleSave}
+              disabled={!canSave}
+              style={styles.submitBtn}
+            />
+          </View>
+        )}
       </View>
 
       <DatePickerModal
@@ -538,6 +661,25 @@ export default function AddTransactionScreen() {
         onSelectDate={setDate}
         onClose={() => setShowDatePicker(false)}
       />
+
+      <SplitSheet
+        visible={showSplitSheet}
+        onClose={() => setShowSplitSheet(false)}
+        totalAmount={numericAmount}
+        currency={state.settings.currency ?? 'INR'}
+        initialParticipants={splitConfig?.participants}
+        initialMethod={splitConfig?.method}
+        onApply={res => setSplitConfig(res)}
+      />
+
+      <RepeatSheet
+        visible={showRepeatSheet}
+        onClose={() => setShowRepeatSheet(false)}
+        amount={numericAmount}
+        currency={state.settings.currency ?? 'INR'}
+        initialConfig={repeatConfig ?? undefined}
+        onApply={cfg => setRepeatConfig(cfg)}
+      />
     </GradientScreen>
   );
 }
@@ -545,146 +687,140 @@ export default function AddTransactionScreen() {
 const styles = StyleSheet.create({
   screenBody: {
     flex: 1,
+    position: 'relative',
   },
   content: {
-    paddingHorizontal: 16,
-    paddingTop: 4,
+    padding: 16,
     paddingBottom: 310,
-    gap: 8,
-  },
-  headerScanBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 5,
-    paddingHorizontal: 12,
-    paddingVertical: 7,
-    borderRadius: BorderRadius.pill,
-    backgroundColor: Colors.primarySoft,
-    borderWidth: 1,
-    borderColor: 'rgba(139, 92, 246, 0.25)',
+    gap: 12,
   },
   scanBanner: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
+    gap: 8,
     paddingHorizontal: 12,
-    paddingVertical: 6,
+    paddingVertical: 8,
     borderRadius: BorderRadius.pill,
-    backgroundColor: Colors.primarySoft,
+    backgroundColor: 'rgba(255, 255, 255, 0.75)',
     borderWidth: 1,
-    borderColor: 'rgba(139, 92, 246, 0.25)',
+    borderColor: 'rgba(139, 92, 246, 0.15)',
   },
   scanBannerText: {
     flex: 1,
     color: Colors.textPrimary,
+    fontFamily: 'Manrope_600SemiBold',
+  },
+  headerScanBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingVertical: 5,
+    paddingHorizontal: 10,
+    borderRadius: BorderRadius.pill,
+    backgroundColor: 'rgba(139, 92, 246, 0.12)',
+    borderWidth: 1,
+    borderColor: 'rgba(139, 92, 246, 0.25)',
   },
   amountCard: {
     alignItems: 'center',
     justifyContent: 'center',
-    borderRadius: BorderRadius.lg,
-    backgroundColor: '#FFFFFF',
+    marginVertical: 2,
   },
   sectionWrap: {
-    gap: 3,
+    gap: 4,
   },
   sectionHeader: {
-    paddingHorizontal: 2,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 4,
   },
   sectionLabel: {
-    fontWeight: '700',
-    letterSpacing: 0.5,
     fontSize: 10,
+    letterSpacing: 0.8,
+    fontFamily: 'Manrope_700Bold',
   },
   subcatSection: {
-    marginTop: -2,
+    marginTop: -4,
   },
   subcatScroll: {
     gap: 6,
-    paddingVertical: 1,
+    paddingHorizontal: 2,
   },
   subcatChip: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 4,
+    gap: 5,
+    paddingVertical: 6,
     paddingHorizontal: 10,
-    paddingVertical: 5,
     borderRadius: BorderRadius.pill,
-    backgroundColor: Colors.controlBg,
+    backgroundColor: 'rgba(255, 255, 255, 0.7)',
     borderWidth: 1,
-    borderColor: Colors.glassBorderSoft,
+    borderColor: 'rgba(25, 21, 39, 0.08)',
   },
   subcatEmptyChip: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 4,
-    paddingHorizontal: 9,
-    paddingVertical: 5,
+    paddingVertical: 6,
+    paddingHorizontal: 10,
     borderRadius: BorderRadius.pill,
     backgroundColor: 'rgba(25, 21, 39, 0.03)',
     borderWidth: 1,
-    borderColor: Colors.divider,
+    borderColor: 'rgba(25, 21, 39, 0.06)',
     borderStyle: 'dashed',
   },
   metaRow: {
     flexDirection: 'row',
+    alignItems: 'center',
     flexWrap: 'wrap',
-    gap: 7,
+    gap: 6,
     marginTop: 2,
   },
   metaChip: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 5,
-    paddingHorizontal: 11,
     paddingVertical: 7,
+    paddingHorizontal: 10,
     borderRadius: BorderRadius.pill,
-    backgroundColor: Colors.controlBg,
+    backgroundColor: 'rgba(255, 255, 255, 0.7)',
     borderWidth: 1,
-    borderColor: Colors.glassBorderSoft,
+    borderColor: 'rgba(25, 21, 39, 0.08)',
   },
   metaChipActive: {
     backgroundColor: Colors.primarySoft,
-    borderColor: 'rgba(139, 92, 246, 0.3)',
+    borderColor: Colors.primary,
   },
   detailsCard: {
-    gap: 8,
-    marginTop: 2,
+    gap: 10,
+    marginTop: 4,
   },
-  inlineField: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    backgroundColor: 'rgba(25, 21, 39, 0.04)',
-    paddingHorizontal: 12,
-    paddingVertical: 8,
+  field: {
+    gap: 4,
+  },
+  input: {
+    paddingHorizontal: 14,
+    paddingVertical: 10,
     borderRadius: BorderRadius.sm,
-  },
-  inlineInput: {
-    flex: 1,
+    backgroundColor: 'rgba(25, 21, 39, 0.04)',
     fontSize: 13,
     fontFamily: 'Manrope_500Medium',
     color: Colors.textPrimary,
-    padding: 0,
   },
   fixedBottomContainer: {
     position: 'absolute',
+    bottom: 0,
     left: 0,
     right: 0,
-    bottom: 0,
-    backgroundColor: '#FFFFFF',
+    backgroundColor: 'rgba(255, 255, 255, 0.95)',
     borderTopLeftRadius: 24,
     borderTopRightRadius: 24,
-    borderTopWidth: 1,
-    borderColor: Colors.glassBorder,
+    paddingTop: 10,
+    paddingBottom: 14,
     paddingHorizontal: 16,
-    paddingTop: 6,
-    paddingBottom: 18,
-    gap: 4,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: -6 },
-    shadowOpacity: 0.06,
-    shadowRadius: 16,
-    elevation: 12,
+    gap: 8,
+    ...Shadows.lifted,
   },
   submitBtn: {
     marginTop: 2,

@@ -14,6 +14,7 @@ import { SplitParticipant, Transaction } from '@/types/finance';
 import { formatCurrency, getCurrencySymbol } from '@/utils/currency';
 import { haptics } from '@/utils/haptics';
 import { Colors, BorderRadius, Spacing } from '@/constants/theme';
+import { useKeyboardBottomInset } from '@/hooks/use-keyboard-bottom-inset';
 import { getDb } from '@/db/client';
 import { getTransactionById } from '@/db/transactions';
 import { listSplitParticipants, recordRepayment } from '@/db/splits';
@@ -22,6 +23,7 @@ export default function SplitDetailScreen() {
   const router = useRouter();
   const params = useLocalSearchParams<{ id: string }>();
   const { state } = useFinance();
+  const { keyboardHeight } = useKeyboardBottomInset();
 
   const [tx, setTx] = useState<Transaction | null>(null);
   const [participants, setParticipants] = useState<SplitParticipant[]>([]);
@@ -279,7 +281,7 @@ export default function SplitDetailScreen() {
           animationType="fade"
           onRequestClose={() => setSettlingParticipant(null)}
         >
-          <View style={styles.modalOverlay}>
+          <View style={[styles.modalOverlay, { paddingBottom: keyboardHeight > 0 ? keyboardHeight : 0 }]}>
             <View style={styles.modalCard}>
               <View style={styles.modalHeader}>
                 <AppText variant="h3">

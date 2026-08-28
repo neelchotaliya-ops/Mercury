@@ -123,7 +123,11 @@ export default function ManageSubcategoriesScreen() {
         onClose={() => router.back()}
       />
 
-      <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
+      <ScrollView
+        contentContainerStyle={styles.content}
+        keyboardShouldPersistTaps="handled"
+        automaticallyAdjustKeyboardInsets={true}
+      >
         {parentCategory && (
           <GlassCard padding={14} style={styles.parentCard}>
             <IconBadge icon={parentCategory.icon} color={parentCategory.color} size={40} />
@@ -282,7 +286,7 @@ export default function ManageSubcategoriesScreen() {
 const styles = StyleSheet.create({
   content: {
     paddingHorizontal: 16,
-    paddingBottom: 40,
+    paddingBottom: 80,
     gap: Spacing.md,
   },
   parentCard: {

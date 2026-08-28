@@ -105,6 +105,7 @@ export default function QuickPresetsScreen() {
         contentContainerStyle={styles.content}
         keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}
+        automaticallyAdjustKeyboardInsets={true}
       >
         {presets.length === 0 ? (
           <GlassCard>

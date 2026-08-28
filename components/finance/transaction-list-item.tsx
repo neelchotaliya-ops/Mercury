@@ -1,5 +1,6 @@
 import React from 'react';
 import { View, StyleSheet, Pressable } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 
 import { AppText } from '@/components/ui/app-text';
 import { IconBadge } from '@/components/finance/icon-badge';
@@ -39,11 +40,17 @@ const TransactionListItemBase: React.FC<TransactionListItemProps> = ({
 
   const title = isTransfer
     ? `${account?.name ?? 'Account'} → ${toAccount?.name ?? 'Account'}`
-    : (category?.name ?? 'Uncategorized');
+    : (transaction.payee || category?.name || 'Uncategorized');
+
+  const subtitleParts = [
+    account?.name,
+    transaction.payee ? category?.name : undefined,
+    transaction.note,
+  ].filter(Boolean);
 
   const subtitle = isTransfer
     ? transaction.note || 'Transfer'
-    : [account?.name, transaction.note].filter(Boolean).join(' · ');
+    : subtitleParts.join(' · ');
 
   const amountColor = isIncome ? Colors.income : isTransfer ? Colors.textSecondary : Colors.textPrimary;
   const prefix = isTransfer ? '' : isIncome ? '+' : '−';
@@ -59,9 +66,21 @@ const TransactionListItemBase: React.FC<TransactionListItemProps> = ({
     >
       <IconBadge icon={icon} color={color} size={42} />
       <View style={styles.textCol}>
-        <AppText variant="bodyStrong" numberOfLines={1}>
-          {title}
-        </AppText>
+        <View style={styles.titleRow}>
+          <AppText variant="bodyStrong" numberOfLines={1} style={{ flex: 1 }}>
+            {title}
+          </AppText>
+          {transaction.recurringRuleId && (
+            <View style={styles.tagBadge}>
+              <Ionicons name="repeat" size={10} color={Colors.primary} />
+            </View>
+          )}
+          {transaction.splitExpenseId && (
+            <View style={[styles.tagBadge, styles.splitTagBadge]}>
+              <Ionicons name="people" size={10} color={Colors.income} />
+            </View>
+          )}
+        </View>
         {subtitle ? (
           <AppText variant="caption" numberOfLines={1}>
             {subtitle}
@@ -98,5 +117,21 @@ const styles = StyleSheet.create({
   textCol: {
     flex: 1,
     gap: 3,
+  },
+  titleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  tagBadge: {
+    width: 18,
+    height: 18,
+    borderRadius: 9,
+    backgroundColor: Colors.primarySoft,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  splitTagBadge: {
+    backgroundColor: Colors.incomeSoft,
   },
 });

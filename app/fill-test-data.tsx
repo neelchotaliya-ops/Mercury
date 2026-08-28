@@ -250,7 +250,11 @@ export default function FillTestDataScreen() {
           behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
           keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 24}
         >
-          <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
+          <ScrollView
+            contentContainerStyle={styles.content}
+            keyboardShouldPersistTaps="handled"
+            automaticallyAdjustKeyboardInsets={true}
+          >
             <GlassCard style={styles.formCard} padding={18}>
               <AppText variant="label">How much data</AppText>
               <View style={styles.chipRow}>

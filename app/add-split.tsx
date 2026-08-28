@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { View, StyleSheet, ScrollView, Pressable, TextInput, Alert } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
@@ -21,6 +21,11 @@ import { getDb } from '@/db/client';
 import { insertTransaction } from '@/db/transactions';
 import { insertSplitParticipantsBatch } from '@/db/splits';
 import { calculateSplitShares, SplitMethod } from '@/utils/bank-statement';
+
+import { bumpDataVersion } from '@/db/version';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+
+const STORAGE_KEY_FRIENDS = '@mercury/recent_split_friends';
 
 interface ParticipantEntry {
   id: string;
@@ -52,6 +57,15 @@ export default function AddSplitScreen() {
 
   const [method, setMethod] = useState<SplitMethod>('equal');
   const [newParticipantName, setNewParticipantName] = useState('');
+  const [recentFriends, setRecentFriends] = useState<string[]>([]);
+
+  useEffect(() => {
+    AsyncStorage.getItem(STORAGE_KEY_FRIENDS).then(val => {
+      if (val) {
+        try { setRecentFriends(JSON.parse(val)); } catch {}
+      }
+    });
+  }, []);
 
   const [participants, setParticipants] = useState<ParticipantEntry[]>([
     { id: 'you', name: 'You', isYou: true, value: '' },
@@ -93,14 +107,23 @@ export default function AddSplitScreen() {
 
   const canSave = numericTotal > 0 && !!accountId && participants.length >= 2 && (method === 'equal' || isBalanced);
 
-  const addParticipant = () => {
-    if (!newParticipantName.trim()) return;
+  const addParticipant = (nameToAdd?: string) => {
+    const name = (nameToAdd || newParticipantName).trim();
+    if (!name) return;
+    if (participants.some(p => p.name.toLowerCase() === name.toLowerCase())) {
+      setNewParticipantName('');
+      return;
+    }
     haptics.press();
     setParticipants(prev => [
       ...prev,
-      { id: generateId(), name: newParticipantName.trim(), isYou: false, value: '' },
+      { id: generateId(), name, isYou: false, value: '' },
     ]);
     setNewParticipantName('');
+
+    const updated = [name, ...recentFriends.filter(f => f.toLowerCase() !== name.toLowerCase())].slice(0, 8);
+    setRecentFriends(updated);
+    AsyncStorage.setItem(STORAGE_KEY_FRIENDS, JSON.stringify(updated)).catch(() => {});
   };
 
   const removeParticipant = (id: string) => {
@@ -124,7 +147,7 @@ export default function AddSplitScreen() {
     try {
       const db = await getDb();
       const transactionId = generateId();
-      const dateStr = date.toISOString();
+      const dateStr = date.toISOString().slice(0, 10);
 
       // 1. Create the main expense transaction for the whole amount
       await insertTransaction(db, {
@@ -153,6 +176,7 @@ export default function AddSplitScreen() {
         }))
       );
 
+      await bumpDataVersion();
       haptics.success();
       router.replace({
         pathname: '/split-detail' as any,
@@ -169,7 +193,11 @@ export default function AddSplitScreen() {
     <GradientScreen edges={['top', 'bottom']} contours="top">
       <ModalHeader title="Split Expense" onClose={() => router.back()} />
 
-      <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
+      <ScrollView
+        contentContainerStyle={styles.content}
+        keyboardShouldPersistTaps="handled"
+        automaticallyAdjustKeyboardInsets={true}
+      >
         {/* Bill Overview Card */}
         <GlassCard padding={18} style={styles.card}>
           <AppText variant="h3">Expense Details</AppText>
@@ -268,18 +296,41 @@ export default function AddSplitScreen() {
               onChangeText={setNewParticipantName}
               placeholder="Add person (e.g. Rahul, Priya)"
               placeholderTextColor={Colors.textMuted}
-              onSubmitEditing={addParticipant}
+              onSubmitEditing={() => addParticipant()}
               style={[styles.input, { flex: 1 }]}
             />
             <AppButton
               title="+ Add"
               size="sm"
               fullWidth={false}
-              onPress={addParticipant}
+              onPress={() => addParticipant()}
               disabled={!newParticipantName.trim()}
               style={styles.addParticipantBtn}
             />
           </View>
+
+          {/* Quick recent friends chips */}
+          {recentFriends.length > 0 && (
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: -4 }}>
+              <AppText variant="micro" color={Colors.textMuted}>Quick add:</AppText>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 6 }}>
+                {recentFriends
+                  .filter(f => !participants.some(p => p.name.toLowerCase() === f.toLowerCase()))
+                  .map(friend => (
+                    <Pressable
+                      key={friend}
+                      onPress={() => addParticipant(friend)}
+                      style={styles.recentFriendChip}
+                    >
+                      <Ionicons name="add-circle-outline" size={13} color={Colors.primary} />
+                      <AppText variant="caption" color={Colors.primaryDeep} style={{ fontWeight: '600' }}>
+                        {friend}
+                      </AppText>
+                    </Pressable>
+                  ))}
+              </ScrollView>
+            </View>
+          )}
 
           {/* Participant list */}
           <View style={styles.participantsList}>
@@ -390,7 +441,7 @@ export default function AddSplitScreen() {
 const styles = StyleSheet.create({
   content: {
     paddingHorizontal: 16,
-    paddingBottom: 40,
+    paddingBottom: 80,
     gap: Spacing.md,
   },
   card: {
@@ -444,6 +495,15 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingVertical: 10,
     borderRadius: BorderRadius.sm,
+  },
+  recentFriendChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: BorderRadius.pill,
+    backgroundColor: Colors.primarySoft,
   },
   participantsList: {
     gap: 8,
