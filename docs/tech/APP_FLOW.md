@@ -78,6 +78,33 @@ triggered by an incoming Android/iOS share — if it were nested inside
 `useSharedReceipt`, called unconditionally in `RootNavigator`) would not be
 guaranteed available.
 
+### Cold-start flowchart
+
+```mermaid
+flowchart TD
+    A["Module load:<br/>SplashScreen.preventAutoHideAsync()"] --> B["RootLayout: useFonts([8 weights])"]
+    B --> C{"fontsLoaded ||<br/>fontError?"}
+    C -->|"No"| D["return null<br/>(native splash still showing)"]
+    D -.->|"re-render on font resolution"| C
+    C -->|"Yes"| E["Mount provider tree:<br/>ShareIntentProvider &gt; FinanceProvider &gt;<br/>AppThemeProvider &gt; RootNavigator"]
+    E --> F["FinanceProvider's async load effect starts<br/>(see FinanceProvider mount sequence)"]
+    E --> G["RootNavigator mounts, one-time effect fires"]
+    G --> H["SplashScreen.hideAsync()<br/>native to JS handoff, immediate"]
+    G --> I["ensureNotificationsReady()<br/>fire-and-forget"]
+    G --> J["useSharedReceipt(isLoaded &amp;&amp; hasOnboarded)<br/>called every render, no-ops until enabled"]
+    G --> K{"state.isLoaded?"}
+    K -->|"No"| L["Render: empty View only —<br/>no Stack navigator exists yet"]
+    K -->|"Yes"| M["Render: real &lt;Stack&gt; mounts<br/>(index / (tabs) / accounts / all modals)"]
+    F -->|"sets isLoaded: true<br/>(success or caught error)"| K
+    L --> N["AppSplash overlays on top<br/>(isReady = state.isLoaded)"]
+    M --> N
+    N --> O{"isReady flips true?"}
+    O -->|"No"| N
+    O -->|"Yes"| P["AppSplash fades opacity 1 to 0<br/>over one fixed duration"]
+    P --> Q["onAnimationComplete fires<br/>splashDone = true"]
+    Q --> R["AppSplash unmounts —<br/>app is fully interactive"]
+```
+
 ---
 
 ## 2. `FinanceProvider` mount sequence
@@ -472,6 +499,32 @@ separate, unconnected code path from the share-intent one.
    then auto-navigates to a **blank** "New transaction" modal once
    loaded+onboarded — the shared image is silently dropped.
 
+```mermaid
+sequenceDiagram
+    actor User
+    participant OS as Android share sheet
+    participant SIP as ShareIntentProvider<br/>(useShareIntentContext)
+    participant USR as useSharedReceipt hook
+    participant FP as FinanceProvider
+    participant AT as add-transaction.tsx
+
+    User->>OS: share an image into Mercury
+    OS->>SIP: launch process with the share Intent<br/>(image/* filter match)
+    Note over SIP,FP: normal JS bootstrap proceeds in parallel<br/>(fonts, providers, DB open)
+    SIP->>SIP: resolve hasShareIntent / shareIntent<br/>independently of DB load
+    FP->>FP: load accounts/categories/etc,<br/>set isLoaded: true
+    USR->>USR: enabled = isLoaded && hasOnboarded<br/>(re-evaluated every render)
+    alt enabled is false (still loading, or onboarding incomplete)
+        USR->>USR: effect no-ops, share intent stays pending
+    else enabled becomes true
+        USR->>USR: filter shareIntent.files for first image/* entry
+        USR->>AT: router.push('/add-transaction', {imageUri: path})
+        USR->>SIP: resetShareIntent()
+        Note over AT: imageUri is declared in AT's param type<br/>but never read — confirmed dead path
+        AT-->>User: opens as a BLANK form,<br/>shared image silently discarded
+    end
+```
+
 ---
 
 ## 7. Tab bar — `components/navigation/floating-tab-bar.tsx`
@@ -581,6 +634,77 @@ The only `<Link>` usage anywhere in `app/`+`components/` is
 `components/external-link.tsx`, which opens an **external** URL via
 `WebBrowser.openBrowserAsync` — not part of the internal screen graph.
 
+### Visual navigation graph
+
+The same edge list, as a diagram. Dashed nodes are the 5 undeclared routes
+(§5); the shaded node is `/db-diagnostics`, included for completeness even
+though nothing links to it.
+
+```mermaid
+graph TD
+    Home["/(tabs)/index<br/>Home"]
+    Activity["/(tabs)/transactions<br/>Activity"]
+    Budgets["/(tabs)/budgets<br/>Budgets"]
+    Insights["/(tabs)/reports<br/>Insights"]
+    TabBar(("FloatingTabBar<br/>center '+' — all 4 tabs"))
+    PersistBanner(("PersistErrorBanner<br/>root-mounted, any screen"))
+
+    Accounts["/accounts"]
+    AddTx["/add-transaction<br/>[id?, fromScan?, imageUri?]"]
+    AddAccount["/add-account [id?]"]
+    AddBudget["/add-budget [id?]"]
+    ManageCat["/manage-categories [kind?]"]
+    ManageSubcat["/manage-subcategories [categoryId]"]:::undeclared
+    QuickPresets["/quick-presets"]
+    Settings["/settings"]
+    AddRecurring["/add-recurring [id?, ...prefill]"]:::undeclared
+    AddSplit["/add-split [...prefill]"]:::undeclared
+    SplitDetail["/split-detail [id]"]:::undeclared
+    BankImport["/bank-import"]:::undeclared
+    FillTestData["/fill-test-data"]
+    DbDiagnostics["/db-diagnostics<br/>(orphaned — no caller)"]:::orphaned
+
+    Home -->|gear| Settings
+    Home -->|"Manage / chip tap"| Accounts
+    Home -->|"Add chip"| AddAccount
+    Home -->|"See all"| Activity
+    Home -->|"row tap ?id="| AddTx
+    Activity -->|"row tap ?id="| AddTx
+    Budgets -->|"+ / empty CTA"| AddBudget
+    Budgets -->|"row tap ?id="| AddBudget
+    Insights -->|"Recurring: empty/+/row"| AddRecurring
+    Insights -->|"Shared: empty/+"| AddSplit
+    Insights -->|"Shared: row tap"| SplitDetail
+    TabBar -.->|"always blank"| AddTx
+    PersistBanner -.->|"tap"| Settings
+
+    Accounts -->|"Add / card tap"| AddAccount
+    Accounts -->|"Transfer tile<br/>(param unused)"| AddTx
+
+    AddTx -->|"manage categories"| ManageCat
+    AddTx -->|"Add subcategory"| ManageSubcat
+    AddTx -->|"Split Details chip"| SplitDetail
+
+    AddBudget -->|"manage categories"| ManageCat
+
+    Settings --> ManageCat
+    Settings --> Accounts
+    Settings -->|"no params, hub"| AddRecurring
+    Settings --> QuickPresets
+    Settings --> BankImport
+    Settings --> FillTestData
+
+    AddRecurring -->|"manage categories"| ManageCat
+
+    AddSplit -->|"manage categories"| ManageCat
+    AddSplit ==>|"router.replace on save"| SplitDetail
+
+    BankImport -->|"manage categories"| ManageCat
+
+    classDef undeclared stroke-dasharray: 5 5
+    classDef orphaned fill:#eee,stroke:#999,stroke-dasharray: 5 5
+```
+
 ---
 
 ## 9. Back-navigation conventions
@@ -657,3 +781,22 @@ migration-failure / DB-health signal, which is computed correctly but
 locked behind the orphaned `db-diagnostics` route and the unread
 `migrationFailed` flag — see `AI_CONTEXT.md`'s known-issues section for the
 consolidated list this feeds into.
+
+### Write-failure flowchart
+
+```mermaid
+flowchart TD
+    A["Any useFinance() mutator called<br/>(addAccount, updateTransaction, ...)"] --> B["withDb() runs the write<br/>against the resolved Db handle"]
+    B --> C{"Write succeeds?"}
+    C -->|"Yes"| D["persistError cleared (set to null)<br/>if it was previously set"]
+    C -->|"No"| E["persistError set to the error message"]
+    E --> F["error is rethrown to the caller"]
+    F --> G["calling screen's own local<br/>try/catch or Alert may also react"]
+    E --> H["PersistErrorBanner becomes visible<br/>on every screen, red-bordered"]
+    H --> I["stays visible — no auto-dismiss"]
+    I --> J{"user taps the banner?"}
+    J -->|"Yes"| K["router.push('/settings')<br/>export a backup is the recommended action"]
+    J -->|"No"| I
+    D -.->|"next successful write anywhere"| I
+    I -.->|"clears automatically"| L["banner disappears"]
+```

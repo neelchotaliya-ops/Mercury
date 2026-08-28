@@ -121,6 +121,143 @@ SQLite, tracked via `PRAGMA user_version`. Migrations live in `db/schema.ts` as 
 
 **Current `LATEST_SCHEMA_VERSION = 5`.**
 
+### Entity-relationship diagram
+
+The diagram below shows every table as of v5, with primary/foreign keys and
+the columns that matter for understanding the relationships. `rollup`,
+`account_balance`, and `ledger_stat` are **derived** tables — nothing writes
+to them directly except `db/apply.ts`/`db/rebuild.ts` (§3.1-3.2); they're
+included here because they're still real tables with real foreign-key-shaped
+relationships to `accounts`/`categories`, just not ones enforced by SQLite
+`FOREIGN KEY` constraints the way the others are.
+
+```mermaid
+erDiagram
+    accounts ||--o{ transactions : "account_id"
+    accounts ||--o{ transactions : "to_account_id (transfers)"
+    accounts ||--|| account_balance : "account_id"
+    accounts ||--o{ budgets : "account_id (optional scope)"
+    accounts ||--o{ recurring_rules : "account_id"
+    accounts ||--o{ quick_presets : "account_id (optional)"
+    accounts ||--o{ rollup : "account_id"
+
+    categories ||--o{ transactions : "category_id"
+    categories ||--o{ budgets : "category_id"
+    categories ||--o{ subcategories : "category_id"
+    categories ||--o{ recurring_rules : "category_id (optional)"
+    categories ||--o{ quick_presets : "category_id (optional)"
+    categories ||--o{ rollup : "category_id"
+
+    subcategories ||--o{ transactions : "subcategory_id (optional)"
+    subcategories ||--o{ recurring_rules : "subcategory_id (optional)"
+
+    recurring_rules ||--o{ transactions : "recurring_rule_id (auto-created rows)"
+
+    transactions ||--o{ split_participants : "transaction_id (the bill)"
+    transactions ||--o{ transactions : "split_expense_id (repayment -> original bill)"
+
+    accounts {
+        TEXT id PK
+        TEXT name
+        TEXT type "cash|bank|card|wallet|other"
+        TEXT currency "v2+"
+        REAL initial_balance
+        INT archived
+    }
+    categories {
+        TEXT id PK
+        TEXT name
+        TEXT kind "income|expense"
+        INT is_default
+    }
+    subcategories {
+        TEXT id PK
+        TEXT category_id FK "v3+, CASCADE"
+        TEXT name
+        INT sort_order
+    }
+    transactions {
+        INT seq PK "AUTOINCREMENT, pagination cursor"
+        TEXT id UK
+        TEXT type "income|expense|transfer"
+        REAL amount
+        TEXT account_id FK
+        TEXT to_account_id FK "transfers only"
+        TEXT category_id FK "SET NULL"
+        TEXT subcategory_id FK "v3+, SET NULL"
+        TEXT payee "v3+"
+        TEXT recurring_rule_id FK "v4+, SET NULL"
+        TEXT split_expense_id FK "v5+, self-ref, SET NULL"
+        INT date_ms "index key"
+        TEXT month_key "precomputed"
+        TEXT day_key "precomputed"
+    }
+    budgets {
+        TEXT id PK
+        TEXT category_id FK "CASCADE"
+        TEXT account_id FK "v2+, optional scope"
+        REAL monthly_limit
+        TEXT currency "v2+"
+    }
+    quick_presets {
+        TEXT id PK
+        TEXT label
+        TEXT type "income|expense"
+        REAL amount
+        TEXT category_id FK
+        TEXT account_id FK
+    }
+    recurring_rules {
+        TEXT id PK
+        TEXT type "income|expense, never transfer"
+        REAL amount
+        TEXT account_id FK "CASCADE"
+        TEXT category_id FK "SET NULL"
+        TEXT subcategory_id FK "SET NULL"
+        TEXT frequency "daily|weekly|monthly|yearly|custom"
+        TEXT next_due "processing cursor"
+        INT auto_create
+        INT active
+    }
+    split_participants {
+        TEXT id PK
+        TEXT transaction_id FK "CASCADE, the original bill"
+        TEXT name
+        REAL share_amount
+        REAL paid_amount
+        TEXT status "pending|partial|paid"
+    }
+    rollup {
+        TEXT grain PK "M or D"
+        TEXT bucket PK "e.g. 2026-08, or 2026-08-28"
+        TEXT account_id PK
+        TEXT category_id PK
+        INT income "minor units, x100"
+        INT expense "minor units, x100"
+        INT transfer_in
+        INT transfer_out
+        INT income_count
+        INT expense_count
+        INT transfer_count
+    }
+    account_balance {
+        TEXT account_id PK
+        INT delta "minor units, excludes initial_balance"
+    }
+    ledger_stat {
+        TEXT key PK "all|income|expense|transfer"
+        INT n "running count"
+        INT net "running net, minor units"
+    }
+```
+
+Two things this diagram deliberately shows that a "clean" schema wouldn't:
+`transactions.split_expense_id` is a **self-referencing** foreign key (a
+repayment transaction points back at the original expense transaction — both
+rows live in the same table), and `rollup`'s primary key is a **composite of
+four columns**, not a single surrogate id — both are load-bearing design
+choices explained in §3.1-3.2 and §"v5" below, not accidents.
+
 ### v1 — initial schema
 ```sql
 meta(key PK, value)                                    -- internal bookkeeping, WITHOUT ROWID
