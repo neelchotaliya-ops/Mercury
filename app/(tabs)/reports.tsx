@@ -20,16 +20,14 @@ import { useInsightsData } from '@/hooks/use-insights-data';
 import { formatCurrency, getCurrencySymbol } from '@/utils/currency';
 import { monthKeyLabel } from '@/utils/date';
 import { Colors, BorderRadius, Spacing } from '@/constants/theme';
-import { RecurringInsightsView } from '@/components/finance/recurring-insights';
-import { SplitInsightsView } from '@/components/finance/split-insights';
+import { RecurringSummaryCard } from '@/components/finance/recurring-insights';
+import { SplitSummaryCard } from '@/components/finance/split-insights';
 import { getDb } from '@/db/client';
 
 type Kind = 'expense' | 'income';
-type InsightsView = 'spending' | 'recurring' | 'splits';
 
 export default function ReportsScreen() {
   const { state } = useFinance();
-  const [activeView, setActiveView] = useState<InsightsView>('spending');
   const [filter, setFilter] = useState<InsightFilter>(DEFAULT_INSIGHT_FILTER);
   const [selectedCategory, setSelectedCategory] = useState<string | undefined>();
   const [selectedMonth, setSelectedMonth] = useState<number | undefined>();
@@ -110,40 +108,21 @@ export default function ReportsScreen() {
         <AppText variant="caption">Where your money actually goes</AppText>
       </View>
 
-      {/* Top 3-way view switcher */}
-      <View style={styles.viewModeWrap}>
-        <SegmentedControl<InsightsView>
-          options={[
-            { key: 'spending',  label: 'Spending' },
-            { key: 'recurring', label: 'Recurring' },
-            { key: 'splits',    label: 'Shared' },
-          ]}
-          value={activeView}
-          onChange={setActiveView}
-        />
-      </View>
-
       <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
-        {activeView === 'recurring' ? (
-          <RecurringInsightsView insights={recurringData} />
-        ) : activeView === 'splits' ? (
-          <SplitInsightsView insights={splitData} />
-        ) : (
-          <>
-            <View style={styles.kindWrap}>
-              <SegmentedControl<Kind>
-                options={[
-                  { key: 'expense', label: 'Spending', activeColor: Colors.expense },
-                  { key: 'income', label: 'Income', activeColor: Colors.income },
-                ]}
-                value={filter.kind}
-                onChange={kind => {
-                  // Category ids belong to one kind, so they cannot carry over.
-                  setFilter({ ...filter, kind, categoryIds: [] });
-                  setSelectedCategory(undefined);
-                }}
-              />
-            </View>
+        <View style={styles.kindWrap}>
+          <SegmentedControl<Kind>
+            options={[
+              { key: 'expense', label: 'Spending', activeColor: Colors.expense },
+              { key: 'income', label: 'Income', activeColor: Colors.income },
+            ]}
+            value={filter.kind}
+            onChange={kind => {
+              // Category ids belong to one kind, so they cannot carry over.
+              setFilter({ ...filter, kind, categoryIds: [] });
+              setSelectedCategory(undefined);
+            }}
+          />
+        </View>
 
         {uniqueCurrencies.length > 1 && (
           <View style={styles.currencyBar}>
@@ -186,6 +165,16 @@ export default function ReportsScreen() {
             setSelectedDay(undefined);
           }}
         />
+
+        {/* Recurring/Split used to be full management tabs behind a 3-way
+            switch; they're glanceable summaries here now, with a link into
+            the Manage hub for anything beyond a glance. Shown unconditionally
+            (not gated on the Spending section's own loading/empty state)
+            since they reflect independent data. */}
+        <View style={styles.summarySection}>
+          <RecurringSummaryCard insights={recurringData} />
+          <SplitSummaryCard insights={splitData} />
+        </View>
 
         {isReady && loading ? (
           <View style={styles.refreshingRow}>
@@ -370,8 +359,6 @@ export default function ReportsScreen() {
             ) : null}
           </Animated.View>
         )}
-          </>
-        )}
       </ScrollView>
     </GradientScreen>
   );
@@ -383,11 +370,6 @@ const styles = StyleSheet.create({
     paddingTop: 6,
     gap: 3,
   },
-  viewModeWrap: {
-    paddingHorizontal: 20,
-    marginTop: 10,
-    marginBottom: 4,
-  },
   content: {
     paddingTop: Spacing.md,
     paddingBottom: 150,
@@ -395,6 +377,10 @@ const styles = StyleSheet.create({
   },
   kindWrap: {
     paddingHorizontal: 20,
+  },
+  summarySection: {
+    paddingHorizontal: 20,
+    gap: 10,
   },
   currencyBar: {
     flexDirection: 'row',

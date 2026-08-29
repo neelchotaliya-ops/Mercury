@@ -16,6 +16,65 @@ interface SplitInsightsViewProps {
   insights: SplitInsights | null;
 }
 
+/**
+ * A compact, read-only glance at split expenses for the Insights tab — the
+ * total owed to you and how many are still pending, with a link into the
+ * Manage hub's Split Expenses screen (app/manage-splits.tsx, which renders
+ * the full SplitInsightsView below) for anything beyond glancing.
+ */
+export function SplitSummaryCard({ insights }: SplitInsightsViewProps) {
+  const router = useRouter();
+  const { state } = useFinance();
+  const currency = state.settings.currency ?? 'INR';
+  const outstandingTotal = (insights?.totalOwed ?? 0) - (insights?.totalSettled ?? 0);
+  const hasData = !!insights && (insights.totalOwed > 0 || insights.unsettledSplits.length > 0);
+  const pendingCount = (insights?.pendingCount ?? 0) + (insights?.partialCount ?? 0);
+
+  const goToManage = () => {
+    haptics.press();
+    router.push('/manage-splits' as any);
+  };
+
+  return (
+    <GlassCard padding={18} strong elevated style={styles.heroCard}>
+      <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+        <View style={{ flex: 1 }}>
+          <AppText variant="caption" color={Colors.textSecondary}>Total Owed to You</AppText>
+          {hasData ? (
+            <>
+              <AppText variant="h1" color={Colors.income} style={{ marginTop: 2 }}>
+                {formatCurrency(Math.max(0, outstandingTotal), currency)}
+              </AppText>
+              <AppText variant="caption" color={Colors.textMuted} style={{ marginTop: 2 }}>
+                {formatCurrency(insights?.totalSettled ?? 0, currency)} collected so far
+              </AppText>
+            </>
+          ) : (
+            <AppText variant="body" color={Colors.textSecondary} style={{ marginTop: 4 }}>
+              No shared expenses yet
+            </AppText>
+          )}
+        </View>
+
+        {hasData && pendingCount > 0 ? (
+          <View style={styles.pendingBadge}>
+            <Ionicons name="time" size={14} color={Colors.expense} />
+            <AppText variant="captionStrong" color={Colors.expense} style={{ marginLeft: 4 }}>
+              {pendingCount} pending
+            </AppText>
+          </View>
+        ) : null}
+      </View>
+
+      <Pressable onPress={goToManage} hitSlop={8} style={{ marginTop: 12 }}>
+        <AppText variant="captionStrong" color={Colors.primary}>
+          {hasData ? 'Manage →' : '+ Split an expense'}
+        </AppText>
+      </Pressable>
+    </GlassCard>
+  );
+}
+
 export function SplitInsightsView({ insights }: SplitInsightsViewProps) {
   const router = useRouter();
   const { state } = useFinance();
