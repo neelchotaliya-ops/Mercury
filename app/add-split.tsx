@@ -56,6 +56,10 @@ export default function AddSplitScreen() {
   const [showDatePicker, setShowDatePicker] = useState(false);
 
   const [method, setMethod] = useState<SplitMethod>('equal');
+  // The equal/exact/percentage picker is hidden by default — most splits are
+  // even, and showing a 3-way method chooser up front is exactly the kind of
+  // advanced-looking control that makes this feel harder than it is.
+  const [showMethodPicker, setShowMethodPicker] = useState(false);
   const [newParticipantName, setNewParticipantName] = useState('');
   const [recentFriends, setRecentFriends] = useState<string[]>([]);
 
@@ -69,7 +73,6 @@ export default function AddSplitScreen() {
 
   const [participants, setParticipants] = useState<ParticipantEntry[]>([
     { id: 'you', name: 'You', isYou: true, value: '' },
-    { id: 'p1', name: 'Friend 1', isYou: false, value: '' },
   ]);
 
   const expenseCategories = useMemo(
@@ -276,18 +279,34 @@ export default function AddSplitScreen() {
             </AppText>
           </View>
 
-          <SegmentedControl<SplitMethod>
-            options={[
-              { key: 'equal', label: 'Equally' },
-              { key: 'custom', label: 'Exact ₹' },
-              { key: 'percentage', label: 'Percent %' },
-            ]}
-            value={method}
-            onChange={m => {
-              setMethod(m);
-              setParticipants(prev => prev.map(p => ({ ...p, value: '' })));
-            }}
-          />
+          {showMethodPicker ? (
+            <SegmentedControl<SplitMethod>
+              options={[
+                { key: 'equal', label: 'Equally' },
+                { key: 'custom', label: 'Exact ₹' },
+                { key: 'percentage', label: 'Percent %' },
+              ]}
+              value={method}
+              onChange={m => {
+                setMethod(m);
+                setParticipants(prev => prev.map(p => ({ ...p, value: '' })));
+              }}
+            />
+          ) : (
+            <Pressable
+              onPress={() => {
+                haptics.selection();
+                setShowMethodPicker(true);
+              }}
+              hitSlop={8}
+              style={styles.unevenLink}
+            >
+              <AppText variant="captionStrong" color={Colors.primary}>
+                Split unevenly instead
+              </AppText>
+              <Ionicons name="chevron-forward" size={14} color={Colors.primary} />
+            </Pressable>
+          )}
 
           {/* Add participant input */}
           <View style={styles.addParticipantRow}>
@@ -485,6 +504,13 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.controlBg,
     borderWidth: 1,
     borderColor: Colors.glassBorderSoft,
+  },
+  unevenLink: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 4,
+    paddingVertical: 4,
   },
   addParticipantRow: {
     flexDirection: 'row',

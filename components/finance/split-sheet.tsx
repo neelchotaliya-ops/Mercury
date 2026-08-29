@@ -63,11 +63,12 @@ export const SplitSheet: React.FC<SplitSheetProps> = ({
   const [participants, setParticipants] = useState<SplitParticipantDraft[]>(
     initialParticipants && initialParticipants.length >= 2
       ? initialParticipants
-      : [
-          { id: 'you', name: 'You', isYou: true, value: '' },
-          { id: 'p1', name: 'Friend 1', isYou: false, value: '' },
-        ]
+      : [{ id: 'you', name: 'You', isYou: true, value: '' }]
   );
+  // The equal/exact/percentage picker is hidden by default — most splits are
+  // even, and showing a 3-way method chooser up front is exactly the kind of
+  // advanced-looking control that makes this feel harder than it is.
+  const [showMethodPicker, setShowMethodPicker] = useState(initialMethod !== 'equal');
   const [newName, setNewName] = useState('');
   const [recentFriends, setRecentFriends] = useState<string[]>([]);
 
@@ -82,12 +83,20 @@ export const SplitSheet: React.FC<SplitSheetProps> = ({
     });
   }, []);
 
-  // Sync if initialParticipants changes
+  // Re-sync to the last-applied (or default) state whenever the sheet opens,
+  // so edits abandoned by dismissing without "Apply" don't linger for the
+  // next open.
   useEffect(() => {
-    if (initialParticipants && initialParticipants.length >= 2) {
-      setParticipants(initialParticipants);
-    }
-  }, [initialParticipants]);
+    if (!visible) return;
+    setMethod(initialMethod);
+    setShowMethodPicker(initialMethod !== 'equal');
+    setParticipants(
+      initialParticipants && initialParticipants.length >= 2
+        ? initialParticipants
+        : [{ id: 'you', name: 'You', isYou: true, value: '' }]
+    );
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [visible]);
 
   const insets = useSafeAreaInsets();
   const { keyboardHeight, keyboardVisible } = useKeyboardBottomInset();
@@ -204,19 +213,35 @@ export const SplitSheet: React.FC<SplitSheetProps> = ({
               keyboardShouldPersistTaps="handled"
               showsVerticalScrollIndicator={false}
             >
-              {/* Method Switcher */}
-              <SegmentedControl<SplitMethod>
-                options={[
-                  { key: 'equal', label: '= Equally' },
-                  { key: 'custom', label: 'Exact Shares' },
-                  { key: 'percentage', label: '% Percentage' },
-                ]}
-                value={method}
-                onChange={m => {
-                  setMethod(m);
-                  setParticipants(prev => prev.map(p => ({ ...p, value: '' })));
-                }}
-              />
+              {/* Method Switcher — hidden by default; equal split needs no decision */}
+              {showMethodPicker ? (
+                <SegmentedControl<SplitMethod>
+                  options={[
+                    { key: 'equal', label: '= Equally' },
+                    { key: 'custom', label: 'Exact Shares' },
+                    { key: 'percentage', label: '% Percentage' },
+                  ]}
+                  value={method}
+                  onChange={m => {
+                    setMethod(m);
+                    setParticipants(prev => prev.map(p => ({ ...p, value: '' })));
+                  }}
+                />
+              ) : (
+                <Pressable
+                  onPress={() => {
+                    haptics.selection();
+                    setShowMethodPicker(true);
+                  }}
+                  hitSlop={8}
+                  style={styles.unevenLink}
+                >
+                  <AppText variant="captionStrong" color={Colors.primary}>
+                    Split unevenly instead
+                  </AppText>
+                  <Ionicons name="chevron-forward" size={14} color={Colors.primary} />
+                </Pressable>
+              )}
 
               {/* Owed Live Breakdown Card */}
               {totalAmount > 0 && participants.length > 1 && (
@@ -439,6 +464,13 @@ const styles = StyleSheet.create({
   bodyContent: {
     padding: 20,
     gap: Spacing.md,
+  },
+  unevenLink: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 4,
+    paddingVertical: 4,
   },
   breakdownCard: {
     backgroundColor: 'rgba(139, 92, 246, 0.05)',
