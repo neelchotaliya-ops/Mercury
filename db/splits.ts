@@ -3,15 +3,19 @@
  *
  * Data model:
  * - The original shared expense is a normal 'expense' transaction.
- * - `split_participants` tracks each person's share and their repayment status.
+ * - `split_participants` tracks each person's share and whether they've
+ *   paid it back.
  * - Repayment transactions are regular 'income' entries with `split_expense_id`
  *   set to the original transaction's id, so they don't float as mystery income.
  *
- * The settlement status on a SplitParticipant is maintained explicitly so it
- * can be indexed and queried cheaply:
- *   pending  → paid_amount = 0
- *   partial  → 0 < paid_amount < share_amount
- *   paid     → paid_amount >= share_amount
+ * Settlement is a single action, not a running balance: a participant either
+ * owes their full share ('pending') or has paid it ('paid') via
+ * `markParticipantPaid`, which always logs their full `share_amount`. There
+ * is no partial-payment tracking — that used to be a `paid_amount` running
+ * total against a pending/partial/paid tri-state, which is where the
+ * overpayment-warning bug and an amount-edit desync bug both came from.
+ * `status` still technically allows 'partial' at the schema level (see the
+ * v6 migration in db/schema.ts), but nothing in this file writes it anymore.
  */
 
 import { SplitParticipant, SplitStatus } from '@/types/finance';
@@ -55,26 +59,22 @@ export async function getSplitSummary(db: Db): Promise<{
   totalOwed: number;
   totalSettled: number;
   pendingCount: number;
-  partialCount: number;
 }> {
   const row = await db.getFirstAsync<{
     total_owed: number;
     total_settled: number;
     pending_count: number;
-    partial_count: number;
   }>(
     `SELECT
        COALESCE(SUM(share_amount), 0)                                    AS total_owed,
        COALESCE(SUM(paid_amount), 0)                                     AS total_settled,
-       COUNT(*) FILTER (WHERE status = 'pending')                        AS pending_count,
-       COUNT(*) FILTER (WHERE status = 'partial')                        AS partial_count
+       COUNT(*) FILTER (WHERE status = 'pending')                        AS pending_count
      FROM split_participants`
   );
   return {
     totalOwed: row?.total_owed ?? 0,
     totalSettled: row?.total_settled ?? 0,
     pendingCount: row?.pending_count ?? 0,
-    partialCount: row?.partial_count ?? 0,
   };
 }
 
@@ -157,19 +157,19 @@ export async function insertSplitParticipantsBatch(
 }
 
 /**
- * Records a (partial or full) repayment from a split participant.
+ * Marks a split participant as paid — the full `share_amount`, in one action.
  *
  * Creates a linked income transaction so the repayment shows up in the
- * transaction list but is visually tied to the original shared expense.
- * Updates the participant's paid_amount and status atomically.
+ * transaction list but is visually tied to the original shared expense, and
+ * flips the participant's status to 'paid' atomically. Throws if the
+ * participant is already paid, so a duplicate tap can't double-log income.
  *
  * Returns the ID of the created income transaction.
  */
-export async function recordRepayment(
+export async function markParticipantPaid(
   db: Db,
   opts: {
     participantId: string;
-    amount: number;
     /** The account that receives the repayment (same as original expense account by default). */
     accountId: string;
     note?: string;
@@ -179,24 +179,18 @@ export async function recordRepayment(
 ): Promise<string> {
   const dateStr = opts.date ?? new Date().toISOString().slice(0, 10);
 
-  // Read current participant state
   const row = await db.getFirstAsync<SplitParticipantRow>(
     'SELECT * FROM split_participants WHERE id = ?',
     [opts.participantId]
   );
   if (!row) throw new Error(`Split participant ${opts.participantId} not found`);
-
-  const newPaid = Math.min(row.paid_amount + opts.amount, row.share_amount);
-  const newStatus: SplitStatus =
-    newPaid >= row.share_amount ? 'paid' :
-    newPaid > 0 ? 'partial' :
-    'pending';
+  if (row.status === 'paid') throw new Error(`Split participant ${opts.participantId} is already paid`);
 
   const incomeId = generateId();
   const now = new Date().toISOString();
 
   await db.withTransaction(async txn => {
-    // 1. Create the linked income transaction
+    // 1. Create the linked income transaction for the full share
     await txn.runAsync(
       `INSERT INTO transactions
          (id, type, amount, account_id, to_account_id, category_id,
@@ -204,7 +198,7 @@ export async function recordRepayment(
           created_at, split_expense_id)
        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
       [
-        incomeId, 'income', opts.amount, opts.accountId, null, null,
+        incomeId, 'income', row.share_amount, opts.accountId, null, null,
         opts.note ?? `Repayment from ${row.name}`,
         dateStr, new Date(dateStr).getTime(),
         monthKeyOf(dateStr), dayKeyOf(dateStr),
@@ -216,7 +210,7 @@ export async function recordRepayment(
     // 2. Update rollup for the income
     await applyRow(txn, {
       type: 'income',
-      amount: opts.amount,
+      amount: row.share_amount,
       accountId: opts.accountId,
       toAccountId: null,
       categoryId: null,
@@ -224,17 +218,12 @@ export async function recordRepayment(
       dayKey: dayKeyOf(dateStr),
     });
 
-    // 3. Update participant status
+    // 3. Flip the participant to paid
     await txn.runAsync(
       `UPDATE split_participants
-       SET paid_amount = ?, status = ?, settled_at = ?
+       SET paid_amount = ?, status = 'paid', settled_at = ?
        WHERE id = ?`,
-      [
-        newPaid,
-        newStatus,
-        newStatus === 'paid' ? now : null,
-        opts.participantId,
-      ]
+      [row.share_amount, now, opts.participantId]
     );
   });
 

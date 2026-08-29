@@ -10,7 +10,7 @@
  *   - Budgets (realistic monthly targets across key spending areas)
  *   - Quick Presets (1-tap widget & quick action presets)
  *   - Recurring Rules (active subscriptions, bills, salary with upcoming schedules)
- *   - Split Expenses & Repayments (shared bills with pending/partial/settled
+ *   - Split Expenses & Repayments (shared bills with pending/paid
  *     participants and linked repayment income transactions)
  *   - Transactions (payees, subcategories, contextual notes, recurring links)
  *
@@ -620,8 +620,8 @@ function buildSeedSplitExpenses(accounts: Account[], categories: Category[]): Sp
       transactionId: tripTxId,
       name: 'Priya',
       shareAmount: 3500,
-      paidAmount: 2000,
-      status: 'partial',
+      paidAmount: 0,
+      status: 'pending',
       createdAt: tripDate,
     },
     {
@@ -635,29 +635,17 @@ function buildSeedSplitExpenses(accounts: Account[], categories: Category[]): Sp
     }
   );
 
-  // Repayment income for Alex (full) & Priya (partial)
-  transactions.push(
-    {
-      id: 'seed-repay-1',
-      type: 'income',
-      amount: 3500,
-      accountId: primaryAccountId,
-      note: 'Repayment from Alex',
-      date: tripSettledDate,
-      createdAt: tripSettledDate,
-      splitExpenseId: tripTxId,
-    },
-    {
-      id: 'seed-repay-2',
-      type: 'income',
-      amount: 2000,
-      accountId: primaryAccountId,
-      note: 'Partial repayment from Priya',
-      date: new Date(now - 8 * dayMs).toISOString(),
-      createdAt: new Date(now - 8 * dayMs).toISOString(),
-      splitExpenseId: tripTxId,
-    }
-  );
+  // Repayment income for Alex's full share; Priya still owes hers.
+  transactions.push({
+    id: 'seed-repay-1',
+    type: 'income',
+    amount: 3500,
+    accountId: primaryAccountId,
+    note: 'Repayment from Alex',
+    date: tripSettledDate,
+    createdAt: tripSettledDate,
+    splitExpenseId: tripTxId,
+  });
 
   // 2. Dinner at Olive Garden (Total 4,800, 3 participants @ 1,600 each)
   const dinnerTxId = 'seed-split-tx-2';
@@ -776,22 +764,11 @@ function buildSeedSplitExpenses(accounts: Account[], categories: Category[]): Sp
       transactionId: concertTxId,
       name: 'Elena',
       shareAmount: 3000,
-      paidAmount: 1500,
-      status: 'partial',
+      paidAmount: 0,
+      status: 'pending',
       createdAt: concertDate,
     }
   );
-
-  transactions.push({
-    id: 'seed-repay-5',
-    type: 'income',
-    amount: 1500,
-    accountId: primaryAccountId,
-    note: 'Partial repayment from Elena',
-    date: concertDate,
-    createdAt: concertDate,
-    splitExpenseId: concertTxId,
-  });
 
   return { transactions, participants };
 }

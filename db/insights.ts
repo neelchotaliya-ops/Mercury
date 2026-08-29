@@ -628,7 +628,6 @@ export interface SplitInsights {
   totalOwed: number;
   totalSettled: number;
   pendingCount: number;
-  partialCount: number;
   unsettledSplits: Array<{
     transactionId: string;
     participants: import('@/types/finance').SplitParticipant[];

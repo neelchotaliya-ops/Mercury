@@ -692,7 +692,6 @@ export default function AddTransactionScreen() {
         totalAmount={numericAmount}
         currency={state.settings.currency ?? 'INR'}
         initialParticipants={splitConfig?.participants}
-        initialMethod={splitConfig?.method}
         onApply={res => setSplitConfig(res)}
       />
 

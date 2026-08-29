@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { View, StyleSheet, ScrollView, Pressable, TextInput, Alert, Modal } from 'react-native';
+import { View, StyleSheet, ScrollView, Pressable, Alert } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 
@@ -8,34 +8,24 @@ import { AppButton } from '@/components/ui/app-button';
 import { GradientScreen } from '@/components/ui/gradient-screen';
 import { GlassCard } from '@/components/ui/glass-card';
 import { ModalHeader } from '@/components/ui/modal-header';
-import { AccountPicker } from '@/components/finance/account-picker';
 import { useFinance } from '@/context/finance-context';
 import { SplitParticipant, Transaction } from '@/types/finance';
-import { formatCurrency, getCurrencySymbol } from '@/utils/currency';
+import { formatCurrency } from '@/utils/currency';
 import { haptics } from '@/utils/haptics';
 import { Colors, BorderRadius, Spacing } from '@/constants/theme';
-import { useKeyboardBottomInset } from '@/hooks/use-keyboard-bottom-inset';
 import { getDb } from '@/db/client';
 import { getTransactionById } from '@/db/transactions';
-import { listSplitParticipants, recordRepayment } from '@/db/splits';
+import { listSplitParticipants, markParticipantPaid } from '@/db/splits';
 
 export default function SplitDetailScreen() {
   const router = useRouter();
   const params = useLocalSearchParams<{ id: string }>();
   const { state } = useFinance();
-  const { keyboardHeight } = useKeyboardBottomInset();
 
   const [tx, setTx] = useState<Transaction | null>(null);
   const [participants, setParticipants] = useState<SplitParticipant[]>([]);
   const [loading, setLoading] = useState(true);
-
-  // Repayment modal state
-  const [settlingParticipant, setSettlingParticipant] = useState<SplitParticipant | null>(null);
-  const [repayAmount, setRepayAmount] = useState('');
-  const [receivingAccountId, setReceivingAccountId] = useState<string | undefined>(
-    state.accounts[0]?.id
-  );
-  const [repayNote, setRepayNote] = useState('');
+  const [payingId, setPayingId] = useState<string | null>(null);
 
   const loadData = useCallback(async () => {
     if (!params.id) return;
@@ -47,9 +37,6 @@ export default function SplitDetailScreen() {
       ]);
       setTx(fetchedTx);
       setParticipants(fetchedParticipants);
-      if (fetchedTx?.accountId) {
-        setReceivingAccountId(fetchedTx.accountId);
-      }
     } finally {
       setLoading(false);
     }
@@ -60,7 +47,6 @@ export default function SplitDetailScreen() {
   }, [loadData]);
 
   const currency = state.settings.currency ?? 'INR';
-  const currencySymbol = getCurrencySymbol(currency);
 
   const totalOwed = useMemo(
     () => participants.reduce((sum, p) => sum + p.shareAmount, 0),
@@ -73,90 +59,57 @@ export default function SplitDetailScreen() {
   const remainingOwed = totalOwed - totalPaid;
   const isFullySettled = totalOwed > 0 && remainingOwed <= 0;
 
-  const openRepaymentModal = (p: SplitParticipant) => {
-    const remaining = p.shareAmount - p.paidAmount;
-    setSettlingParticipant(p);
-    setRepayAmount(String(Math.max(0, remaining)));
-    setRepayNote(`Repayment from ${p.name}`);
-  };
+  // The receiving account defaults to the original expense's own account —
+  // one tap logs the repayment there, with no separate account/amount/note
+  // form to fill in first.
+  const receivingAccountId = tx?.accountId ?? state.accounts[0]?.id;
 
-  const performRepayment = async (participant: SplitParticipant, amount: number) => {
+  const markPaid = async (participant: SplitParticipant) => {
     if (!receivingAccountId) return;
+    setPayingId(participant.id);
     try {
       const db = await getDb();
-      await recordRepayment(db, {
+      await markParticipantPaid(db, {
         participantId: participant.id,
-        amount,
         accountId: receivingAccountId,
-        note: repayNote.trim() || undefined,
       });
-
       haptics.success();
-      setSettlingParticipant(null);
       await loadData();
     } catch {
-      Alert.alert('Error', 'Failed to record repayment.');
+      Alert.alert('Error', 'Failed to mark this participant as paid.');
+    } finally {
+      setPayingId(null);
     }
   };
 
-  const handleConfirmRepayment = async () => {
-    if (!settlingParticipant || !receivingAccountId) return;
-    const numericAmt = parseFloat(repayAmount || '0');
-    if (numericAmt <= 0) return;
-
-    const remaining = settlingParticipant.shareAmount - settlingParticipant.paidAmount;
-    if (numericAmt > remaining) {
-      // Overpayment is a legitimate real-world case (rounding, an app that
-      // doesn't support partial amounts) — warn rather than silently clamp,
-      // since the full amount still lands in the account balance even
-      // though the participant's tracked paid_amount caps at their share.
-      Alert.alert(
-        'Amount exceeds what’s owed',
-        `You're recording ${formatCurrency(numericAmt, currency)}, but only ${formatCurrency(remaining, currency)} is owed. The extra will still be added to your account balance, and this split will be marked fully paid.`,
-        [
-          { text: 'Cancel', style: 'cancel' },
-          {
-            text: 'Confirm',
-            onPress: () => performRepayment(settlingParticipant, numericAmt),
-          },
-        ]
-      );
-      return;
-    }
-
-    await performRepayment(settlingParticipant, numericAmt);
+  const confirmMarkPaid = (participant: SplitParticipant) => {
+    Alert.alert(
+      `Mark ${participant.name} as paid?`,
+      `Logs ${formatCurrency(participant.shareAmount, currency)} as income into your account.`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Mark as Paid', onPress: () => markPaid(participant) },
+      ]
+    );
   };
 
   const handleSettleAll = () => {
-    const pendingParticipants = participants.filter(p => p.status !== 'paid');
-    if (pendingParticipants.length === 0) return;
+    const pending = participants.filter(p => p.status !== 'paid');
+    if (pending.length === 0 || !receivingAccountId) return;
 
     Alert.alert(
       'Settle All Remaining',
-      `Mark all remaining ₹${remainingOwed.toLocaleString()} as paid?`,
+      `Mark all ${pending.length} remaining participant${pending.length === 1 ? '' : 's'} as paid (${formatCurrency(remainingOwed, currency)} total)?`,
       [
         { text: 'Cancel', style: 'cancel' },
         {
           text: 'Settle All',
-          style: 'default',
           onPress: async () => {
             try {
               const db = await getDb();
-              const accId = tx?.accountId ?? state.accounts[0]?.id;
-              if (!accId) return;
-
-              for (const p of pendingParticipants) {
-                const remaining = p.shareAmount - p.paidAmount;
-                if (remaining > 0) {
-                  await recordRepayment(db, {
-                    participantId: p.id,
-                    amount: remaining,
-                    accountId: accId,
-                    note: `Full settlement from ${p.name}`,
-                  });
-                }
+              for (const p of pending) {
+                await markParticipantPaid(db, { participantId: p.id, accountId: receivingAccountId, note: `Full settlement from ${p.name}` });
               }
-
               haptics.success();
               await loadData();
             } catch {
@@ -255,7 +208,6 @@ export default function SplitDetailScreen() {
           <View style={styles.participantsList}>
             {participants.map(p => {
               const isPaid = p.status === 'paid';
-              const remaining = Math.max(0, p.shareAmount - p.paidAmount);
 
               return (
                 <View key={p.id} style={styles.participantItem}>
@@ -272,16 +224,17 @@ export default function SplitDetailScreen() {
                     <AppText variant="caption" color={Colors.textSecondary}>
                       {isPaid
                         ? `Paid in full (${formatCurrency(p.shareAmount, currency)})`
-                        : `${formatCurrency(p.paidAmount, currency)} of ${formatCurrency(p.shareAmount, currency)} paid`}
+                        : `Owes ${formatCurrency(p.shareAmount, currency)}`}
                     </AppText>
                   </View>
 
                   {!isPaid ? (
                     <AppButton
-                      title={`Collect ${formatCurrency(remaining, currency)}`}
+                      title="Mark as Paid"
                       size="sm"
                       variant="glass"
-                      onPress={() => openRepaymentModal(p)}
+                      onPress={() => confirmMarkPaid(p)}
+                      disabled={payingId === p.id}
                     />
                   ) : (
                     <View style={styles.paidBadge}>
@@ -297,82 +250,6 @@ export default function SplitDetailScreen() {
           </View>
         </GlassCard>
       </ScrollView>
-
-      {/* Record Repayment Modal */}
-      {settlingParticipant && (
-        <Modal
-          visible={!!settlingParticipant}
-          transparent
-          animationType="fade"
-          onRequestClose={() => setSettlingParticipant(null)}
-        >
-          <View style={[styles.modalOverlay, { paddingBottom: keyboardHeight > 0 ? keyboardHeight : 0 }]}>
-            <View style={styles.modalCard}>
-              <View style={styles.modalHeader}>
-                <AppText variant="h3">
-                  Record Payment from {settlingParticipant.name}
-                </AppText>
-                <Pressable onPress={() => setSettlingParticipant(null)} hitSlop={8}>
-                  <Ionicons name="close" size={22} color={Colors.textSecondary} />
-                </Pressable>
-              </View>
-
-              <View style={styles.field}>
-                <AppText variant="label">Repayment Amount</AppText>
-                <View style={styles.amountInputRow}>
-                  <AppText variant="h2" color={Colors.income}>{currencySymbol}</AppText>
-                  <TextInput
-                    value={repayAmount}
-                    onChangeText={setRepayAmount}
-                    placeholder="0.00"
-                    placeholderTextColor={Colors.textMuted}
-                    keyboardType="decimal-pad"
-                    autoFocus
-                    style={styles.amountInput}
-                  />
-                </View>
-              </View>
-
-              <View style={styles.field}>
-                <AppText variant="label">Deposit To Account</AppText>
-                <AccountPicker
-                  accounts={state.accounts}
-                  selectedId={receivingAccountId}
-                  onSelect={a => setReceivingAccountId(a.id)}
-                />
-              </View>
-
-              <View style={styles.field}>
-                <AppText variant="label">Note (Optional)</AppText>
-                <TextInput
-                  value={repayNote}
-                  onChangeText={setRepayNote}
-                  placeholder="e.g. UPI transfer"
-                  placeholderTextColor={Colors.textMuted}
-                  style={styles.input}
-                />
-              </View>
-
-              <View style={styles.modalActions}>
-                <AppButton
-                  title="Cancel"
-                  variant="glass"
-                  size="md"
-                  onPress={() => setSettlingParticipant(null)}
-                  style={{ flex: 1 }}
-                />
-                <AppButton
-                  title="Confirm Payment"
-                  size="md"
-                  onPress={handleConfirmRepayment}
-                  disabled={!parseFloat(repayAmount) || !receivingAccountId}
-                  style={{ flex: 1 }}
-                />
-              </View>
-            </View>
-          </View>
-        </Modal>
-      )}
     </GradientScreen>
   );
 }
@@ -444,63 +321,5 @@ const styles = StyleSheet.create({
     paddingVertical: 5,
     borderRadius: BorderRadius.pill,
     backgroundColor: Colors.incomeSoft,
-  },
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
-    alignItems: 'center',
-    justifyContent: 'center',
-    padding: 20,
-  },
-  modalCard: {
-    width: '100%',
-    maxWidth: 420,
-    backgroundColor: Colors.surfaceOpaque,
-    borderRadius: BorderRadius.lg,
-    padding: 20,
-    gap: Spacing.md,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 10 },
-    shadowOpacity: 0.15,
-    shadowRadius: 20,
-    elevation: 15,
-  },
-  modalHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
-  field: {
-    gap: 8,
-  },
-  amountInputRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 16,
-    paddingVertical: 10,
-    borderRadius: BorderRadius.sm,
-    backgroundColor: 'rgba(25, 21, 39, 0.04)',
-    gap: 8,
-  },
-  amountInput: {
-    flex: 1,
-    fontSize: 22,
-    fontFamily: 'Sora_700Bold',
-    color: Colors.textPrimary,
-    padding: 0,
-  },
-  input: {
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    borderRadius: BorderRadius.sm,
-    backgroundColor: 'rgba(25, 21, 39, 0.04)',
-    fontSize: 14,
-    fontFamily: 'Manrope_500Medium',
-    color: Colors.textPrimary,
-  },
-  modalActions: {
-    flexDirection: 'row',
-    gap: 10,
-    marginTop: 8,
   },
 });

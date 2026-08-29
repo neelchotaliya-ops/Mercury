@@ -33,7 +33,7 @@ import { openTestDb } from './support/node-db';
 import { insertSubcategory, listSubcategories, updateSubcategory, deleteSubcategory } from '../db/subcategories';
 import { insertRecurringRule, listRecurringRules, processDueRules } from '../db/recurring';
 import { insertTransaction } from '../db/transactions';
-import { insertSplitParticipantsBatch, listSplitParticipants, recordRepayment, getSplitSummary } from '../db/splits';
+import { insertSplitParticipantsBatch, listSplitParticipants, markParticipantPaid, getSplitSummary } from '../db/splits';
 import { applyBankImport } from '../db/bank-import';
 import { ParsedBankTransaction } from '../utils/bank-statement';
 import { insertBudget, insertPreset, getAccountDeletionImpact, deleteAccount } from '../db/entities';
@@ -528,7 +528,7 @@ async function run() {
     assert.equal(updatedRule?.next_due, '2026-07-01');
   });
 
-  await test('Split participant settlement and linked repayment income', async () => {
+  await test('markParticipantPaid: logs full share as linked income, updates rollup, and rejects double-marking', async () => {
     const db = await createInMemoryDb();
 
     // Prerequisite account
@@ -560,12 +560,11 @@ async function run() {
     assert.equal(summary.totalSettled, 0);
     assert.equal(summary.pendingCount, 2);
 
-    // 4. Record Alice's full repayment
-    const aliceIncomeId = await recordRepayment(db, {
+    // 4. Mark Alice as paid — no amount is passed in; the full share_amount
+    // is always what gets logged.
+    const aliceIncomeId = await markParticipantPaid(db, {
       participantId: participants[0].id,
-      amount: 1000,
       accountId: 'acc_main',
-      note: 'Repayment from Alice',
     });
     assert.ok(aliceIncomeId);
 
@@ -589,6 +588,20 @@ async function run() {
     assert.equal(repaymentTx.type, 'income');
     assert.equal(repaymentTx.amount, 1000);
     assert.equal(repaymentTx.split_expense_id, 'tx_dinner');
+
+    // 7. The rollup/account_balance side must reflect the repayment income too.
+    const balance = await db.getFirstAsync<{ delta: number }>(
+      'SELECT delta FROM account_balance WHERE account_id = ?',
+      ['acc_main']
+    );
+    // -3000 (dinner expense) + 1000 (Alice's repayment income), in minor units.
+    assert.equal(balance?.delta, -2000 * 100);
+
+    // 8. Marking an already-paid participant again must throw rather than
+    // silently double-log the income — the guard against a duplicate tap.
+    await assert.rejects(() =>
+      markParticipantPaid(db, { participantId: participants[0].id, accountId: 'acc_main' })
+    );
   });
 
   await test('Bank import correctly maintains rollup/account_balance/ledger_stat', async () => {

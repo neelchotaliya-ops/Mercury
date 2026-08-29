@@ -277,6 +277,22 @@ const MIGRATIONS: string[] = [
   CREATE INDEX idx_split_status ON split_participants(transaction_id, status);
   CREATE INDEX idx_tx_split_ref ON transactions(split_expense_id) WHERE split_expense_id IS NOT NULL;
   `,
+
+  // v6 — split settles as a single paid/not-paid toggle, not partial payments
+  //
+  // Split moved from tracking a running paid_amount against a
+  // pending/partial/paid tri-state to one action: a participant either owes
+  // their full share or has paid it. Existing 'partial' rows are folded into
+  // 'paid' (if enough was already recorded as paid) or back to 'pending'
+  // otherwise. The CHECK constraint on `status` still technically allows
+  // 'partial' — SQLite can't narrow a CHECK without rebuilding the table —
+  // but no code path writes it anymore.
+  `
+  UPDATE split_participants
+  SET status = CASE WHEN paid_amount >= share_amount THEN 'paid' ELSE 'pending' END,
+      paid_amount = CASE WHEN paid_amount >= share_amount THEN share_amount ELSE 0 END
+  WHERE status = 'partial';
+  `,
 ];
 
 export const LATEST_SCHEMA_VERSION = MIGRATIONS.length;

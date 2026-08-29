@@ -116,7 +116,11 @@ export interface RecurringRule {
 
 // ---- Shared / Split Expenses ------------------------------------------------
 
-export type SplitStatus = 'pending' | 'partial' | 'paid';
+// A participant either owes their full share or has paid it — no
+// partial-payment tracking. ('partial' still exists at the SQL CHECK-constraint
+// level for rows predating this — see db/schema.ts's v6 migration — but the
+// app never writes or reasons about it, so it's not part of this type.)
+export type SplitStatus = 'pending' | 'paid';
 
 export interface SplitParticipant {
   id: string;

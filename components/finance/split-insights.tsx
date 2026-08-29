@@ -28,7 +28,7 @@ export function SplitSummaryCard({ insights }: SplitInsightsViewProps) {
   const currency = state.settings.currency ?? 'INR';
   const outstandingTotal = (insights?.totalOwed ?? 0) - (insights?.totalSettled ?? 0);
   const hasData = !!insights && (insights.totalOwed > 0 || insights.unsettledSplits.length > 0);
-  const pendingCount = (insights?.pendingCount ?? 0) + (insights?.partialCount ?? 0);
+  const pendingCount = insights?.pendingCount ?? 0;
 
   const goToManage = () => {
     haptics.press();
@@ -126,7 +126,7 @@ export function SplitInsightsView({ insights }: SplitInsightsViewProps) {
             <View style={styles.pendingBadge}>
               <Ionicons name="time" size={14} color={Colors.expense} />
               <AppText variant="captionStrong" color={Colors.expense} style={{ marginLeft: 4 }}>
-                {insights.pendingCount + insights.partialCount} pending
+                {insights.pendingCount} pending
               </AppText>
             </View>
           </View>
