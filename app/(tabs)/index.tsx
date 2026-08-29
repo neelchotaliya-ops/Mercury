@@ -20,9 +20,11 @@ import { OrganicHero, HeroBadge, BadgeSlot } from '@/components/ui/organic-hero'
 import { StatCard } from '@/components/finance/stat-card';
 import { TransactionListItem } from '@/components/finance/transaction-list-item';
 import { EmptyState } from '@/components/finance/empty-state';
+import { HomeSkeleton } from '@/components/finance/home-skeleton';
 import { useFinance } from '@/context/finance-context';
 import { useAccountBalances } from '@/hooks/use-account-balances';
 import { useMonthSummary, useRecentTransactions } from '@/hooks/use-home-data';
+import { useScreenReady } from '@/hooks/use-screen-ready';
 import { formatCurrency } from '@/utils/currency';
 import { toMonthKey } from '@/utils/date';
 import { ACCOUNT_TYPE_META } from '@/constants/categories';
@@ -163,6 +165,8 @@ export default function HomeScreen() {
     return [totalBadge, ...remainingBadges];
   }, [accounts, selectedAccountId, balanceMap, currencyTotal, activeCurrency, numberFormat]);
 
+  const isReady = useScreenReady(40);
+
   const scrollY = useSharedValue(0);
   const scrollHandler = useAnimatedScrollHandler({
     onScroll: event => {
@@ -233,126 +237,132 @@ export default function HomeScreen() {
         contentContainerStyle={[styles.content, { paddingTop: insets.top + 68 }]}
         showsVerticalScrollIndicator={false}
       >
-        <Animated.View style={heroFadeStyle}>
-          <OrganicHero
-            label={heroLabel}
-            value={heroValue}
-            sub={heroSub}
-            currency={heroCurrency}
-            numberFormat={numberFormat}
-            badges={orbitBadges}
-            onPressMain={() => setSelectedAccountId(null)}
-          />
-
-          {selectedAccount ? (
-            <Pressable onPress={() => setSelectedAccountId(null)} style={styles.filterChip}>
-              <Ionicons name="filter" size={13} color={Colors.primary} />
-              <AppText variant="micro" color={Colors.primary} style={styles.filterText}>
-                Filtered by {selectedAccount.name}
-              </AppText>
-              <Ionicons name="close-circle" size={14} color={Colors.primary} />
-            </Pressable>
-          ) : null}
-        </Animated.View>
-
-        <View style={styles.statsRow}>
-          <StatCard
-            label="Income"
-            value={formatCurrency(income, currency, numberFormat)}
-            icon="arrow-down"
-            tint={Colors.income}
-            animateIndex={0}
-          />
-          <StatCard
-            label="Spent"
-            value={formatCurrency(expense, currency, numberFormat)}
-            icon="arrow-up"
-            tint={Colors.expense}
-            animateIndex={1}
-          />
-        </View>
-
-        <View style={styles.section}>
-          <View style={styles.sectionHeader}>
-            <AppText variant="label">Accounts</AppText>
-            <Pressable onPress={() => router.push('/accounts')} hitSlop={8}>
-              <AppText variant="link">Manage</AppText>
-            </Pressable>
-          </View>
-
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.accountRow}>
-            {accounts.map((account, index) => (
-              <Pressable key={account.id} onPress={() => router.push('/accounts')}>
-                <GlassCard style={styles.accountChip} padding={16} radius={BorderRadius.md} animateIndex={index}>
-                  <View style={styles.accountChipHeader}>
-                    <View style={[styles.accountBadge, { backgroundColor: `${account.color}22` }]}>
-                      <Ionicons name={account.icon as any} size={14} color={account.color} />
-                    </View>
-                    <AppText variant="micro" numberOfLines={1} style={styles.accountName}>
-                      {account.name}
-                    </AppText>
-                  </View>
-                  <AppText
-                    variant="h3"
-                    numberOfLines={1}
-                    adjustsFontSizeToFit
-                    color={(balanceMap.get(account.id) ?? 0) < 0 ? Colors.expense : Colors.textPrimary}
-                    style={styles.accountValue}
-                  >
-                    {formatCurrency(balanceMap.get(account.id) ?? 0, account.currency ?? currency, numberFormat)}
-                  </AppText>
-                </GlassCard>
-              </Pressable>
-            ))}
-
-            <Pressable
-              onPress={() => router.push('/add-account')}
-              style={({ pressed }) => [{ opacity: pressed ? 0.75 : 1 }]}
-            >
-              <GlassCard style={styles.addAccountChip} padding={16} radius={BorderRadius.md}>
-                <Ionicons name="add" size={22} color={Colors.textSecondary} />
-                <AppText variant="micro" color={Colors.textSecondary}>
-                  Add
-                </AppText>
-              </GlassCard>
-            </Pressable>
-          </ScrollView>
-        </View>
-
-        <View style={styles.section}>
-          <View style={styles.sectionHeader}>
-            <AppText variant="label">Recent activity</AppText>
-            <Pressable onPress={() => router.push('/(tabs)/transactions')} hitSlop={8}>
-              <AppText variant="link">See all</AppText>
-            </Pressable>
-          </View>
-
-          {recent.length === 0 ? (
-            <GlassCard>
-              <EmptyState
-                icon="receipt-outline"
-                title="Nothing here yet"
-                subtitle="Tap the + button below to log your first transaction."
+        {!isReady ? (
+          <HomeSkeleton />
+        ) : (
+          <>
+            <Animated.View style={heroFadeStyle}>
+              <OrganicHero
+                label={heroLabel}
+                value={heroValue}
+                sub={heroSub}
+                currency={heroCurrency}
+                numberFormat={numberFormat}
+                badges={orbitBadges}
+                onPressMain={() => setSelectedAccountId(null)}
               />
-            </GlassCard>
-          ) : (
-            <GlassCard style={styles.listCard} padding={18}>
-              {recent.map((t, index) => (
-                <TransactionListItem
-                  key={t.id}
-                  transaction={t}
-                  category={categoryById.get(t.categoryId ?? '')}
-                  account={accountById.get(t.accountId)}
-                  toAccount={t.toAccountId ? accountById.get(t.toAccountId) : undefined}
-                  currency={accountById.get(t.accountId)?.currency ?? currency}
-                  numberFormat={numberFormat}
-                  showDivider={index < recent.length - 1}
-                  onPress={() => router.push(`/add-transaction?id=${t.id}`)}
-                />
-              ))}
-            </GlassCard>
-          )}
-        </View>
+
+              {selectedAccount ? (
+                <Pressable onPress={() => setSelectedAccountId(null)} style={styles.filterChip}>
+                  <Ionicons name="filter" size={13} color={Colors.primary} />
+                  <AppText variant="micro" color={Colors.primary} style={styles.filterText}>
+                    Filtered by {selectedAccount.name}
+                  </AppText>
+                  <Ionicons name="close-circle" size={14} color={Colors.primary} />
+                </Pressable>
+              ) : null}
+            </Animated.View>
+
+            <View style={styles.statsRow}>
+              <StatCard
+                label="Income"
+                value={formatCurrency(income, currency, numberFormat)}
+                icon="arrow-down"
+                tint={Colors.income}
+                animateIndex={0}
+              />
+              <StatCard
+                label="Spent"
+                value={formatCurrency(expense, currency, numberFormat)}
+                icon="arrow-up"
+                tint={Colors.expense}
+                animateIndex={1}
+              />
+            </View>
+
+            <View style={styles.section}>
+              <View style={styles.sectionHeader}>
+                <AppText variant="label">Accounts</AppText>
+                <Pressable onPress={() => router.push('/accounts')} hitSlop={8}>
+                  <AppText variant="link">Manage</AppText>
+                </Pressable>
+              </View>
+
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.accountRow}>
+                {accounts.map((account, index) => (
+                  <Pressable key={account.id} onPress={() => router.push('/accounts')}>
+                    <GlassCard style={styles.accountChip} padding={16} radius={BorderRadius.md} animateIndex={index}>
+                      <View style={styles.accountChipHeader}>
+                        <View style={[styles.accountBadge, { backgroundColor: `${account.color}22` }]}>
+                          <Ionicons name={account.icon as any} size={14} color={account.color} />
+                        </View>
+                        <AppText variant="micro" numberOfLines={1} style={styles.accountName}>
+                          {account.name}
+                        </AppText>
+                      </View>
+                      <AppText
+                        variant="h3"
+                        numberOfLines={1}
+                        adjustsFontSizeToFit
+                        color={(balanceMap.get(account.id) ?? 0) < 0 ? Colors.expense : Colors.textPrimary}
+                        style={styles.accountValue}
+                      >
+                        {formatCurrency(balanceMap.get(account.id) ?? 0, account.currency ?? currency, numberFormat)}
+                      </AppText>
+                    </GlassCard>
+                  </Pressable>
+                ))}
+
+                <Pressable
+                  onPress={() => router.push('/add-account')}
+                  style={({ pressed }) => [{ opacity: pressed ? 0.75 : 1 }]}
+                >
+                  <GlassCard style={styles.addAccountChip} padding={16} radius={BorderRadius.md}>
+                    <Ionicons name="add" size={22} color={Colors.textSecondary} />
+                    <AppText variant="micro" color={Colors.textSecondary}>
+                      Add
+                    </AppText>
+                  </GlassCard>
+                </Pressable>
+              </ScrollView>
+            </View>
+
+            <View style={styles.section}>
+              <View style={styles.sectionHeader}>
+                <AppText variant="label">Recent activity</AppText>
+                <Pressable onPress={() => router.push('/(tabs)/transactions')} hitSlop={8}>
+                  <AppText variant="link">See all</AppText>
+                </Pressable>
+              </View>
+
+              {recent.length === 0 ? (
+                <GlassCard>
+                  <EmptyState
+                    icon="receipt-outline"
+                    title="Nothing here yet"
+                    subtitle="Tap the + button below to log your first transaction."
+                  />
+                </GlassCard>
+              ) : (
+                <GlassCard style={styles.listCard} padding={18}>
+                  {recent.map((t, index) => (
+                    <TransactionListItem
+                      key={t.id}
+                      transaction={t}
+                      category={categoryById.get(t.categoryId ?? '')}
+                      account={accountById.get(t.accountId)}
+                      toAccount={t.toAccountId ? accountById.get(t.toAccountId) : undefined}
+                      currency={accountById.get(t.accountId)?.currency ?? currency}
+                      numberFormat={numberFormat}
+                      showDivider={index < recent.length - 1}
+                      onPress={() => router.push(`/add-transaction?id=${t.id}`)}
+                    />
+                  ))}
+                </GlassCard>
+              )}
+            </View>
+          </>
+        )}
       </Animated.ScrollView>
     </GradientScreen>
   );
