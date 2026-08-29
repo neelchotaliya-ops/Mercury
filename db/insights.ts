@@ -1,4 +1,4 @@
-import { Category } from '@/types/finance';
+import { Category, Subcategory } from '@/types/finance';
 
 import { Db } from './types';
 import { Grain, fromMinor } from './rollup-math';
@@ -258,6 +258,72 @@ export async function computeCategoryBreakdown(
     if (!category) continue;
     slices.push({ category, amount: bucket.amount, count: bucket.count, share: grand > 0 ? bucket.amount / grand : 0 });
   }
+
+  return slices.sort((a, b) => b.amount - a.amount);
+}
+
+// ---- subcategory breakdown ----
+
+export interface SubcategorySlice {
+  /** Null represents the "No subcategory" bucket — transactions in this
+   * category that were never tagged with one. */
+  subcategory: Subcategory | null;
+  amount: number;
+  share: number;
+  count: number;
+}
+
+/**
+ * Breaks a single, already-selected category down by subcategory.
+ *
+ * Unlike `computeCategoryBreakdown`, this can't read from `rollup` —
+ * `subcategory_id` is deliberately not part of the rollup's key (see the v3
+ * migration comment in db/schema.ts). So this does a bounded raw scan over
+ * `transactions` instead, scoped to one `category_id` and the resolved date
+ * range — the "subcategory/payee filtering uses bounded raw scans" contract
+ * that comment documents. It only ever runs for one category a user has
+ * already drilled into, never the whole ledger, so the scan stays cheap
+ * regardless of how many transactions or categories exist overall.
+ */
+export async function computeSubcategoryBreakdown(
+  db: Db,
+  filter: InsightFilter,
+  categoryId: string,
+  subcategories: Subcategory[],
+  now = new Date()
+): Promise<SubcategorySlice[]> {
+  const range = resolveRange(filter.range, now);
+  const clauses = ['type = ?', 'category_id = ?', 'date_ms BETWEEN ? AND ?'];
+  const params: (string | number)[] = [filter.kind, categoryId, range.start.getTime(), range.end.getTime()];
+  if (filter.accountIds.length > 0) {
+    clauses.push(`account_id IN (${filter.accountIds.map(() => '?').join(',')})`);
+    params.push(...filter.accountIds);
+  }
+
+  // transactions.amount is stored in major units already (unlike rollup's
+  // minor-unit columns), so no fromMinor conversion is needed here.
+  const rows = await db.getAllAsync<{ subcategory_id: string | null; amount: number; n: number }>(
+    `SELECT subcategory_id, SUM(amount) AS amount, COUNT(*) AS n
+     FROM transactions WHERE ${clauses.join(' AND ')}
+     GROUP BY subcategory_id`,
+    params
+  );
+
+  const byId = new Map(
+    subcategories.filter(s => s.categoryId === categoryId).map(s => [s.id, s])
+  );
+
+  let grand = 0;
+  const slices: SubcategorySlice[] = rows.map(row => {
+    grand += row.amount;
+    return {
+      subcategory: row.subcategory_id ? byId.get(row.subcategory_id) ?? null : null,
+      amount: row.amount,
+      count: row.n,
+      share: 0,
+    };
+  });
+  for (const slice of slices) slice.share = grand > 0 ? slice.amount / grand : 0;
 
   return slices.sort((a, b) => b.amount - a.amount);
 }

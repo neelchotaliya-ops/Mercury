@@ -36,6 +36,7 @@ import { insertSplitParticipantsBatch, listSplitParticipants, recordRepayment, g
 import { applyBankImport } from '../db/bank-import';
 import { ParsedBankTransaction } from '../utils/bank-statement';
 import { insertBudget, insertPreset, getAccountDeletionImpact, deleteAccount } from '../db/entities';
+import { computeSubcategoryBreakdown, DEFAULT_INSIGHT_FILTER } from '../db/insights';
 
 async function createInMemoryDb(): Promise<Db> {
   const db = openTestDb();
@@ -260,6 +261,57 @@ async function run() {
     await deleteSubcategory(db, sub.id);
     const afterDelete = await listSubcategories(db);
     assert.equal(afterDelete.length, 0);
+  });
+
+  await test('computeSubcategoryBreakdown groups by subcategory with a "no subcategory" bucket', async () => {
+    const db = await createInMemoryDb();
+
+    await db.runAsync(
+      `INSERT INTO categories (id, name, icon, color, kind, is_default, sort_order)
+       VALUES ('cat_sub', 'Subscriptions', 'tv', '#8B5CF6', 'expense', 1, 0)`
+    );
+    await db.runAsync(
+      `INSERT INTO categories (id, name, icon, color, kind, is_default, sort_order)
+       VALUES ('cat_other', 'Other', 'ellipsis-horizontal', '#999999', 'expense', 1, 1)`
+    );
+    await db.runAsync(
+      `INSERT INTO accounts (id, name, type, icon, color, initial_balance, created_at, archived, sort_order)
+       VALUES ('acc_sub', 'Bank', 'bank', 'card', '#3B82F6', 10000, '2026-08-01', 0, 0)`
+    );
+
+    const mobile: Subcategory = { id: 'sub_mobile', categoryId: 'cat_sub', name: 'Mobile', icon: 'call-outline' as any, color: '#3B82F6' };
+    const tv: Subcategory = { id: 'sub_tv', categoryId: 'cat_sub', name: 'TV', icon: 'tv-outline' as any, color: '#EF4444' };
+    await insertSubcategory(db, mobile, 0);
+    await insertSubcategory(db, tv, 1);
+
+    // Two mobile recharges, one TV subscription, one untagged Subscriptions
+    // spend, and one transaction in a different category entirely — the
+    // breakdown must scope to cat_sub only and bucket the untagged one under
+    // "no subcategory" rather than dropping it.
+    await insertTransaction(db, { id: 'tx1', type: 'expense', amount: 300, accountId: 'acc_sub', categoryId: 'cat_sub', subcategoryId: 'sub_mobile', date: '2026-08-05' });
+    await insertTransaction(db, { id: 'tx2', type: 'expense', amount: 250, accountId: 'acc_sub', categoryId: 'cat_sub', subcategoryId: 'sub_mobile', date: '2026-08-12' });
+    await insertTransaction(db, { id: 'tx3', type: 'expense', amount: 500, accountId: 'acc_sub', categoryId: 'cat_sub', subcategoryId: 'sub_tv', date: '2026-08-10' });
+    await insertTransaction(db, { id: 'tx4', type: 'expense', amount: 150, accountId: 'acc_sub', categoryId: 'cat_sub', date: '2026-08-15' });
+    await insertTransaction(db, { id: 'tx5', type: 'expense', amount: 9999, accountId: 'acc_sub', categoryId: 'cat_other', date: '2026-08-15' });
+
+    const slices = await computeSubcategoryBreakdown(
+      db,
+      { ...DEFAULT_INSIGHT_FILTER, range: 'all' },
+      'cat_sub',
+      [mobile, tv]
+    );
+
+    assert.equal(slices.length, 3);
+    const bySubName = new Map(slices.map(s => [s.subcategory?.name ?? 'none', s]));
+    assert.equal(bySubName.get('Mobile')?.amount, 550);
+    assert.equal(bySubName.get('Mobile')?.count, 2);
+    assert.equal(bySubName.get('TV')?.amount, 500);
+    assert.equal(bySubName.get('none')?.amount, 150);
+
+    const total = 550 + 500 + 150;
+    assert.ok(Math.abs((bySubName.get('Mobile')?.share ?? 0) - 550 / total) < 1e-9);
+    // Sorted descending by amount.
+    assert.equal(slices[0].subcategory?.name, 'Mobile');
   });
 
   await test('Recurring rule execution writes transaction and advances next_due', async () => {

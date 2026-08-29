@@ -15,7 +15,16 @@ import { CalendarHeatmap } from '@/components/charts/calendar-heatmap';
 import { ReportsSkeleton } from '@/components/finance/reports-skeleton';
 import { useScreenReady } from '@/hooks/use-screen-ready';
 import { useFinance } from '@/context/finance-context';
-import { DEFAULT_INSIGHT_FILTER, InsightFilter, RecurringInsights, SplitInsights, getRecurringInsights, getSplitInsights } from '@/db/insights';
+import {
+  DEFAULT_INSIGHT_FILTER,
+  InsightFilter,
+  RecurringInsights,
+  SplitInsights,
+  SubcategorySlice,
+  getRecurringInsights,
+  getSplitInsights,
+  computeSubcategoryBreakdown,
+} from '@/db/insights';
 import { useInsightsData } from '@/hooks/use-insights-data';
 import { useDbQuery } from '@/hooks/use-db-query';
 import { formatCurrency, getCurrencySymbol } from '@/utils/currency';
@@ -23,6 +32,8 @@ import { monthKeyLabel } from '@/utils/date';
 import { Colors, BorderRadius, Spacing } from '@/constants/theme';
 import { RecurringSummaryCard } from '@/components/finance/recurring-insights';
 import { SplitSummaryCard } from '@/components/finance/split-insights';
+import { ProgressBar } from '@/components/finance/progress-bar';
+import { IconBadge } from '@/components/finance/icon-badge';
 
 type Kind = 'expense' | 'income';
 
@@ -77,6 +88,19 @@ export default function ReportsScreen() {
 
   const { totals, breakdown, series, heatmap: heatmapWeeks, weekdays, topNotes, comparison, loading } =
     useInsightsData(effectiveFilter, state.categories);
+
+  // Drills one level below the category donut — only queried once a slice is
+  // actually selected, since it can't use the rollup fast path (see
+  // computeSubcategoryBreakdown's own comment on why).
+  const { data: subcategoryBreakdown } = useDbQuery<SubcategorySlice[]>(
+    `${JSON.stringify(effectiveFilter)}|${selectedCategory ?? ''}`,
+    db =>
+      selectedCategory
+        ? computeSubcategoryBreakdown(db, effectiveFilter, selectedCategory, state.subcategories ?? [])
+        : Promise.resolve([]),
+    []
+  );
+  const selectedCategoryObj = state.categories.find(c => c.id === selectedCategory);
 
   const contentOpacity = useSharedValue(1);
   useEffect(() => {
@@ -276,6 +300,50 @@ export default function ReportsScreen() {
               </GlassCard>
             </View>
 
+            {selectedCategoryObj && (
+              <View style={styles.section}>
+                <AppText variant="label" style={styles.sectionLabel}>
+                  {selectedCategoryObj.name} breakdown
+                </AppText>
+                <GlassCard style={styles.chartCard} animateIndex={2}>
+                  {subcategoryBreakdown.length === 0 ? (
+                    <EmptyState
+                      icon="pricetags-outline"
+                      title="No subcategories here"
+                      subtitle={`Add subcategories to ${selectedCategoryObj.name} from Manage Categories to see a breakdown.`}
+                    />
+                  ) : (
+                    <View style={styles.subcatList}>
+                      {subcategoryBreakdown.map(slice => (
+                        <View key={slice.subcategory?.id ?? '__none__'} style={styles.subcatRow}>
+                          <IconBadge
+                            icon={slice.subcategory?.icon ?? 'ellipsis-horizontal'}
+                            color={slice.subcategory?.color ?? Colors.textMuted}
+                            size={32}
+                          />
+                          <View style={styles.subcatRowBody}>
+                            <View style={styles.subcatRowHeader}>
+                              <AppText variant="bodyStrong" numberOfLines={1} style={{ flex: 1 }}>
+                                {slice.subcategory?.name ?? 'No subcategory'}
+                              </AppText>
+                              <AppText variant="bodyStrong">
+                                {formatCurrency(slice.amount, activeCurrency, numberFormat)}
+                              </AppText>
+                            </View>
+                            <ProgressBar
+                              progress={slice.share}
+                              height={6}
+                              color={slice.subcategory?.color ?? Colors.textMuted}
+                            />
+                          </View>
+                        </View>
+                      ))}
+                    </View>
+                  )}
+                </GlassCard>
+              </View>
+            )}
+
             <View style={styles.section}>
               <AppText variant="label" style={styles.sectionLabel}>
                 Daily activity
@@ -419,6 +487,23 @@ const styles = StyleSheet.create({
   selection: {
     alignItems: 'center',
     gap: 1,
+  },
+  subcatList: {
+    gap: 16,
+  },
+  subcatRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  subcatRowBody: {
+    flex: 1,
+    gap: 6,
+  },
+  subcatRowHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
   },
   noteRow: {
     flexDirection: 'row',
