@@ -308,7 +308,7 @@ export default function BankImportScreen() {
             <View style={styles.iconCircle}>
               <Ionicons name="document-text-outline" size={38} color={Colors.primary} />
             </View>
-            <AppText variant="h2" style={{ fontSize: 20, fontWeight: '700', textAlign: 'center', marginTop: 12 }}>
+            <AppText variant="h3" style={{ textAlign: 'center', marginTop: 12 }}>
               Import Bank Statement (CSV)
             </AppText>
             <AppText variant="body" color={Colors.textSecondary} style={{ textAlign: 'center', marginTop: 6, lineHeight: 22 }}>
@@ -433,7 +433,7 @@ export default function BankImportScreen() {
                     onPress={() => setAmountLayoutType('split')}
                     style={[styles.toggleBtn, amountLayoutType === 'split' && styles.toggleBtnActive]}
                   >
-                    <AppText variant="caption" color={amountLayoutType === 'split' ? '#FFFFFF' : Colors.textPrimary} style={{ fontWeight: '600' }}>
+                    <AppText variant="captionStrong" color={amountLayoutType === 'split' ? '#FFFFFF' : Colors.textPrimary}>
                       Separate Debit & Credit
                     </AppText>
                   </Pressable>
@@ -441,7 +441,7 @@ export default function BankImportScreen() {
                     onPress={() => setAmountLayoutType('signed')}
                     style={[styles.toggleBtn, amountLayoutType === 'signed' && styles.toggleBtnActive]}
                   >
-                    <AppText variant="caption" color={amountLayoutType === 'signed' ? '#FFFFFF' : Colors.textPrimary} style={{ fontWeight: '600' }}>
+                    <AppText variant="captionStrong" color={amountLayoutType === 'signed' ? '#FFFFFF' : Colors.textPrimary}>
                       Single Amount Column
                     </AppText>
                   </Pressable>
@@ -521,14 +521,14 @@ export default function BankImportScreen() {
               <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
                 <View>
                   <AppText variant="caption" color={Colors.textSecondary}>Ready to import</AppText>
-                  <AppText variant="h2" style={{ fontSize: 22, fontWeight: '700', color: Colors.textPrimary }}>
+                  <AppText variant="h1" color={Colors.textPrimary}>
                     {selectedCount} of {parsedRows.length} transactions
                   </AppText>
                 </View>
                 {duplicates.size > 0 && (
                   <View style={styles.dupBadge}>
                     <Ionicons name="alert-circle" size={14} color={Colors.expense} />
-                    <AppText variant="caption" color={Colors.expense} style={{ fontWeight: '700', marginLeft: 4 }}>
+                    <AppText variant="captionStrong" color={Colors.expense} style={{ marginLeft: 4 }}>
                       {duplicates.size} duplicates flagged
                     </AppText>
                   </View>
@@ -570,7 +570,7 @@ export default function BankImportScreen() {
                           </AppText>
                           {isDup && (
                             <View style={styles.inlineDupTag}>
-                              <AppText variant="caption" color={Colors.expense} style={{ fontSize: 10, fontWeight: '700' }}>
+                              <AppText variant="captionStrong" color={Colors.expense} style={{ fontSize: 10 }}>
                                 Duplicate
                               </AppText>
                             </View>
@@ -604,7 +604,7 @@ export default function BankImportScreen() {
         {step === 'importing' && (
           <GlassCard padding={24} style={styles.importingCard}>
             <ActivityIndicator size="large" color={Colors.primary} />
-            <AppText variant="h2" style={{ fontSize: 20, fontWeight: '700', marginTop: 14 }}>
+            <AppText variant="h3" style={{ marginTop: 14 }}>
               Importing Transactions...
             </AppText>
             <AppText variant="body" color={Colors.textSecondary} style={{ marginTop: 4 }}>
@@ -633,7 +633,7 @@ export default function BankImportScreen() {
             <View style={styles.successIcon}>
               <Ionicons name="checkmark" size={36} color="#FFFFFF" />
             </View>
-            <AppText variant="h2" style={{ fontSize: 22, fontWeight: '700', marginTop: 14 }}>
+            <AppText variant="h3" style={{ marginTop: 14 }}>
               Import Complete!
             </AppText>
             <AppText variant="body" color={Colors.textSecondary} style={{ textAlign: 'center', marginTop: 6 }}>

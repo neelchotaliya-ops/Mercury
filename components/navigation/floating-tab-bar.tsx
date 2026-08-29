@@ -11,7 +11,7 @@ import Animated, {
   withSpring,
 } from 'react-native-reanimated';
 
-import { Colors, Gradients, BorderRadius } from '@/constants/theme';
+import { Colors, Gradients, BorderRadius, Shadows } from '@/constants/theme';
 import { haptics } from '@/utils/haptics';
 import { PressScale, Spring } from '@/constants/motion';
 
@@ -140,15 +140,11 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     width: '100%',
     height: 64,
-    backgroundColor: '#FFFFFF',
+    backgroundColor: Colors.surfaceOpaque,
     borderRadius: BorderRadius.pill,
     borderWidth: 1,
     borderColor: 'rgba(25, 21, 39, 0.08)',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.09,
-    shadowRadius: 16,
-    elevation: 10,
+    ...Shadows.floating,
   },
   group: {
     flex: 1,

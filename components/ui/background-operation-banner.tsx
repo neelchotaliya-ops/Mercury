@@ -150,7 +150,7 @@ const styles = StyleSheet.create({
     gap: 12,
     padding: 14,
     borderRadius: BorderRadius.lg,
-    backgroundColor: '#FFFFFF',
+    backgroundColor: Colors.surfaceOpaque,
     borderWidth: 1,
     borderColor: Colors.glassBorder,
     ...Shadows.lifted,

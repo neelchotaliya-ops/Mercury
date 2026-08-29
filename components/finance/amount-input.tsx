@@ -4,7 +4,7 @@ import { Ionicons } from '@expo/vector-icons';
 import Animated, { useSharedValue, useAnimatedStyle, withSpring } from 'react-native-reanimated';
 
 import { AppText } from '@/components/ui/app-text';
-import { Colors } from '@/constants/theme';
+import { Colors, Fonts } from '@/constants/theme';
 import { haptics } from '@/utils/haptics';
 import { PressScale, Spring } from '@/constants/motion';
 import { NumberFormat } from '@/types/finance';
@@ -159,12 +159,12 @@ const styles = StyleSheet.create({
   },
   symbol: {
     fontSize: 26,
-    fontFamily: 'Manrope_700Bold',
+    fontFamily: Fonts.body.bold,
   },
   amount: {
     fontSize: 44,
     lineHeight: 50,
-    fontFamily: 'Manrope_800ExtraBold',
+    fontFamily: Fonts.body.extraBold,
   },
   keypad: {
     flexDirection: 'row',
@@ -184,7 +184,7 @@ const styles = StyleSheet.create({
   },
   keyLabel: {
     fontSize: 21,
-    fontFamily: 'Manrope_700Bold',
+    fontFamily: Fonts.body.bold,
     color: Colors.textPrimary,
   },
 });

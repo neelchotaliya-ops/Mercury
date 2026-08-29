@@ -76,7 +76,7 @@ const styles = StyleSheet.create({
     borderRadius: BorderRadius.pill,
   },
   segmentActive: {
-    backgroundColor: '#FFFFFF',
+    backgroundColor: Colors.surfaceOpaque,
     ...Shadows.soft,
   },
 });

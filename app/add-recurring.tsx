@@ -363,7 +363,7 @@ export default function AddRecurringScreen() {
               style={styles.addRuleBtn}
             >
               <Ionicons name="add" size={18} color="#FFFFFF" />
-              <AppText variant="caption" color="#FFFFFF" style={{ fontWeight: '700' }}>
+              <AppText variant="captionStrong" color="#FFFFFF">
                 New Rule
               </AppText>
             </Pressable>
@@ -376,7 +376,7 @@ export default function AddRecurringScreen() {
             <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' }}>
               <View>
                 <AppText variant="caption" color={Colors.textSecondary}>Monthly Commitment</AppText>
-                <AppText variant="h2" style={{ fontSize: 26, fontWeight: '800', color: Colors.primaryDeep, marginTop: 2 }}>
+                <AppText variant="h1" color={Colors.primaryDeep} style={{ marginTop: 2 }}>
                   {formatCurrency(monthlyExpenseTotal, currency)}
                 </AppText>
                 <AppText variant="caption" color={Colors.textMuted} style={{ marginTop: 2 }}>
@@ -386,7 +386,7 @@ export default function AddRecurringScreen() {
 
               <View style={styles.activePill}>
                 <Ionicons name="repeat" size={14} color={Colors.primary} />
-                <AppText variant="caption" color={Colors.primaryDeep} style={{ fontWeight: '700', marginLeft: 4 }}>
+                <AppText variant="captionStrong" color={Colors.primaryDeep} style={{ marginLeft: 4 }}>
                   {rules.filter(r => r.active).length} Active
                 </AppText>
               </View>
@@ -1055,7 +1055,7 @@ const styles = StyleSheet.create({
     width: 38,
     height: 38,
     borderRadius: 19,
-    backgroundColor: '#FFFFFF',
+    backgroundColor: Colors.surfaceOpaque,
     alignItems: 'center',
     justifyContent: 'center',
     ...Shadows.soft,

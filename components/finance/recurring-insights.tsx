@@ -29,7 +29,7 @@ export function RecurringInsightsView({ insights }: RecurringInsightsViewProps) 
         <View style={styles.emptyIcon}>
           <Ionicons name="repeat-outline" size={32} color={Colors.primary} />
         </View>
-        <AppText variant="h2" style={{ fontSize: 18, fontWeight: '700', marginTop: 12 }}>
+        <AppText variant="h3" style={{ marginTop: 12 }}>
           No Recurring Payments
         </AppText>
         <AppText variant="body" color={Colors.textSecondary} style={{ textAlign: 'center', marginTop: 6 }}>
@@ -55,7 +55,7 @@ export function RecurringInsightsView({ insights }: RecurringInsightsViewProps) 
         <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' }}>
           <View>
             <AppText variant="caption" color={Colors.textSecondary}>Monthly Commitment</AppText>
-            <AppText variant="h2" style={{ fontSize: 28, fontWeight: '800', color: Colors.primaryDeep, marginTop: 2 }}>
+            <AppText variant="h1" color={Colors.primaryDeep} style={{ marginTop: 2 }}>
               {formatCurrency(insights.monthlyTotal, currency)}
             </AppText>
             <AppText variant="caption" color={Colors.textMuted} style={{ marginTop: 2 }}>
@@ -65,7 +65,7 @@ export function RecurringInsightsView({ insights }: RecurringInsightsViewProps) 
 
           <View style={styles.countBadge}>
             <Ionicons name="repeat" size={14} color={Colors.primary} />
-            <AppText variant="caption" color={Colors.primaryDeep} style={{ fontWeight: '700', marginLeft: 4 }}>
+            <AppText variant="captionStrong" color={Colors.primaryDeep} style={{ marginLeft: 4 }}>
               {insights.activeCount} active
             </AppText>
           </View>
@@ -119,7 +119,7 @@ export function RecurringInsightsView({ insights }: RecurringInsightsViewProps) 
             }}
             hitSlop={8}
           >
-            <AppText variant="caption" color={Colors.primary} style={{ fontWeight: '700' }}>
+            <AppText variant="captionStrong" color={Colors.primary}>
               + Add New
             </AppText>
           </Pressable>

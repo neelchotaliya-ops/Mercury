@@ -12,6 +12,7 @@ export type TextVariant =
   | 'body'
   | 'bodyStrong'
   | 'caption'
+  | 'captionStrong'
   | 'micro'
   | 'label'
   | 'button'
@@ -74,6 +75,12 @@ const VARIANTS: Record<TextVariant, TextStyle> = {
   },
   caption: {
     fontFamily: Fonts.body.medium,
+    fontSize: Typography.fontSizes.sm,
+    lineHeight: 18,
+    color: Colors.textMuted,
+  },
+  captionStrong: {
+    fontFamily: Fonts.body.bold,
     fontSize: Typography.fontSizes.sm,
     lineHeight: 18,
     color: Colors.textMuted,

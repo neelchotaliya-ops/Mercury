@@ -31,6 +31,11 @@ export const Colors = {
   glassBorderSoft: 'rgba(255, 255, 255, 0.42)',
   glassTint: 'rgba(255, 255, 255, 0.5)',
 
+  // Solid white for chrome that must never show the gradient through it —
+  // modals, sheets, the tab bar, banners — as opposed to glassTint/controlBg's
+  // intentional translucency.
+  surfaceOpaque: '#FFFFFF',
+
   // Controls
   ctaBg: '#17131F',
   ctaText: '#FFFFFF',
@@ -78,6 +83,7 @@ export const Fonts = {
     medium: 'Manrope_500Medium',
     semibold: 'Manrope_600SemiBold',
     bold: 'Manrope_700Bold',
+    extraBold: 'Manrope_800ExtraBold',
   },
 };
 

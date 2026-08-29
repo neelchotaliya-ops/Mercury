@@ -280,38 +280,38 @@ export default function FillTestDataScreen() {
                   <View style={styles.statSummaryItem}>
                     <Ionicons name="wallet-outline" size={16} color={Colors.accent} />
                     <AppText variant="caption" style={styles.statSummaryText}>
-                      <AppText variant="captionBold">{outcome.accounts}</AppText> Accounts
+                      <AppText variant="captionStrong">{outcome.accounts}</AppText> Accounts
                     </AppText>
                   </View>
                   <View style={styles.statSummaryItem}>
                     <Ionicons name="pricetags-outline" size={16} color={Colors.accent} />
                     <AppText variant="caption" style={styles.statSummaryText}>
-                      <AppText variant="captionBold">{outcome.categories}</AppText> Categories (
-                      <AppText variant="captionBold">{outcome.subcategories}</AppText> subcats)
+                      <AppText variant="captionStrong">{outcome.categories}</AppText> Categories (
+                      <AppText variant="captionStrong">{outcome.subcategories}</AppText> subcats)
                     </AppText>
                   </View>
                   <View style={styles.statSummaryItem}>
                     <Ionicons name="pie-chart-outline" size={16} color={Colors.accent} />
                     <AppText variant="caption" style={styles.statSummaryText}>
-                      <AppText variant="captionBold">{outcome.budgets}</AppText> Active Budgets
+                      <AppText variant="captionStrong">{outcome.budgets}</AppText> Active Budgets
                     </AppText>
                   </View>
                   <View style={styles.statSummaryItem}>
                     <Ionicons name="flash-outline" size={16} color={Colors.accent} />
                     <AppText variant="caption" style={styles.statSummaryText}>
-                      <AppText variant="captionBold">{outcome.presets}</AppText> Quick Presets
+                      <AppText variant="captionStrong">{outcome.presets}</AppText> Quick Presets
                     </AppText>
                   </View>
                   <View style={styles.statSummaryItem}>
                     <Ionicons name="repeat-outline" size={16} color={Colors.accent} />
                     <AppText variant="caption" style={styles.statSummaryText}>
-                      <AppText variant="captionBold">{outcome.recurringRules}</AppText> Recurring Rules
+                      <AppText variant="captionStrong">{outcome.recurringRules}</AppText> Recurring Rules
                     </AppText>
                   </View>
                   <View style={styles.statSummaryItem}>
                     <Ionicons name="people-outline" size={16} color={Colors.accent} />
                     <AppText variant="caption" style={styles.statSummaryText}>
-                      <AppText variant="captionBold">{outcome.splitExpenses}</AppText> Split Expenses
+                      <AppText variant="captionStrong">{outcome.splitExpenses}</AppText> Split Expenses
                     </AppText>
                   </View>
                 </View>

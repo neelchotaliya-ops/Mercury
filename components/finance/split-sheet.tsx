@@ -276,7 +276,7 @@ export const SplitSheet: React.FC<SplitSheetProps> = ({
                             style={styles.recentChip}
                           >
                             <Ionicons name="add-circle-outline" size={14} color={Colors.primary} />
-                            <AppText variant="caption" color={Colors.primaryDeep} style={{ fontWeight: '600' }}>
+                            <AppText variant="captionStrong" color={Colors.primaryDeep}>
                               {friend}
                             </AppText>
                           </Pressable>
@@ -399,7 +399,7 @@ const styles = StyleSheet.create({
     maxHeight: '90%',
   },
   sheet: {
-    backgroundColor: '#FFFFFF',
+    backgroundColor: Colors.surfaceOpaque,
     borderTopLeftRadius: 28,
     borderTopRightRadius: 28,
     paddingTop: 10,
@@ -540,7 +540,7 @@ const styles = StyleSheet.create({
     paddingVertical: 4,
     paddingHorizontal: 8,
     borderRadius: BorderRadius.sm,
-    backgroundColor: '#FFFFFF',
+    backgroundColor: Colors.surfaceOpaque,
     borderWidth: 1,
     borderColor: Colors.glassBorder,
     fontSize: 13,

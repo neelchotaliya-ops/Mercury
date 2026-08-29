@@ -67,7 +67,7 @@ export const AppSplash: React.FC<AppSplashProps> = ({ isReady, onAnimationComple
 const styles = StyleSheet.create({
   container: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: '#ffffff',
+    backgroundColor: Colors.surfaceOpaque,
     alignItems: 'center',
     justifyContent: 'center',
     zIndex: 9999,

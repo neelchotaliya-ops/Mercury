@@ -260,7 +260,7 @@ export const RepeatSheet: React.FC<RepeatSheetProps> = ({
             <GlassCard padding={14} strong elevated style={styles.summaryBanner}>
               <Ionicons name="sparkles" size={18} color={Colors.primary} />
               <View style={{ flex: 1 }}>
-                <AppText variant="caption" color={Colors.primaryDeep} style={{ fontWeight: '700' }}>
+                <AppText variant="captionStrong" color={Colors.primaryDeep}>
                   {autoCreate ? 'Automatic Recurring Schedule' : 'Reminder Schedule'}
                 </AppText>
                 <AppText variant="caption" color={Colors.textSecondary} style={{ marginTop: 2 }}>
@@ -296,7 +296,7 @@ const styles = StyleSheet.create({
     ...StyleSheet.absoluteFillObject,
   },
   sheet: {
-    backgroundColor: '#FFFFFF',
+    backgroundColor: Colors.surfaceOpaque,
     borderTopLeftRadius: 28,
     borderTopRightRadius: 28,
     paddingTop: 10,
@@ -378,7 +378,7 @@ const styles = StyleSheet.create({
     width: 40,
     height: 40,
     borderRadius: 20,
-    backgroundColor: '#FFFFFF',
+    backgroundColor: Colors.surfaceOpaque,
     alignItems: 'center',
     justifyContent: 'center',
     ...Shadows.soft,

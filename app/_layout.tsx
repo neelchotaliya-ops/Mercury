@@ -17,11 +17,11 @@ import {
   Manrope_500Medium,
   Manrope_600SemiBold,
   Manrope_700Bold,
+  Manrope_800ExtraBold,
 } from '@expo-google-fonts/manrope';
 
 import { ShareIntentProvider } from 'expo-share-intent';
 
-import { AppThemeProvider } from '@/context/theme-context';
 import { FinanceProvider, useFinance } from '@/context/finance-context';
 import { useSharedReceipt } from '@/hooks/use-shared-receipt';
 import { PersistErrorBanner } from '@/components/ui/persist-error-banner';
@@ -68,6 +68,13 @@ function RootNavigator() {
           <Stack.Screen name="add-account" options={{ presentation: 'modal' }} />
           <Stack.Screen name="add-budget" options={{ presentation: 'modal' }} />
           <Stack.Screen name="manage-categories" options={{ presentation: 'modal' }} />
+          <Stack.Screen name="manage-subcategories" options={{ presentation: 'modal' }} />
+          <Stack.Screen name="manage" options={{ presentation: 'modal' }} />
+          <Stack.Screen name="manage-splits" options={{ presentation: 'modal' }} />
+          <Stack.Screen name="add-recurring" options={{ presentation: 'modal' }} />
+          <Stack.Screen name="add-split" options={{ presentation: 'modal' }} />
+          <Stack.Screen name="split-detail" options={{ presentation: 'modal' }} />
+          <Stack.Screen name="bank-import" options={{ presentation: 'modal' }} />
           <Stack.Screen name="quick-presets" options={{ presentation: 'modal' }} />
           <Stack.Screen name="settings" options={{ presentation: 'modal' }} />
           <Stack.Screen name="fill-test-data" options={{ presentation: 'modal' }} />
@@ -99,6 +106,7 @@ export default function RootLayout() {
     Manrope_500Medium,
     Manrope_600SemiBold,
     Manrope_700Bold,
+    Manrope_800ExtraBold,
   });
 
   if (!fontsLoaded && !fontError) {
@@ -110,9 +118,7 @@ export default function RootLayout() {
   return (
     <ShareIntentProvider>
       <FinanceProvider>
-        <AppThemeProvider>
-          <RootNavigator />
-        </AppThemeProvider>
+        <RootNavigator />
       </FinanceProvider>
     </ShareIntentProvider>
   );

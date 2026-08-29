@@ -164,7 +164,7 @@ export default function SplitDetailScreen() {
           <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' }}>
             <View style={{ flex: 1 }}>
               <AppText variant="caption" color={Colors.textSecondary}>Total Bill</AppText>
-              <AppText variant="h2" style={{ fontSize: 26, fontWeight: '700', color: Colors.textPrimary }}>
+              <AppText variant="h1" color={Colors.textPrimary}>
                 {tx ? formatCurrency(tx.amount, currency) : '—'}
               </AppText>
               {tx?.note && (
@@ -220,7 +220,7 @@ export default function SplitDetailScreen() {
             <AppText variant="h3">Participants</AppText>
             {!isFullySettled && participants.length > 0 && (
               <Pressable onPress={handleSettleAll} hitSlop={8}>
-                <AppText variant="caption" color={Colors.primary} style={{ fontWeight: '700' }}>
+                <AppText variant="captionStrong" color={Colors.primary}>
                   Settle All
                 </AppText>
               </Pressable>
@@ -261,7 +261,7 @@ export default function SplitDetailScreen() {
                   ) : (
                     <View style={styles.paidBadge}>
                       <Ionicons name="checkmark-circle" size={14} color={Colors.income} />
-                      <AppText variant="caption" color={Colors.income} style={{ fontWeight: '600', marginLeft: 4 }}>
+                      <AppText variant="captionStrong" color={Colors.income} style={{ marginLeft: 4 }}>
                         Paid
                       </AppText>
                     </View>
@@ -430,7 +430,7 @@ const styles = StyleSheet.create({
   modalCard: {
     width: '100%',
     maxWidth: 420,
-    backgroundColor: '#FFFFFF',
+    backgroundColor: Colors.surfaceOpaque,
     borderRadius: BorderRadius.lg,
     padding: 20,
     gap: Spacing.md,

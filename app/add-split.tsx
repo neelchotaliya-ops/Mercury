@@ -271,7 +271,7 @@ export default function AddSplitScreen() {
         <GlassCard padding={18} style={styles.card}>
           <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
             <AppText variant="h3">Split Method</AppText>
-            <AppText variant="caption" color={Colors.primaryDeep} style={{ fontWeight: '700' }}>
+            <AppText variant="captionStrong" color={Colors.primaryDeep}>
               {participants.length} people
             </AppText>
           </View>
@@ -323,7 +323,7 @@ export default function AddSplitScreen() {
                       style={styles.recentFriendChip}
                     >
                       <Ionicons name="add-circle-outline" size={13} color={Colors.primary} />
-                      <AppText variant="caption" color={Colors.primaryDeep} style={{ fontWeight: '600' }}>
+                      <AppText variant="captionStrong" color={Colors.primaryDeep}>
                         {friend}
                       </AppText>
                     </Pressable>
@@ -391,7 +391,7 @@ export default function AddSplitScreen() {
                 size={16}
                 color={isBalanced ? Colors.income : Colors.expense}
               />
-              <AppText variant="caption" color={isBalanced ? Colors.income : Colors.expense} style={{ fontWeight: '600', flex: 1 }}>
+              <AppText variant="captionStrong" color={isBalanced ? Colors.income : Colors.expense} style={{ flex: 1 }}>
                 {isBalanced
                   ? 'All shares add up to total bill amount'
                   : `Total assigned: ${formatCurrency(sharesSum, state.settings.currency ?? 'INR')} of ${formatCurrency(numericTotal, state.settings.currency ?? 'INR')}`}
@@ -529,7 +529,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 10,
     paddingVertical: 6,
     borderRadius: BorderRadius.xs,
-    backgroundColor: '#FFFFFF',
+    backgroundColor: Colors.surfaceOpaque,
     borderWidth: 1,
     borderColor: Colors.glassBorder,
     fontSize: 13,

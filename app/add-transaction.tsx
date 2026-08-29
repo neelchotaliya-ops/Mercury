@@ -297,7 +297,7 @@ export default function AddTransactionScreen() {
               style={({ pressed }) => [styles.headerScanBtn, { opacity: pressed ? 0.75 : 1 }]}
             >
               <Ionicons name="camera-outline" size={17} color={Colors.primaryDeep} />
-              <AppText variant="caption" color={Colors.primaryDeep} style={{ fontWeight: '700' }}>
+              <AppText variant="captionStrong" color={Colors.primaryDeep}>
                 Scan
               </AppText>
             </Pressable>

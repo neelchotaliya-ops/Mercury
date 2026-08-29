@@ -29,7 +29,7 @@ export function SplitInsightsView({ insights }: SplitInsightsViewProps) {
         <View style={styles.emptyIcon}>
           <Ionicons name="people-outline" size={32} color={Colors.primary} />
         </View>
-        <AppText variant="h2" style={{ fontSize: 18, fontWeight: '700', marginTop: 12 }}>
+        <AppText variant="h3" style={{ marginTop: 12 }}>
           No Shared Expenses
         </AppText>
         <AppText variant="body" color={Colors.textSecondary} style={{ textAlign: 'center', marginTop: 6 }}>
@@ -55,7 +55,7 @@ export function SplitInsightsView({ insights }: SplitInsightsViewProps) {
         <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' }}>
           <View>
             <AppText variant="caption" color={Colors.textSecondary}>Total Owed to You</AppText>
-            <AppText variant="h2" style={{ fontSize: 28, fontWeight: '800', color: Colors.income, marginTop: 2 }}>
+            <AppText variant="h1" color={Colors.income} style={{ marginTop: 2 }}>
               {formatCurrency(Math.max(0, outstandingTotal), currency)}
             </AppText>
             <AppText variant="caption" color={Colors.textMuted} style={{ marginTop: 2 }}>
@@ -66,7 +66,7 @@ export function SplitInsightsView({ insights }: SplitInsightsViewProps) {
           <View style={styles.badgeWrap}>
             <View style={styles.pendingBadge}>
               <Ionicons name="time" size={14} color={Colors.expense} />
-              <AppText variant="caption" color={Colors.expense} style={{ fontWeight: '700', marginLeft: 4 }}>
+              <AppText variant="captionStrong" color={Colors.expense} style={{ marginLeft: 4 }}>
                 {insights.pendingCount + insights.partialCount} pending
               </AppText>
             </View>
@@ -85,7 +85,7 @@ export function SplitInsightsView({ insights }: SplitInsightsViewProps) {
             }}
             hitSlop={8}
           >
-            <AppText variant="caption" color={Colors.primary} style={{ fontWeight: '700' }}>
+            <AppText variant="captionStrong" color={Colors.primary}>
               + Split New
             </AppText>
           </Pressable>
