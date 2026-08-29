@@ -32,7 +32,7 @@ import {
 import { getCurrencySymbol, formatCurrency } from '@/utils/currency';
 import { haptics } from '@/utils/haptics';
 import { generateId } from '@/utils/id';
-import { Colors, BorderRadius, Spacing, Shadows } from '@/constants/theme';
+import { Colors, BorderRadius, Spacing } from '@/constants/theme';
 import { getDb } from '@/db/client';
 import { bumpDataVersion } from '@/db/version';
 import {
@@ -46,22 +46,13 @@ import {
 } from '@/db/recurring';
 import { computeNextDue, generateOccurrences, describeFrequency } from '@/utils/recurring-engine';
 
-const FREQUENCY_OPTIONS: { key: RecurringFrequency; label: string; icon: keyof typeof Ionicons.glyphMap }[] = [
+// "Custom" is intentionally not in this row — it's a separate opt-in toggle
+// inside "More options" so the default choice is one of these four, not five.
+const FREQUENCY_OPTIONS: { key: Exclude<RecurringFrequency, 'custom'>; label: string; icon: keyof typeof Ionicons.glyphMap }[] = [
   { key: 'monthly', label: 'Monthly', icon: 'calendar-number-outline' },
   { key: 'weekly',  label: 'Weekly',  icon: 'calendar-outline' },
   { key: 'yearly',  label: 'Yearly',  icon: 'calendar-clear-outline' },
   { key: 'daily',   label: 'Daily',   icon: 'today-outline' },
-  { key: 'custom',  label: 'Custom',  icon: 'options-outline' },
-];
-
-const DAYS_OF_WEEK = [
-  { label: 'Sun', value: 0 },
-  { label: 'Mon', value: 1 },
-  { label: 'Tue', value: 2 },
-  { label: 'Wed', value: 3 },
-  { label: 'Thu', value: 4 },
-  { label: 'Fri', value: 5 },
-  { label: 'Sat', value: 6 },
 ];
 
 export default function AddRecurringScreen() {
@@ -102,18 +93,31 @@ export default function AddRecurringScreen() {
   const [payee, setPayee] = useState(params.payee ?? '');
   const [note, setNote] = useState(params.note ?? '');
 
+  // The four common frequencies live on the primary chip row. "Custom" is a
+  // separate opt-in toggle (below) rather than a 5th chip, so the default
+  // form only ever shows one obvious choice to make, not five.
   const [frequency, setFrequency] = useState<RecurringFrequency>('monthly');
-  const [dayOfWeek, setDayOfWeek] = useState<number>(new Date().getDay());
-  const [dayOfMonth, setDayOfMonth] = useState<number>(new Date().getDate());
+  const [useCustomInterval, setUseCustomInterval] = useState(false);
   const [intervalValue, setIntervalValue] = useState<number>(1);
   const [intervalUnit, setIntervalUnit] = useState<IntervalUnit>('month');
+  // The effective frequency actually saved/previewed — 'custom' when the
+  // advanced toggle is on, otherwise whichever primary chip is selected.
+  const activeFrequency: RecurringFrequency = useCustomInterval ? 'custom' : frequency;
 
   const [startDate, setStartDate] = useState<Date>(new Date());
   const [endDate, setEndDate] = useState<Date | null>(null);
   const [hasEndDate, setHasEndDate] = useState(false);
+  // Which day it repeats on is always the same day as the start date —
+  // never a separately-asked question. Picking "the 15th" to start and
+  // "Tuesdays" to repeat was a confusing, rarely-intended combination the
+  // old two-question form allowed; deriving from one date removes it.
+  const dayOfWeek = startDate.getDay();
+  const dayOfMonth = startDate.getDate();
 
   const [autoCreate, setAutoCreate] = useState(true);
   const [reminderDays, setReminderDays] = useState<number>(1);
+
+  const [showMoreOptions, setShowMoreOptions] = useState(false);
 
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [datePickerTarget, setDatePickerTarget] = useState<'start' | 'end'>('start');
@@ -157,9 +161,13 @@ export default function AddRecurringScreen() {
     setSubcategoryId(rule.subcategoryId);
     setPayee(rule.payee ?? '');
     setNote(rule.note ?? '');
-    setFrequency(rule.frequency);
-    if (rule.dayOfWeek != null) setDayOfWeek(rule.dayOfWeek);
-    if (rule.dayOfMonth != null) setDayOfMonth(rule.dayOfMonth);
+    if (rule.frequency === 'custom') {
+      setUseCustomInterval(true);
+      setFrequency('monthly'); // sensible fallback if the user turns custom off
+    } else {
+      setUseCustomInterval(false);
+      setFrequency(rule.frequency);
+    }
     if (rule.intervalValue != null) setIntervalValue(rule.intervalValue);
     if (rule.intervalUnit != null) setIntervalUnit(rule.intervalUnit);
     setStartDate(new Date(rule.startDate));
@@ -172,6 +180,7 @@ export default function AddRecurringScreen() {
     }
     setAutoCreate(rule.autoCreate);
     setReminderDays(rule.reminderDays);
+    setShowMoreOptions(rule.frequency === 'custom' || !!rule.endDate);
   };
 
   const resetForm = () => {
@@ -184,8 +193,7 @@ export default function AddRecurringScreen() {
     setPayee('');
     setNote('');
     setFrequency('monthly');
-    setDayOfWeek(new Date().getDay());
-    setDayOfMonth(new Date().getDate());
+    setUseCustomInterval(false);
     setIntervalValue(1);
     setIntervalUnit('month');
     setStartDate(new Date());
@@ -193,6 +201,7 @@ export default function AddRecurringScreen() {
     setEndDate(null);
     setAutoCreate(true);
     setReminderDays(1);
+    setShowMoreOptions(false);
   };
 
   const categories = useMemo(
@@ -215,7 +224,7 @@ export default function AddRecurringScreen() {
       subcategoryId,
       payee,
       note,
-      frequency,
+      frequency: activeFrequency,
       intervalUnit,
       intervalValue,
       dayOfWeek,
@@ -228,7 +237,7 @@ export default function AddRecurringScreen() {
       active: true,
       createdAt: new Date().toISOString(),
     };
-  }, [type, numericAmount, accountId, categoryId, subcategoryId, payee, note, frequency, intervalUnit, intervalValue, dayOfWeek, dayOfMonth, startDate, hasEndDate, endDate, autoCreate, reminderDays]);
+  }, [type, numericAmount, accountId, categoryId, subcategoryId, payee, note, activeFrequency, intervalUnit, intervalValue, dayOfWeek, dayOfMonth, startDate, hasEndDate, endDate, autoCreate, reminderDays]);
 
   const upcomingOccurrences = useMemo(() => {
     try {
@@ -257,11 +266,11 @@ export default function AddRecurringScreen() {
       subcategoryId,
       payee: payee.trim() || undefined,
       note: note.trim() || undefined,
-      frequency,
-      intervalUnit: frequency === 'custom' ? intervalUnit : undefined,
-      intervalValue: frequency === 'custom' ? intervalValue : undefined,
-      dayOfWeek: frequency === 'weekly' ? dayOfWeek : undefined,
-      dayOfMonth: frequency === 'monthly' ? dayOfMonth : undefined,
+      frequency: activeFrequency,
+      intervalUnit: activeFrequency === 'custom' ? intervalUnit : undefined,
+      intervalValue: activeFrequency === 'custom' ? intervalValue : undefined,
+      dayOfWeek: activeFrequency === 'weekly' ? dayOfWeek : undefined,
+      dayOfMonth: activeFrequency === 'monthly' ? dayOfMonth : undefined,
       startDate: startIso,
       endDate: hasEndDate && endDate ? endDate.toISOString().slice(0, 10) : undefined,
       nextDue: editingRule ? editingRule.nextDue : nextDueIso,
@@ -568,31 +577,22 @@ export default function AddRecurringScreen() {
             />
           </View>
 
-          <View style={styles.field}>
-            <AppText variant="label">Note (Optional)</AppText>
-            <TextInput
-              value={note}
-              onChangeText={setNote}
-              placeholder="e.g. Shared with family"
-              placeholderTextColor={Colors.textMuted}
-              style={styles.input}
-            />
-          </View>
         </GlassCard>
 
         {/* Schedule & Recurrence Card */}
         <GlassCard padding={18} style={styles.card}>
-          <AppText variant="h3">Schedule & Frequency</AppText>
+          <AppText variant="h3">How Often</AppText>
 
           {/* Frequency selector buttons */}
           <View style={styles.frequencyRow}>
             {FREQUENCY_OPTIONS.map(opt => {
-              const isSelected = frequency === opt.key;
+              const isSelected = !useCustomInterval && frequency === opt.key;
               return (
                 <Pressable
                   key={opt.key}
                   onPress={() => {
                     haptics.selection();
+                    setUseCustomInterval(false);
                     setFrequency(opt.key);
                   }}
                   style={[
@@ -617,116 +617,12 @@ export default function AddRecurringScreen() {
             })}
           </View>
 
-          {/* Weekly configuration */}
-          {frequency === 'weekly' && (
-            <View style={styles.field}>
-              <AppText variant="label">Day of Week</AppText>
-              <View style={styles.dowRow}>
-                {DAYS_OF_WEEK.map(d => {
-                  const isSelected = dayOfWeek === d.value;
-                  return (
-                    <Pressable
-                      key={d.value}
-                      onPress={() => {
-                        haptics.selection();
-                        setDayOfWeek(d.value);
-                      }}
-                      style={[
-                        styles.dowButton,
-                        isSelected && styles.dowButtonActive,
-                      ]}
-                    >
-                      <AppText
-                        variant="caption"
-                        color={isSelected ? '#FFFFFF' : Colors.textPrimary}
-                        style={{ fontWeight: isSelected ? '700' : '500' }}
-                      >
-                        {d.label}
-                      </AppText>
-                    </Pressable>
-                  );
-                })}
-              </View>
-            </View>
-          )}
-
-          {/* Monthly configuration */}
-          {frequency === 'monthly' && (
-            <View style={styles.field}>
-              <AppText variant="label">Day of Month</AppText>
-              <View style={styles.domRow}>
-                <Pressable
-                  onPress={() => {
-                    haptics.selection();
-                    setDayOfMonth(Math.max(1, dayOfMonth - 1));
-                  }}
-                  style={styles.stepButton}
-                >
-                  <Ionicons name="remove" size={18} color={Colors.textPrimary} />
-                </Pressable>
-                <View style={styles.domValueWrap}>
-                  <AppText variant="h2" color={Colors.primaryDeep}>
-                    {dayOfMonth === -1 ? 'Last day' : `${dayOfMonth}${dayOfMonth === 1 ? 'st' : dayOfMonth === 2 ? 'nd' : dayOfMonth === 3 ? 'rd' : 'th'}`}
-                  </AppText>
-                  <AppText variant="micro" color={Colors.textMuted}>of every month</AppText>
-                </View>
-                <Pressable
-                  onPress={() => {
-                    haptics.selection();
-                    setDayOfMonth(Math.min(31, dayOfMonth + 1));
-                  }}
-                  style={styles.stepButton}
-                >
-                  <Ionicons name="add" size={18} color={Colors.textPrimary} />
-                </Pressable>
-              </View>
-            </View>
-          )}
-
-          {/* Custom interval configuration */}
-          {frequency === 'custom' && (
-            <View style={styles.field}>
-              <AppText variant="label">Repeat Every</AppText>
-              <View style={{ flexDirection: 'row', gap: 8, alignItems: 'center' }}>
-                <TextInput
-                  value={String(intervalValue)}
-                  onChangeText={v => setIntervalValue(Math.max(1, parseInt(v) || 1))}
-                  keyboardType="number-pad"
-                  style={[styles.input, { width: 70, textAlign: 'center' }]}
-                />
-                <View style={{ flex: 1, flexDirection: 'row', gap: 6 }}>
-                  {(['day', 'week', 'month', 'year'] as IntervalUnit[]).map(unit => {
-                    const isSelected = intervalUnit === unit;
-                    return (
-                      <Pressable
-                        key={unit}
-                        onPress={() => {
-                          haptics.selection();
-                          setIntervalUnit(unit);
-                        }}
-                        style={[
-                          styles.unitButton,
-                          isSelected && styles.unitButtonActive,
-                        ]}
-                      >
-                        <AppText
-                          variant="caption"
-                          color={isSelected ? '#FFFFFF' : Colors.textPrimary}
-                          style={{ fontWeight: isSelected ? '700' : '500' }}
-                        >
-                          {unit}s
-                        </AppText>
-                      </Pressable>
-                    );
-                  })}
-                </View>
-              </View>
-            </View>
-          )}
-
-          {/* Start Date */}
+          {/* Start Date — also the day it repeats on (the 15th to start
+              means the 15th of every month, Tuesday to start means every
+              Tuesday), so there's no separate day-of-week/day-of-month
+              question to answer. */}
           <View style={styles.field}>
-            <AppText variant="label">Start Date</AppText>
+            <AppText variant="label">Starts On</AppText>
             <Pressable
               onPress={() => {
                 setDatePickerTarget('start');
@@ -737,84 +633,199 @@ export default function AddRecurringScreen() {
               <Ionicons name="calendar-outline" size={18} color={Colors.primary} />
               <AppText variant="bodyStrong">
                 {startDate.toLocaleDateString(undefined, {
+                  weekday: 'long',
                   day: 'numeric',
                   month: 'short',
                   year: 'numeric',
                 })}
               </AppText>
             </Pressable>
-          </View>
-
-          {/* End Date toggle */}
-          <View style={styles.switchRow}>
-            <View style={{ flex: 1 }}>
-              <AppText variant="bodyStrong">Has End Date</AppText>
-              <AppText variant="caption" color={Colors.textSecondary}>
-                Automatically stop recurrence on a specific date
+            {!useCustomInterval && (
+              <AppText variant="caption" color={Colors.textMuted}>
+                {frequency === 'weekly'
+                  ? `Repeats every ${startDate.toLocaleDateString(undefined, { weekday: 'long' })}`
+                  : frequency === 'monthly'
+                  ? `Repeats on the ${dayOfMonth}${dayOfMonth === 1 ? 'st' : dayOfMonth === 2 ? 'nd' : dayOfMonth === 3 ? 'rd' : 'th'} of every month`
+                  : frequency === 'yearly'
+                  ? `Repeats every year on ${startDate.toLocaleDateString(undefined, { month: 'long', day: 'numeric' })}`
+                  : 'Repeats every day'}
               </AppText>
-            </View>
-            <Switch
-              value={hasEndDate}
-              onValueChange={v => {
-                setHasEndDate(v);
-                if (v && !endDate) {
-                  const d = new Date(startDate);
-                  d.setFullYear(d.getFullYear() + 1);
-                  setEndDate(d);
-                }
-              }}
-              trackColor={{ false: 'rgba(25, 21, 39, 0.12)', true: Colors.primary }}
-              thumbColor="#FFFFFF"
-            />
+            )}
           </View>
 
-          {hasEndDate && endDate && (
-            <View style={styles.field}>
-              <AppText variant="label">End Date</AppText>
-              <Pressable
-                onPress={() => {
-                  setDatePickerTarget('end');
-                  setShowDatePicker(true);
-                }}
-                style={styles.datePickerBtn}
-              >
-                <Ionicons name="calendar-outline" size={18} color={Colors.primary} />
-                <AppText variant="bodyStrong">
-                  {endDate.toLocaleDateString(undefined, {
-                    day: 'numeric',
-                    month: 'short',
-                    year: 'numeric',
-                  })}
-                </AppText>
-              </Pressable>
-            </View>
+          <Pressable
+            onPress={() => setShowMoreOptions(v => !v)}
+            hitSlop={8}
+            style={styles.moreOptionsToggle}
+          >
+            <AppText variant="captionStrong" color={Colors.primary}>
+              {showMoreOptions ? 'Fewer options' : 'More options'}
+            </AppText>
+            <Ionicons
+              name={showMoreOptions ? 'chevron-up' : 'chevron-down'}
+              size={14}
+              color={Colors.primary}
+            />
+          </Pressable>
+
+          {showMoreOptions && (
+            <>
+              {/* Custom interval toggle */}
+              <View style={styles.switchRow}>
+                <View style={{ flex: 1 }}>
+                  <AppText variant="bodyStrong">Custom interval</AppText>
+                  <AppText variant="caption" color={Colors.textSecondary}>
+                    e.g. every 2 weeks, every 3 months
+                  </AppText>
+                </View>
+                <Switch
+                  value={useCustomInterval}
+                  onValueChange={setUseCustomInterval}
+                  trackColor={{ false: 'rgba(25, 21, 39, 0.12)', true: Colors.primary }}
+                  thumbColor="#FFFFFF"
+                />
+              </View>
+
+              {useCustomInterval && (
+                <View style={styles.field}>
+                  <AppText variant="label">Repeat Every</AppText>
+                  <View style={{ flexDirection: 'row', gap: 8, alignItems: 'center' }}>
+                    <TextInput
+                      value={String(intervalValue)}
+                      onChangeText={v => setIntervalValue(Math.max(1, parseInt(v) || 1))}
+                      keyboardType="number-pad"
+                      style={[styles.input, { width: 70, textAlign: 'center' }]}
+                    />
+                    <View style={{ flex: 1, flexDirection: 'row', gap: 6 }}>
+                      {(['day', 'week', 'month', 'year'] as IntervalUnit[]).map(unit => {
+                        const isSelected = intervalUnit === unit;
+                        return (
+                          <Pressable
+                            key={unit}
+                            onPress={() => {
+                              haptics.selection();
+                              setIntervalUnit(unit);
+                            }}
+                            style={[
+                              styles.unitButton,
+                              isSelected && styles.unitButtonActive,
+                            ]}
+                          >
+                            <AppText
+                              variant="caption"
+                              color={isSelected ? '#FFFFFF' : Colors.textPrimary}
+                              style={{ fontWeight: isSelected ? '700' : '500' }}
+                            >
+                              {unit}s
+                            </AppText>
+                          </Pressable>
+                        );
+                      })}
+                    </View>
+                  </View>
+                </View>
+              )}
+
+              {/* End Date toggle */}
+              <View style={styles.switchRow}>
+                <View style={{ flex: 1 }}>
+                  <AppText variant="bodyStrong">Has an end date</AppText>
+                  <AppText variant="caption" color={Colors.textSecondary}>
+                    Automatically stop on a specific date
+                  </AppText>
+                </View>
+                <Switch
+                  value={hasEndDate}
+                  onValueChange={v => {
+                    setHasEndDate(v);
+                    if (v && !endDate) {
+                      const d = new Date(startDate);
+                      d.setFullYear(d.getFullYear() + 1);
+                      setEndDate(d);
+                    }
+                  }}
+                  trackColor={{ false: 'rgba(25, 21, 39, 0.12)', true: Colors.primary }}
+                  thumbColor="#FFFFFF"
+                />
+              </View>
+
+              {hasEndDate && endDate && (
+                <View style={styles.field}>
+                  <AppText variant="label">End Date</AppText>
+                  <Pressable
+                    onPress={() => {
+                      setDatePickerTarget('end');
+                      setShowDatePicker(true);
+                    }}
+                    style={styles.datePickerBtn}
+                  >
+                    <Ionicons name="calendar-outline" size={18} color={Colors.primary} />
+                    <AppText variant="bodyStrong">
+                      {endDate.toLocaleDateString(undefined, {
+                        day: 'numeric',
+                        month: 'short',
+                        year: 'numeric',
+                      })}
+                    </AppText>
+                  </Pressable>
+                </View>
+              )}
+
+              <View style={styles.field}>
+                <AppText variant="label">Note</AppText>
+                <TextInput
+                  value={note}
+                  onChangeText={setNote}
+                  placeholder="e.g. Shared with family"
+                  placeholderTextColor={Colors.textMuted}
+                  style={styles.input}
+                />
+              </View>
+            </>
           )}
         </GlassCard>
 
-        {/* Automation & Reminders Card */}
+        {/* What happens on the due date */}
         <GlassCard padding={18} style={styles.card}>
-          <AppText variant="h3">Automation & Reminders</AppText>
+          <AppText variant="h3">On the Due Date</AppText>
 
-          <View style={styles.switchRow}>
+          <Pressable
+            onPress={() => setAutoCreate(true)}
+            style={[styles.choiceCard, autoCreate && styles.choiceCardActive]}
+          >
+            <Ionicons name="flash" size={20} color={autoCreate ? '#FFFFFF' : Colors.primary} />
             <View style={{ flex: 1 }}>
-              <AppText variant="bodyStrong">Auto-Create Transactions</AppText>
-              <AppText variant="caption" color={Colors.textSecondary}>
-                Automatically write the transaction on the due date
+              <AppText variant="bodyStrong" color={autoCreate ? '#FFFFFF' : Colors.textPrimary}>
+                Log it automatically
+              </AppText>
+              <AppText variant="caption" color={autoCreate ? 'rgba(255,255,255,0.85)' : Colors.textSecondary}>
+                We&apos;ll add the transaction for you — nothing to do
               </AppText>
             </View>
-            <Switch
-              value={autoCreate}
-              onValueChange={setAutoCreate}
-              trackColor={{ false: 'rgba(25, 21, 39, 0.12)', true: Colors.primary }}
-              thumbColor="#FFFFFF"
-            />
-          </View>
+            {autoCreate && <Ionicons name="checkmark-circle" size={20} color="#FFFFFF" />}
+          </Pressable>
+
+          <Pressable
+            onPress={() => setAutoCreate(false)}
+            style={[styles.choiceCard, !autoCreate && styles.choiceCardActive]}
+          >
+            <Ionicons name="notifications-outline" size={20} color={!autoCreate ? '#FFFFFF' : Colors.primary} />
+            <View style={{ flex: 1 }}>
+              <AppText variant="bodyStrong" color={!autoCreate ? '#FFFFFF' : Colors.textPrimary}>
+                Just remind me
+              </AppText>
+              <AppText variant="caption" color={!autoCreate ? 'rgba(255,255,255,0.85)' : Colors.textSecondary}>
+                We&apos;ll send a notification — you add it yourself
+              </AppText>
+            </View>
+            {!autoCreate && <Ionicons name="checkmark-circle" size={20} color="#FFFFFF" />}
+          </Pressable>
 
           {!autoCreate && (
             <View style={styles.field}>
-              <AppText variant="label">Remind Before Due Date</AppText>
+              <AppText variant="label">Remind Me</AppText>
               <View style={styles.reminderRow}>
-                {[0, 1, 2, 3, 7].map(days => {
+                {[0, 1, 3].map(days => {
                   const isSelected = reminderDays === days;
                   return (
                     <Pressable
@@ -830,7 +841,7 @@ export default function AddRecurringScreen() {
                         color={isSelected ? '#FFFFFF' : Colors.textPrimary}
                         style={{ fontWeight: isSelected ? '700' : '500' }}
                       >
-                        {days === 0 ? 'Same day' : `${days}d before`}
+                        {days === 0 ? 'On the day' : `${days} day${days === 1 ? '' : 's'} before`}
                       </AppText>
                     </Pressable>
                   );
@@ -1024,41 +1035,27 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.primary,
     borderColor: Colors.primary,
   },
-  dowRow: {
+  moreOptionsToggle: {
     flexDirection: 'row',
-    gap: 6,
-  },
-  dowButton: {
-    flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: 8,
-    borderRadius: BorderRadius.sm,
+    gap: 4,
+    paddingVertical: 4,
+  },
+  choiceCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    paddingVertical: 14,
+    paddingHorizontal: 14,
+    borderRadius: BorderRadius.md,
     backgroundColor: Colors.controlBg,
+    borderWidth: 1,
+    borderColor: Colors.glassBorderSoft,
   },
-  dowButtonActive: {
+  choiceCardActive: {
     backgroundColor: Colors.primary,
-  },
-  domRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 16,
-    paddingVertical: 10,
-    backgroundColor: 'rgba(25, 21, 39, 0.03)',
-    borderRadius: BorderRadius.lg,
-  },
-  domValueWrap: {
-    alignItems: 'center',
-  },
-  stepButton: {
-    width: 38,
-    height: 38,
-    borderRadius: 19,
-    backgroundColor: Colors.surfaceOpaque,
-    alignItems: 'center',
-    justifyContent: 'center',
-    ...Shadows.soft,
+    borderColor: Colors.primary,
   },
   unitButton: {
     flex: 1,

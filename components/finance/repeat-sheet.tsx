@@ -5,7 +5,6 @@ import {
   Modal,
   Pressable,
   ScrollView,
-  Switch,
   Platform,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
@@ -14,7 +13,6 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useKeyboardBottomInset } from '@/hooks/use-keyboard-bottom-inset';
 import { AppText } from '@/components/ui/app-text';
 import { AppButton } from '@/components/ui/app-button';
-import { GlassCard } from '@/components/ui/glass-card';
 import { RecurringFrequency, IntervalUnit } from '@/types/finance';
 import { formatCurrency } from '@/utils/currency';
 import { describeFrequency } from '@/utils/recurring-engine';
@@ -36,6 +34,9 @@ interface RepeatSheetProps {
   onClose: () => void;
   amount: number;
   currency: string;
+  /** The transaction's own date — also the day this repeats on, so there's
+   * no separate day-of-week/day-of-month question to ask. */
+  date: Date;
   initialConfig?: RepeatSheetConfig;
   onApply: (config: RepeatSheetConfig) => void;
 }
@@ -47,38 +48,30 @@ const FREQUENCY_PRESETS: { key: RecurringFrequency; label: string; icon: keyof t
   { key: 'daily', label: 'Daily', icon: 'today-outline' },
 ];
 
-const DAYS_OF_WEEK = [
-  { label: 'Sun', value: 0 },
-  { label: 'Mon', value: 1 },
-  { label: 'Tue', value: 2 },
-  { label: 'Wed', value: 3 },
-  { label: 'Thu', value: 4 },
-  { label: 'Fri', value: 5 },
-  { label: 'Sat', value: 6 },
-];
-
 export const RepeatSheet: React.FC<RepeatSheetProps> = ({
   visible,
   onClose,
   amount,
   currency,
+  date,
   initialConfig,
   onApply,
 }) => {
   const insets = useSafeAreaInsets();
   const { keyboardHeight, keyboardVisible } = useKeyboardBottomInset();
 
-  const today = new Date();
   const [frequency, setFrequency] = useState<RecurringFrequency>(initialConfig?.frequency ?? 'monthly');
-  const [dayOfMonth, setDayOfMonth] = useState<number>(initialConfig?.dayOfMonth ?? today.getDate());
-  const [dayOfWeek, setDayOfWeek] = useState<number>(initialConfig?.dayOfWeek ?? today.getDay());
   const [autoCreate, setAutoCreate] = useState<boolean>(initialConfig?.autoCreate ?? true);
   const [reminderDays, setReminderDays] = useState<number>(initialConfig?.reminderDays ?? 1);
+
+  const dayOfMonth = date.getDate();
+  const dayOfWeek = date.getDay();
 
   const dummyRule: any = {
     frequency,
     dayOfMonth,
     dayOfWeek,
+    startDate: date.toISOString(),
     intervalUnit: frequency === 'monthly' ? 'month' : frequency === 'weekly' ? 'week' : 'day',
     intervalValue: 1,
   };
@@ -162,114 +155,88 @@ export const RepeatSheet: React.FC<RepeatSheetProps> = ({
               </View>
             </View>
 
-            {/* Day of Month Selector for Monthly */}
-            {frequency === 'monthly' && (
-              <View style={styles.section}>
-                <AppText variant="label" style={styles.sectionTitle}>
-                  Day of Month
-                </AppText>
-                <View style={styles.stepperRow}>
-                  <Pressable
-                    onPress={() => {
-                      haptics.selection();
-                      setDayOfMonth(Math.max(1, dayOfMonth - 1));
-                    }}
-                    style={styles.stepperBtn}
-                  >
-                    <Ionicons name="remove" size={18} color={Colors.textPrimary} />
-                  </Pressable>
-                  <View style={styles.stepperValue}>
-                    <AppText variant="h2" color={Colors.primaryDeep}>
-                      {dayOfMonth === -1
-                        ? 'Last day'
-                        : `${dayOfMonth}${dayOfMonth === 1 ? 'st' : dayOfMonth === 2 ? 'nd' : dayOfMonth === 3 ? 'rd' : 'th'}`}
-                    </AppText>
-                    <AppText variant="micro" color={Colors.textMuted}>
-                      of every month
-                    </AppText>
-                  </View>
-                  <Pressable
-                    onPress={() => {
-                      haptics.selection();
-                      setDayOfMonth(Math.min(31, dayOfMonth + 1));
-                    }}
-                    style={styles.stepperBtn}
-                  >
-                    <Ionicons name="add" size={18} color={Colors.textPrimary} />
-                  </Pressable>
-                </View>
-              </View>
-            )}
+            {/* Derived schedule caption — the transaction's own date is also
+                the day it repeats on, so there's nothing further to pick. */}
+            <AppText variant="caption" color={Colors.textMuted}>
+              {frequency === 'weekly'
+                ? `Repeats every ${date.toLocaleDateString(undefined, { weekday: 'long' })}`
+                : frequency === 'monthly'
+                ? `Repeats on the ${dayOfMonth}${dayOfMonth === 1 ? 'st' : dayOfMonth === 2 ? 'nd' : dayOfMonth === 3 ? 'rd' : 'th'} of every month`
+                : frequency === 'yearly'
+                ? `Repeats every year on ${date.toLocaleDateString(undefined, { month: 'long', day: 'numeric' })}`
+                : 'Repeats every day'}
+            </AppText>
 
-            {/* Day of Week Selector for Weekly */}
-            {frequency === 'weekly' && (
-              <View style={styles.section}>
-                <AppText variant="label" style={styles.sectionTitle}>
-                  Day of Week
-                </AppText>
-                <View style={styles.dowRow}>
-                  {DAYS_OF_WEEK.map(d => {
-                    const active = dayOfWeek === d.value;
+            {/* On the due date */}
+            <View style={styles.section}>
+              <AppText variant="label" style={styles.sectionTitle}>
+                On the Due Date
+              </AppText>
+
+              <Pressable
+                onPress={() => {
+                  haptics.selection();
+                  setAutoCreate(true);
+                }}
+                style={[styles.choiceCard, autoCreate && styles.choiceCardActive]}
+              >
+                <Ionicons name="flash" size={20} color={autoCreate ? '#FFFFFF' : Colors.primary} />
+                <View style={{ flex: 1 }}>
+                  <AppText variant="bodyStrong" color={autoCreate ? '#FFFFFF' : Colors.textPrimary}>
+                    Log it automatically
+                  </AppText>
+                  <AppText variant="caption" color={autoCreate ? 'rgba(255,255,255,0.85)' : Colors.textSecondary}>
+                    We&apos;ll add the transaction for you
+                  </AppText>
+                </View>
+                {autoCreate && <Ionicons name="checkmark-circle" size={20} color="#FFFFFF" />}
+              </Pressable>
+
+              <Pressable
+                onPress={() => {
+                  haptics.selection();
+                  setAutoCreate(false);
+                }}
+                style={[styles.choiceCard, !autoCreate && styles.choiceCardActive]}
+              >
+                <Ionicons name="notifications-outline" size={20} color={!autoCreate ? '#FFFFFF' : Colors.primary} />
+                <View style={{ flex: 1 }}>
+                  <AppText variant="bodyStrong" color={!autoCreate ? '#FFFFFF' : Colors.textPrimary}>
+                    Just remind me
+                  </AppText>
+                  <AppText variant="caption" color={!autoCreate ? 'rgba(255,255,255,0.85)' : Colors.textSecondary}>
+                    We&apos;ll send a notification instead
+                  </AppText>
+                </View>
+                {!autoCreate && <Ionicons name="checkmark-circle" size={20} color="#FFFFFF" />}
+              </Pressable>
+
+              {!autoCreate && (
+                <View style={styles.reminderRow}>
+                  {[0, 1, 3].map(days => {
+                    const isSelected = reminderDays === days;
                     return (
                       <Pressable
-                        key={d.value}
+                        key={days}
                         onPress={() => {
                           haptics.selection();
-                          setDayOfWeek(d.value);
+                          setReminderDays(days);
                         }}
-                        style={[styles.dowChip, active && styles.dowChipActive]}
+                        style={[styles.reminderChip, isSelected && styles.reminderChipActive]}
                       >
                         <AppText
                           variant="caption"
-                          color={active ? '#FFFFFF' : Colors.textPrimary}
-                          style={{ fontWeight: active ? '700' : '500' }}
+                          color={isSelected ? '#FFFFFF' : Colors.textPrimary}
+                          style={{ fontWeight: isSelected ? '700' : '500' }}
                         >
-                          {d.label}
+                          {days === 0 ? 'On the day' : `${days} day${days === 1 ? '' : 's'} before`}
                         </AppText>
                       </Pressable>
                     );
                   })}
                 </View>
-              </View>
-            )}
-
-            {/* Action Settings Card */}
-            <GlassCard padding={14} style={styles.actionCard}>
-              <View style={styles.switchRow}>
-                <View style={styles.switchInfo}>
-                  <AppText variant="bodyStrong">Auto-create transactions</AppText>
-                  <AppText variant="caption" color={Colors.textSecondary}>
-                    {autoCreate
-                      ? 'Automatically logs the transaction on the due date'
-                      : 'Sends a reminder notification for you to confirm'}
-                  </AppText>
-                </View>
-                <Switch
-                  value={autoCreate}
-                  onValueChange={v => {
-                    haptics.selection();
-                    setAutoCreate(v);
-                  }}
-                  trackColor={{ false: 'rgba(25, 21, 39, 0.12)', true: Colors.primary }}
-                  thumbColor="#FFFFFF"
-                />
-              </View>
-            </GlassCard>
-
-            {/* Summary Preview Banner */}
-            <GlassCard padding={14} strong elevated style={styles.summaryBanner}>
-              <Ionicons name="sparkles" size={18} color={Colors.primary} />
-              <View style={{ flex: 1 }}>
-                <AppText variant="captionStrong" color={Colors.primaryDeep}>
-                  {autoCreate ? 'Automatic Recurring Schedule' : 'Reminder Schedule'}
-                </AppText>
-                <AppText variant="caption" color={Colors.textSecondary} style={{ marginTop: 2 }}>
-                  {autoCreate
-                    ? `Logs today's entry and will automatically repeat ${scheduleDescription.toLowerCase()}.`
-                    : `Logs today's entry and will remind you ${scheduleDescription.toLowerCase()}.`}
-                </AppText>
-              </View>
-            </GlassCard>
+              )}
+            </View>
           </ScrollView>
 
           {/* Footer */}
@@ -365,62 +332,35 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.primary,
     borderColor: 'transparent',
   },
-  stepperRow: {
+  choiceCard: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingVertical: 8,
-    paddingHorizontal: 16,
-    borderRadius: BorderRadius.lg,
-    backgroundColor: 'rgba(25, 21, 39, 0.03)',
+    gap: 12,
+    paddingVertical: 14,
+    paddingHorizontal: 14,
+    borderRadius: BorderRadius.md,
+    backgroundColor: Colors.controlBg,
+    borderWidth: 1,
+    borderColor: Colors.glassBorder,
   },
-  stepperBtn: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: Colors.surfaceOpaque,
-    alignItems: 'center',
-    justifyContent: 'center',
-    ...Shadows.soft,
+  choiceCardActive: {
+    backgroundColor: Colors.primary,
+    borderColor: 'transparent',
   },
-  stepperValue: {
-    alignItems: 'center',
-    gap: 2,
-  },
-  dowRow: {
+  reminderRow: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
-    gap: 4,
+    gap: 6,
   },
-  dowChip: {
+  reminderChip: {
     flex: 1,
     alignItems: 'center',
-    paddingVertical: 10,
+    justifyContent: 'center',
+    paddingVertical: 8,
     borderRadius: BorderRadius.sm,
     backgroundColor: Colors.controlBg,
   },
-  dowChipActive: {
+  reminderChipActive: {
     backgroundColor: Colors.primary,
-  },
-  actionCard: {
-    gap: 12,
-  },
-  switchRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: 12,
-  },
-  switchInfo: {
-    flex: 1,
-    gap: 2,
-  },
-  summaryBanner: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: 10,
-    backgroundColor: 'rgba(139, 92, 246, 0.06)',
-    borderColor: 'rgba(139, 92, 246, 0.2)',
   },
   footer: {
     paddingHorizontal: 20,
