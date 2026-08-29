@@ -282,6 +282,115 @@ async function run() {
     assert.equal(updatedRule.next_due, '2026-09-01');
   });
 
+  await test('Recurring rule catches up on multiple missed periods, not just one', async () => {
+    const db = await createInMemoryDb();
+
+    await db.runAsync(
+      `INSERT INTO accounts (id, name, type, icon, color, initial_balance, created_at, archived, sort_order)
+       VALUES ('acc2', 'Bank', 'bank', 'card', '#3B82F6', 10000, '2026-01-01', 0, 0)`
+    );
+
+    // A monthly rule that hasn't been processed since March — as if the app
+    // was closed for several months. Before the fix, opening the app would
+    // only create/advance a single occurrence (June) and silently skip
+    // April and May.
+    const rule: RecurringRule = {
+      id: 'rec_missed',
+      type: 'expense',
+      amount: 1000,
+      accountId: 'acc2',
+      payee: 'Gym',
+      frequency: 'monthly',
+      dayOfMonth: 1,
+      startDate: '2026-01-01',
+      nextDue: '2026-03-01',
+      autoCreate: true,
+      reminderDays: 1,
+      active: true,
+      createdAt: '2026-01-01',
+    };
+    await insertRecurringRule(db, rule);
+
+    // Opened on 2026-06-15 — March, April, May, and June 1st have all elapsed.
+    const result = await processDueRules(db, new Date('2026-06-15T12:00:00Z'));
+    assert.equal(result.created, 4);
+
+    const txs = await db.getAllAsync<{ date: string }>(
+      'SELECT date FROM transactions WHERE recurring_rule_id = ? ORDER BY date',
+      ['rec_missed']
+    );
+    assert.deepEqual(
+      txs.map(t => t.date),
+      ['2026-03-01', '2026-04-01', '2026-05-01', '2026-06-01']
+    );
+
+    const updatedRule = await db.getFirstAsync<{ next_due: string }>(
+      'SELECT next_due FROM recurring_rules WHERE id = ?',
+      ['rec_missed']
+    );
+    assert.equal(updatedRule?.next_due, '2026-07-01');
+
+    // The balance/rollup side must reflect all 4 occurrences, not just one.
+    const balance = await db.getFirstAsync<{ delta: number }>(
+      'SELECT delta FROM account_balance WHERE account_id = ?',
+      ['acc2']
+    );
+    assert.equal(balance?.delta, -4000 * 100);
+  });
+
+  await test('Manual (non-auto-create) recurring rule catches up next_due without spamming notifications', async () => {
+    const db = await createInMemoryDb();
+
+    await db.runAsync(
+      `INSERT INTO accounts (id, name, type, icon, color, initial_balance, created_at, archived, sort_order)
+       VALUES ('acc3', 'Bank', 'bank', 'card', '#3B82F6', 10000, '2026-01-01', 0, 0)`
+    );
+
+    const rule: RecurringRule = {
+      id: 'rec_manual',
+      type: 'expense',
+      amount: 500,
+      accountId: 'acc3',
+      payee: 'Electricity',
+      frequency: 'monthly',
+      dayOfMonth: 1,
+      startDate: '2026-01-01',
+      nextDue: '2026-03-01',
+      autoCreate: false,
+      reminderDays: 1,
+      active: true,
+      createdAt: '2026-01-01',
+    };
+    await insertRecurringRule(db, rule);
+
+    const notifications: Array<{ title: string; body: string }> = [];
+    const result = await processDueRules(
+      db,
+      new Date('2026-06-15T12:00:00Z'),
+      async (title, body) => {
+        notifications.push({ title, body });
+      }
+    );
+
+    // No transactions are ever written for manual rules — only next_due
+    // moves, and exactly one notification fires (not one per missed month).
+    assert.equal(result.reminded, 1);
+    assert.equal(notifications.length, 1);
+    assert.match(notifications[0].body, /4 missed/);
+
+    const txCount = await db.getFirstAsync<{ n: number }>(
+      'SELECT COUNT(*) as n FROM transactions WHERE recurring_rule_id = ?',
+      ['rec_manual']
+    );
+    assert.equal(txCount?.n, 0);
+
+    const updatedRule = await db.getFirstAsync<{ next_due: string }>(
+      'SELECT next_due FROM recurring_rules WHERE id = ?',
+      ['rec_manual']
+    );
+    assert.equal(updatedRule?.next_due, '2026-07-01');
+  });
+
   await test('Split participant settlement and linked repayment income', async () => {
     const db = await createInMemoryDb();
 

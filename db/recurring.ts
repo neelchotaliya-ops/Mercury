@@ -18,7 +18,10 @@ import { generateId } from '@/utils/id';
 import { Db, RecurringRuleRow } from './types';
 import { bumpDataVersion } from './version';
 import { applyRow } from './apply';
-import { computeNextDue, isDue, formatDateIso } from '@/utils/recurring-engine';
+import { computeNextDue, isDue, formatDateIso, generateOccurrences } from '@/utils/recurring-engine';
+
+/** Hard cap on how many elapsed occurrences one foreground pass will catch up on for a single rule — matches generateOccurrences' own default, so a rule left unopened for years degrades gracefully instead of spinning. */
+const MAX_CATCHUP_OCCURRENCES = 60;
 
 // ---- Row ↔ domain mapping --------------------------------------------------
 
@@ -179,68 +182,101 @@ export async function processDueRules(
     if (!pastDue && !inReminderWindow) { skipped++; continue; }
 
     if (rule.autoCreate && pastDue) {
-      // Write the transaction and advance next_due
-      const txId = generateId();
-      const dateStr = rule.nextDue; // use the scheduled date, not "today"
+      // Walk every elapsed occurrence, not just the most recent one — a rule
+      // left unprocessed across several periods (app closed for months) used
+      // to silently skip every occurrence but the last, jumping next_due
+      // straight to "one period past whenever the app was last opened."
+      // Bounded at MAX_CATCHUP_OCCURRENCES so a rule left unopened for years
+      // degrades gracefully instead of spinning.
+      const occurrences = generateOccurrences(
+        rule,
+        new Date(rule.nextDue),
+        now,
+        MAX_CATCHUP_OCCURRENCES
+      );
+      let finalNextDue = new Date(rule.nextDue);
+
       await db.withTransaction(async txn => {
-        await txn.runAsync(
-          `INSERT INTO transactions
-             (id, type, amount, account_id, category_id, subcategory_id,
-              payee, note, date, date_ms, month_key, day_key, note_lc,
-              created_at, recurring_rule_id)
-           VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
-          [
-            txId, rule.type, rule.amount, rule.accountId,
-            rule.categoryId ?? null, rule.subcategoryId ?? null,
-            rule.payee ?? null, rule.note ?? null,
-            dateStr, new Date(dateStr).getTime(),
-            monthKeyOf(dateStr), dayKeyOf(dateStr),
-            rule.note ? rule.note.toLowerCase() : null,
-            new Date().toISOString(), rule.id,
-          ]
-        );
+        for (const occurrenceDate of occurrences) {
+          const txId = generateId();
+          const dateStr = formatDateIso(occurrenceDate);
+          await txn.runAsync(
+            `INSERT INTO transactions
+               (id, type, amount, account_id, category_id, subcategory_id,
+                payee, note, date, date_ms, month_key, day_key, note_lc,
+                created_at, recurring_rule_id)
+             VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+            [
+              txId, rule.type, rule.amount, rule.accountId,
+              rule.categoryId ?? null, rule.subcategoryId ?? null,
+              rule.payee ?? null, rule.note ?? null,
+              dateStr, new Date(dateStr).getTime(),
+              monthKeyOf(dateStr), dayKeyOf(dateStr),
+              rule.note ? rule.note.toLowerCase() : null,
+              new Date().toISOString(), rule.id,
+            ]
+          );
 
-        // Apply to rollup (same pattern as insertTransaction in db/transactions.ts)
-        await applyRow(txn, {
-          type: rule.type,
-          amount: rule.amount,
-          accountId: rule.accountId,
-          toAccountId: null,
-          categoryId: rule.categoryId ?? null,
-          monthKey: monthKeyOf(dateStr),
-          dayKey: dayKeyOf(dateStr),
-        });
+          // Apply to rollup (same pattern as insertTransaction in db/transactions.ts)
+          await applyRow(txn, {
+            type: rule.type,
+            amount: rule.amount,
+            accountId: rule.accountId,
+            toAccountId: null,
+            categoryId: rule.categoryId ?? null,
+            monthKey: monthKeyOf(dateStr),
+            dayKey: dayKeyOf(dateStr),
+          });
 
-        // Advance next_due
-        const [y, m, d] = dateStr.split('-').map(Number);
-        const nextDate = computeNextDue(rule, new Date(y, m - 1, d));
+          finalNextDue = computeNextDue(rule, occurrenceDate);
+        }
+
         await txn.runAsync(
           'UPDATE recurring_rules SET next_due = ? WHERE id = ?',
-          [formatDateIso(nextDate), rule.id]
+          [formatDateIso(finalNextDue), rule.id]
         );
       });
       await bumpDataVersion();
-      created++;
+      created += occurrences.length;
 
     } else if (!rule.autoCreate && (pastDue || inReminderWindow)) {
-      // Fire reminder; advance next_due only if past due
       const label = rule.payee ?? rule.note ?? 'Recurring payment';
-      const daysText = inReminderWindow && !pastDue
-        ? `due in ${rule.reminderDays} day${rule.reminderDays === 1 ? '' : 's'}`
-        : 'due today';
-      await notify?.(
-        `⏰ ${label}`,
-        `₹${rule.amount.toLocaleString()} ${daysText} — tap to review.`
-      );
 
       if (pastDue) {
-        const [y, m, d] = rule.nextDue.split('-').map(Number);
-        const nextDate = computeNextDue(rule, new Date(y, m - 1, d));
+        // Same catch-up walk as the auto-create branch, but without writing
+        // any transactions — advance next_due through every elapsed
+        // occurrence and fire ONE notification summarizing the count,
+        // rather than one per elapsed period (which would spam).
+        const occurrences = generateOccurrences(
+          rule,
+          new Date(rule.nextDue),
+          now,
+          MAX_CATCHUP_OCCURRENCES
+        );
+        const count = occurrences.length;
+        const finalNextDue =
+          count > 0
+            ? computeNextDue(rule, occurrences[occurrences.length - 1])
+            : new Date(rule.nextDue);
+
+        const body =
+          count > 1
+            ? `${count} missed ${label} payments since you last opened Mercury — tap to review.`
+            : `₹${rule.amount.toLocaleString()} due today — tap to review.`;
+        await notify?.(`⏰ ${label}`, body);
+
         await db.runAsync(
           'UPDATE recurring_rules SET next_due = ? WHERE id = ?',
-          [formatDateIso(nextDate), rule.id]
+          [formatDateIso(finalNextDue), rule.id]
         );
         await bumpDataVersion();
+      } else {
+        // Only in the reminder window (upcoming, not yet due) — a single
+        // look-ahead notification, no next_due advance.
+        await notify?.(
+          `⏰ ${label}`,
+          `₹${rule.amount.toLocaleString()} due in ${rule.reminderDays} day${rule.reminderDays === 1 ? '' : 's'} — tap to review.`
+        );
       }
       reminded++;
     }
