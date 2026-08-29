@@ -191,20 +191,26 @@ export default function AddTransactionScreen() {
       } else {
         await addTransaction(payload);
 
-        // If Split is configured: save split participants atomically
+        // If Split is configured: save split participants atomically.
+        // "You" (the payer) is never inserted as a participant row — the
+        // payer's own share is implicit in the transaction's own amount,
+        // matching add-split.tsx's canonical creation path. Inserting a
+        // row for "You" here used to leave a phantom, permanently-pending
+        // "owed to yourself" entry, since insertSplitParticipantsBatch
+        // always writes paidAmount:0/status:'pending' regardless of what
+        // a caller passes.
         if (splitConfig && splitConfig.participants.length > 0 && type === 'expense') {
           const db = await getDb();
           await insertSplitParticipantsBatch(
             db,
-            splitConfig.participants.map(p => ({
-              id: generateId(),
-              transactionId: txId,
-              name: p.name,
-              shareAmount: p.share,
-              paidAmount: p.isYou ? p.share : 0,
-              status: p.isYou ? 'paid' : 'pending',
-              note: note.trim() || (payee ? `Split: ${payee}` : undefined),
-            }))
+            splitConfig.participants
+              .filter(p => !p.isYou)
+              .map(p => ({
+                transactionId: txId,
+                name: p.name,
+                shareAmount: p.share,
+                note: note.trim() || (payee ? `Split: ${payee}` : undefined),
+              }))
           );
         }
 
