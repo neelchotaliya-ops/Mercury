@@ -219,9 +219,9 @@ export default function SplitDetailScreen() {
                     />
                   </View>
 
-                  <View style={{ flex: 1, marginLeft: 12 }}>
-                    <AppText variant="bodyStrong">{p.name}</AppText>
-                    <AppText variant="caption" color={Colors.textSecondary}>
+                  <View style={styles.participantInfo}>
+                    <AppText variant="bodyStrong" numberOfLines={1}>{p.name}</AppText>
+                    <AppText variant="caption" color={Colors.textSecondary} numberOfLines={1}>
                       {isPaid
                         ? `Paid in full (${formatCurrency(p.shareAmount, currency)})`
                         : `Owes ${formatCurrency(p.shareAmount, currency)}`}
@@ -233,6 +233,7 @@ export default function SplitDetailScreen() {
                       title="Mark as Paid"
                       size="sm"
                       variant="glass"
+                      fullWidth={false}
                       onPress={() => confirmMarkPaid(p)}
                       disabled={payingId === p.id}
                     />
@@ -298,10 +299,15 @@ const styles = StyleSheet.create({
   participantItem: {
     flexDirection: 'row',
     alignItems: 'center',
+    gap: 12,
     paddingVertical: 10,
     paddingHorizontal: 12,
     borderRadius: BorderRadius.sm,
     backgroundColor: 'rgba(25, 21, 39, 0.03)',
+  },
+  participantInfo: {
+    flex: 1,
+    minWidth: 0,
   },
   avatar: {
     width: 34,

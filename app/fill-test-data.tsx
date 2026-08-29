@@ -399,7 +399,7 @@ export default function FillTestDataScreen() {
                 <FeatureToggleItem
                   icon="people-outline"
                   title="Split Expenses & Repayments"
-                  subtitle="Shared group bills with pending, partial & settled friends + linked repayment entries"
+                  subtitle="Shared group bills with pending & paid friends + linked repayment entries"
                   value={includeSplitExpenses}
                   onValueChange={setIncludeSplitExpenses}
                 />

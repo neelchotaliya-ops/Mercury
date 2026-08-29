@@ -131,11 +131,11 @@ export default function ManageSubcategoriesScreen() {
         {parentCategory && (
           <GlassCard padding={14} style={styles.parentCard}>
             <IconBadge icon={parentCategory.icon} color={parentCategory.color} size={40} />
-            <View style={{ flex: 1, marginLeft: 12 }}>
+            <View style={{ flex: 1, minWidth: 0, marginLeft: 12 }}>
               <AppText variant="caption" color={Colors.textSecondary}>Parent Category</AppText>
-              <AppText variant="bodyStrong">{parentCategory.name}</AppText>
+              <AppText variant="bodyStrong" numberOfLines={1}>{parentCategory.name}</AppText>
             </View>
-            <AppButton title="+ Add" size="sm" variant="glass" onPress={openNew} />
+            <AppButton title="+ Add" size="sm" variant="glass" fullWidth={false} onPress={openNew} />
           </GlassCard>
         )}
 
