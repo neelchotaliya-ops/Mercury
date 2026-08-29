@@ -10,6 +10,7 @@ import { GlassCard } from '@/components/ui/glass-card';
 import { ModalHeader } from '@/components/ui/modal-header';
 import { SegmentedControl } from '@/components/ui/segmented-control';
 import { IconBadge } from '@/components/finance/icon-badge';
+import { MenuRow } from '@/components/ui/menu-row';
 import { useFinance } from '@/context/finance-context';
 import { CategoryKind, Category } from '@/types/finance';
 import { CATEGORY_ICON_CHOICES, CATEGORY_COLOR_CHOICES } from '@/constants/categories';
@@ -30,6 +31,11 @@ export default function ManageCategoriesScreen() {
   const categories = useMemo(
     () => state.categories.filter(c => c.kind === kind),
     [state.categories, kind]
+  );
+
+  const subcategoryCount = useMemo(
+    () => (state.subcategories ?? []).filter(s => s.categoryId === editingCategory?.id).length,
+    [state.subcategories, editingCategory]
   );
 
   const openNew = () => {
@@ -164,6 +170,21 @@ export default function ManageCategoriesScreen() {
                 ))}
               </View>
             </View>
+
+            {editingCategory && (
+              <GlassCard padding={0}>
+                <MenuRow
+                  icon="pricetags-outline"
+                  label="Manage subcategories"
+                  subtitle={
+                    subcategoryCount > 0
+                      ? `${subcategoryCount} subcategor${subcategoryCount === 1 ? 'y' : 'ies'}`
+                      : 'Optional — split this category into finer detail'
+                  }
+                  onPress={() => router.push(`/manage-subcategories?categoryId=${editingCategory.id}` as any)}
+                />
+              </GlassCard>
+            )}
 
             <View style={styles.formActions}>
               {editingCategory ? (

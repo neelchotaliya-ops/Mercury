@@ -171,6 +171,29 @@ export default function AddTransactionScreen() {
 
   const handleSave = async () => {
     if (!canSave || !accountId) return;
+
+    // Editing the amount of a transaction that already has a split doesn't
+    // touch split_participants — the participants' shares would silently
+    // stop adding up to the new total. Warn before proceeding rather than
+    // letting the mismatch happen invisibly (same guardrail pattern as the
+    // overpayment warning in split-detail.tsx).
+    if (editing && existingSplitCount > 0 && numericAmount !== editing.amount) {
+      Alert.alert(
+        'This expense is split',
+        `Changing the amount won't update the ${existingSplitCount} split share${existingSplitCount === 1 ? '' : 's'} already set for it. Adjust them from Split Details after saving if needed.`,
+        [
+          { text: 'Cancel', style: 'cancel' },
+          { text: 'Save Anyway', onPress: () => void saveTransaction() },
+        ]
+      );
+      return;
+    }
+
+    await saveTransaction();
+  };
+
+  const saveTransaction = async () => {
+    if (!accountId) return;
     const txId = editing?.id ?? generateId();
     const payload: Omit<Transaction, 'createdAt'> = {
       id: txId,
@@ -415,9 +438,13 @@ export default function AddTransactionScreen() {
             </View>
           )}
 
+          {/* Subcategories are opt-in: this row only appears once a category
+              actually has subcategories set up (via Manage Categories), so
+              new users aren't shown a chip row with nothing useful in it. */}
           {type !== 'transfer' && categoryId && (
             (() => {
               const categorySubcats = (state.subcategories ?? []).filter(s => s.categoryId === categoryId);
+              if (categorySubcats.length === 0) return null;
               return (
                 <View style={styles.subcatSection}>
                   <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.subcatScroll}>
@@ -450,15 +477,6 @@ export default function AddTransactionScreen() {
                         </Pressable>
                       );
                     })}
-                    <Pressable
-                      onPress={() => router.push(`/manage-subcategories?categoryId=${categoryId}` as any)}
-                      style={styles.subcatEmptyChip}
-                    >
-                      <Ionicons name="add" size={13} color={Colors.textMuted} />
-                      <AppText variant="micro" color={Colors.textMuted}>
-                        {categorySubcats.length === 0 ? 'Add subcategory' : 'Add'}
-                      </AppText>
-                    </Pressable>
                   </ScrollView>
                 </View>
               );
@@ -683,6 +701,7 @@ export default function AddTransactionScreen() {
         onClose={() => setShowRepeatSheet(false)}
         amount={numericAmount}
         currency={state.settings.currency ?? 'INR'}
+        date={date}
         initialConfig={repeatConfig ?? undefined}
         onApply={cfg => setRepeatConfig(cfg)}
       />
@@ -763,18 +782,6 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(255, 255, 255, 0.7)',
     borderWidth: 1,
     borderColor: 'rgba(25, 21, 39, 0.08)',
-  },
-  subcatEmptyChip: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    paddingVertical: 6,
-    paddingHorizontal: 10,
-    borderRadius: BorderRadius.pill,
-    backgroundColor: 'rgba(25, 21, 39, 0.03)',
-    borderWidth: 1,
-    borderColor: 'rgba(25, 21, 39, 0.06)',
-    borderStyle: 'dashed',
   },
   metaRow: {
     flexDirection: 'row',
