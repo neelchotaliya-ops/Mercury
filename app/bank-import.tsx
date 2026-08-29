@@ -107,7 +107,7 @@ export default function BankImportScreen() {
 
   // Import progress
   const [importProgress, setImportProgress] = useState<{ current: number; total: number }>({ current: 0, total: 0 });
-  const [importResult, setImportResult] = useState<{ imported: number; skipped: number } | null>(null);
+  const [importResult, setImportResult] = useState<{ imported: number; skipped: number; errors: number } | null>(null);
   const [loading, setLoading] = useState(false);
 
   const currency = state.settings.currency ?? 'INR';
@@ -275,8 +275,12 @@ export default function BankImportScreen() {
         },
       });
 
-      haptics.success();
-      setImportResult({ imported: result.imported, skipped: result.skipped });
+      if (result.errors > 0) {
+        haptics.warning();
+      } else {
+        haptics.success();
+      }
+      setImportResult({ imported: result.imported, skipped: result.skipped, errors: result.errors });
       setStep('complete');
     } catch {
       Alert.alert('Import Failed', 'An error occurred during bulk import.');
@@ -628,26 +632,37 @@ export default function BankImportScreen() {
         )}
 
         {/* STEP 5: COMPLETE */}
-        {step === 'complete' && (
-          <GlassCard padding={24} style={styles.completeCard}>
-            <View style={styles.successIcon}>
-              <Ionicons name="checkmark" size={36} color="#FFFFFF" />
-            </View>
-            <AppText variant="h3" style={{ marginTop: 14 }}>
-              Import Complete!
-            </AppText>
-            <AppText variant="body" color={Colors.textSecondary} style={{ textAlign: 'center', marginTop: 6 }}>
-              Successfully imported {importResult?.imported} transaction(s).
-              {importResult?.skipped ? ` ${importResult.skipped} duplicate(s) were skipped.` : ''}
-            </AppText>
-            <AppButton
-              title="Done"
-              size="lg"
-              onPress={() => router.back()}
-              style={{ width: '100%', marginTop: 24 }}
-            />
-          </GlassCard>
-        )}
+        {step === 'complete' && (() => {
+          const totalFailure = (importResult?.imported ?? 0) === 0 && (importResult?.errors ?? 0) > 0;
+          const partialFailure = !totalFailure && (importResult?.errors ?? 0) > 0;
+          return (
+            <GlassCard padding={24} style={styles.completeCard}>
+              <View style={[styles.successIcon, totalFailure && styles.errorIcon]}>
+                <Ionicons name={totalFailure ? 'warning' : 'checkmark'} size={36} color="#FFFFFF" />
+              </View>
+              <AppText variant="h3" style={{ marginTop: 14 }}>
+                {totalFailure ? 'Import Failed' : 'Import Complete!'}
+              </AppText>
+              <AppText variant="body" color={Colors.textSecondary} style={{ textAlign: 'center', marginTop: 6 }}>
+                {totalFailure
+                  ? "None of the rows could be imported. Nothing was added to your account."
+                  : `Successfully imported ${importResult?.imported} transaction(s).`}
+                {importResult?.skipped ? ` ${importResult.skipped} duplicate(s) were skipped.` : ''}
+              </AppText>
+              {partialFailure ? (
+                <AppText variant="captionStrong" color={Colors.expense} style={{ textAlign: 'center', marginTop: 8 }}>
+                  {importResult?.errors} row(s) could not be imported.
+                </AppText>
+              ) : null}
+              <AppButton
+                title="Done"
+                size="lg"
+                onPress={() => router.back()}
+                style={{ width: '100%', marginTop: 24 }}
+              />
+            </GlassCard>
+          );
+        })()}
       </ScrollView>
     </GradientScreen>
   );
@@ -788,5 +803,8 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.income,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  errorIcon: {
+    backgroundColor: Colors.expense,
   },
 });

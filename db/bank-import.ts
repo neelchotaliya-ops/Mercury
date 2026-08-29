@@ -15,6 +15,7 @@ import { dayKeyOf, monthKeyOf } from '@/utils/date';
 
 import { Db } from './types';
 import { bumpDataVersion } from './version';
+import { applyRow } from './apply';
 
 // ---- Duplicate detection ---------------------------------------------------
 
@@ -164,35 +165,18 @@ export async function applyBankImport(
               ]
             );
 
-            // Update rollup for this transaction
-            // Rollup grain 'M' (monthly)
-            await txn.runAsync(
-              `INSERT INTO rollup (grain, bucket, account_id, category_id, income, expenses, count)
-               VALUES ('M', ?, ?, ?, ?, ?, 1)
-               ON CONFLICT (grain, bucket, account_id, category_id) DO UPDATE SET
-                 income   = income   + excluded.income,
-                 expenses = expenses + excluded.expenses,
-                 count    = count    + 1`,
-              [
-                monthKeyOf(row.date), accountId, defaultCategoryId,
-                row.direction === 'income' ? row.amount : 0,
-                row.direction === 'expense' ? row.amount : 0,
-              ]
-            );
-            // Rollup grain 'D' (daily)
-            await txn.runAsync(
-              `INSERT INTO rollup (grain, bucket, account_id, category_id, income, expenses, count)
-               VALUES ('D', ?, ?, ?, ?, ?, 1)
-               ON CONFLICT (grain, bucket, account_id, category_id) DO UPDATE SET
-                 income   = income   + excluded.income,
-                 expenses = expenses + excluded.expenses,
-                 count    = count    + 1`,
-              [
-                dayKeyOf(row.date), accountId, defaultCategoryId,
-                row.direction === 'income' ? row.amount : 0,
-                row.direction === 'expense' ? row.amount : 0,
-              ]
-            );
+            // Maintain rollup/account_balance/ledger_stat the same way every
+            // other write path does — applyRow is the only sanctioned writer
+            // to those three tables (see db/apply.ts's header comment).
+            await applyRow(txn, {
+              type: row.direction,
+              amount: row.amount,
+              accountId,
+              toAccountId: null,
+              categoryId: defaultCategoryId,
+              monthKey: monthKeyOf(row.date),
+              dayKey: dayKeyOf(row.date),
+            });
 
             imported++;
           } catch {

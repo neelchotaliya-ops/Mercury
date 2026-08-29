@@ -33,6 +33,8 @@ import { insertSubcategory, listSubcategories, updateSubcategory, deleteSubcateg
 import { insertRecurringRule, listRecurringRules, processDueRules } from '../db/recurring';
 import { insertTransaction } from '../db/transactions';
 import { insertSplitParticipantsBatch, listSplitParticipants, recordRepayment, getSplitSummary } from '../db/splits';
+import { applyBankImport } from '../db/bank-import';
+import { ParsedBankTransaction } from '../utils/bank-statement';
 
 async function createInMemoryDb(): Promise<Db> {
   const db = openTestDb();
@@ -340,6 +342,67 @@ async function run() {
     assert.equal(repaymentTx.type, 'income');
     assert.equal(repaymentTx.amount, 1000);
     assert.equal(repaymentTx.split_expense_id, 'tx_dinner');
+  });
+
+  await test('Bank import correctly maintains rollup/account_balance/ledger_stat', async () => {
+    const db = await createInMemoryDb();
+
+    await db.runAsync(
+      `INSERT INTO accounts (id, name, type, icon, color, initial_balance, created_at, archived, sort_order)
+       VALUES ('acc_bank', 'Bank', 'bank', 'card', '#3B82F6', 0, '2026-08-01', 0, 0)`
+    );
+    await db.runAsync(
+      `INSERT INTO categories (id, name, icon, color, kind, is_default, sort_order)
+       VALUES ('cat_general', 'General', 'card', '#8B5CF6', 'expense', 1, 0)`
+    );
+
+    const rows: ParsedBankTransaction[] = [
+      { date: '2026-08-05', amount: 1200, direction: 'expense', description: 'Grocery Store', fingerprint: 'f1' },
+      { date: '2026-08-06', amount: 500, direction: 'expense', description: 'Coffee Shop', fingerprint: 'f2' },
+      { date: '2026-08-07', amount: 50000, direction: 'income', description: 'Salary', fingerprint: 'f3' },
+    ];
+
+    const result = await applyBankImport(db, rows, {
+      accountId: 'acc_bank',
+      defaultCategoryId: 'cat_general',
+    });
+
+    // The whole point of this test: every row must actually land in the
+    // ledger's aggregates, not just the transactions table (this regresses
+    // the bug where applyBankImport wrote raw SQL against columns that
+    // don't exist in `rollup`, silently failing every row).
+    assert.equal(result.imported, 3);
+    assert.equal(result.errors, 0);
+
+    const txCount = await db.getFirstAsync<{ n: number }>(
+      'SELECT COUNT(*) as n FROM transactions WHERE account_id = ?',
+      ['acc_bank']
+    );
+    assert.equal(txCount?.n, 3);
+
+    const monthRollup = await db.getFirstAsync<{ expense: number; income: number; expense_count: number; income_count: number }>(
+      `SELECT expense, income, expense_count, income_count FROM rollup
+       WHERE grain = 'M' AND account_id = ? AND category_id = ?`,
+      ['acc_bank', 'cat_general']
+    );
+    assert.ok(monthRollup);
+    assert.equal(monthRollup.expense, 1700 * 100); // 1200 + 500, minor units
+    assert.equal(monthRollup.income, 50000 * 100);
+    assert.equal(monthRollup.expense_count, 2);
+    assert.equal(monthRollup.income_count, 1);
+
+    const balance = await db.getFirstAsync<{ delta: number }>(
+      'SELECT delta FROM account_balance WHERE account_id = ?',
+      ['acc_bank']
+    );
+    assert.ok(balance);
+    assert.equal(balance.delta, (50000 - 1200 - 500) * 100);
+
+    const stat = await db.getFirstAsync<{ n: number; net: number }>(
+      "SELECT n, net FROM ledger_stat WHERE key = 'all'"
+    );
+    assert.ok(stat);
+    assert.equal(stat.n, 3);
   });
 
   console.log(`\nAll ${passed} new feature test cases passed!`);
