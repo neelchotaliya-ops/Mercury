@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React from 'react';
 import {
   View,
   StyleSheet,
@@ -13,11 +13,12 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useKeyboardBottomInset } from '@/hooks/use-keyboard-bottom-inset';
 import { AppText } from '@/components/ui/app-text';
 import { AppButton } from '@/components/ui/app-button';
+import { RecurringScheduleFields } from '@/components/finance/recurring-schedule-fields';
+import { useRecurringScheduleForm } from '@/hooks/use-recurring-schedule-form';
 import { RecurringFrequency, IntervalUnit } from '@/types/finance';
 import { formatCurrency } from '@/utils/currency';
-import { describeFrequency } from '@/utils/recurring-engine';
 import { haptics } from '@/utils/haptics';
-import { Colors, BorderRadius, Spacing, Shadows } from '@/constants/theme';
+import { Colors, Spacing, Shadows } from '@/constants/theme';
 
 export interface RepeatSheetConfig {
   frequency: RecurringFrequency;
@@ -41,13 +42,6 @@ interface RepeatSheetProps {
   onApply: (config: RepeatSheetConfig) => void;
 }
 
-const FREQUENCY_PRESETS: { key: RecurringFrequency; label: string; icon: keyof typeof Ionicons.glyphMap }[] = [
-  { key: 'monthly', label: 'Monthly', icon: 'calendar-number-outline' },
-  { key: 'weekly', label: 'Weekly', icon: 'calendar-outline' },
-  { key: 'yearly', label: 'Yearly', icon: 'calendar-clear-outline' },
-  { key: 'daily', label: 'Daily', icon: 'today-outline' },
-];
-
 export const RepeatSheet: React.FC<RepeatSheetProps> = ({
   visible,
   onClose,
@@ -60,32 +54,37 @@ export const RepeatSheet: React.FC<RepeatSheetProps> = ({
   const insets = useSafeAreaInsets();
   const { keyboardHeight, keyboardVisible } = useKeyboardBottomInset();
 
-  const [frequency, setFrequency] = useState<RecurringFrequency>(initialConfig?.frequency ?? 'monthly');
-  const [autoCreate, setAutoCreate] = useState<boolean>(initialConfig?.autoCreate ?? true);
-  const [reminderDays, setReminderDays] = useState<number>(initialConfig?.reminderDays ?? 1);
+  // Same shared hook add-recurring.tsx uses, so a fix to the schedule logic
+  // never has to be made twice. `fixedDate` means this instance never owns
+  // its own start-date state — the transaction's date is the start date.
+  const schedule = useRecurringScheduleForm({ fixedDate: date });
 
-  const dayOfMonth = date.getDate();
-  const dayOfWeek = date.getDay();
+  React.useEffect(() => {
+    if (!visible) return;
+    if (initialConfig) {
+      schedule.setFrequency(initialConfig.frequency === 'custom' ? 'monthly' : initialConfig.frequency);
+      schedule.setUseCustomInterval(initialConfig.frequency === 'custom');
+      if (initialConfig.intervalUnit) schedule.setIntervalUnit(initialConfig.intervalUnit);
+      if (initialConfig.intervalValue) schedule.setIntervalValue(initialConfig.intervalValue);
+      schedule.setAutoCreate(initialConfig.autoCreate);
+      schedule.setReminderDays(initialConfig.reminderDays);
+    } else {
+      schedule.reset();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [visible]);
 
-  const dummyRule: any = {
-    frequency,
-    dayOfMonth,
-    dayOfWeek,
-    startDate: date.toISOString(),
-    intervalUnit: frequency === 'monthly' ? 'month' : frequency === 'weekly' ? 'week' : 'day',
-    intervalValue: 1,
-  };
-
-  const scheduleDescription = describeFrequency(dummyRule);
+  const { activeFrequency, dayOfWeek, dayOfMonth, autoCreate, reminderDays, scheduleDescription } = schedule;
 
   const handleApply = () => {
     haptics.success();
+    const fields = schedule.buildFields();
     onApply({
-      frequency,
-      intervalUnit: dummyRule.intervalUnit,
-      intervalValue: 1,
-      dayOfMonth: frequency === 'monthly' ? dayOfMonth : undefined,
-      dayOfWeek: frequency === 'weekly' ? dayOfWeek : undefined,
+      frequency: activeFrequency,
+      intervalUnit: fields.intervalUnit,
+      intervalValue: fields.intervalValue ?? 1,
+      dayOfMonth: activeFrequency === 'monthly' ? dayOfMonth : undefined,
+      dayOfWeek: activeFrequency === 'weekly' ? dayOfWeek : undefined,
       autoCreate,
       reminderDays,
     });
@@ -120,123 +119,7 @@ export const RepeatSheet: React.FC<RepeatSheetProps> = ({
             keyboardShouldPersistTaps="handled"
             showsVerticalScrollIndicator={false}
           >
-            {/* Frequency Presets */}
-            <View style={styles.section}>
-              <AppText variant="label" style={styles.sectionTitle}>
-                How Often
-              </AppText>
-              <View style={styles.freqRow}>
-                {FREQUENCY_PRESETS.map(preset => {
-                  const active = frequency === preset.key;
-                  return (
-                    <Pressable
-                      key={preset.key}
-                      onPress={() => {
-                        haptics.selection();
-                        setFrequency(preset.key);
-                      }}
-                      style={[styles.freqCard, active && styles.freqCardActive]}
-                    >
-                      <Ionicons
-                        name={preset.icon}
-                        size={20}
-                        color={active ? '#FFFFFF' : Colors.primary}
-                      />
-                      <AppText
-                        variant="caption"
-                        color={active ? '#FFFFFF' : Colors.textPrimary}
-                        style={{ fontWeight: active ? '700' : '600' }}
-                      >
-                        {preset.label}
-                      </AppText>
-                    </Pressable>
-                  );
-                })}
-              </View>
-            </View>
-
-            {/* Derived schedule caption — the transaction's own date is also
-                the day it repeats on, so there's nothing further to pick. */}
-            <AppText variant="caption" color={Colors.textMuted}>
-              {frequency === 'weekly'
-                ? `Repeats every ${date.toLocaleDateString(undefined, { weekday: 'long' })}`
-                : frequency === 'monthly'
-                ? `Repeats on the ${dayOfMonth}${dayOfMonth === 1 ? 'st' : dayOfMonth === 2 ? 'nd' : dayOfMonth === 3 ? 'rd' : 'th'} of every month`
-                : frequency === 'yearly'
-                ? `Repeats every year on ${date.toLocaleDateString(undefined, { month: 'long', day: 'numeric' })}`
-                : 'Repeats every day'}
-            </AppText>
-
-            {/* On the due date */}
-            <View style={styles.section}>
-              <AppText variant="label" style={styles.sectionTitle}>
-                On the Due Date
-              </AppText>
-
-              <Pressable
-                onPress={() => {
-                  haptics.selection();
-                  setAutoCreate(true);
-                }}
-                style={[styles.choiceCard, autoCreate && styles.choiceCardActive]}
-              >
-                <Ionicons name="flash" size={20} color={autoCreate ? '#FFFFFF' : Colors.primary} />
-                <View style={{ flex: 1 }}>
-                  <AppText variant="bodyStrong" color={autoCreate ? '#FFFFFF' : Colors.textPrimary}>
-                    Log it automatically
-                  </AppText>
-                  <AppText variant="caption" color={autoCreate ? 'rgba(255,255,255,0.85)' : Colors.textSecondary}>
-                    We&apos;ll add the transaction for you
-                  </AppText>
-                </View>
-                {autoCreate && <Ionicons name="checkmark-circle" size={20} color="#FFFFFF" />}
-              </Pressable>
-
-              <Pressable
-                onPress={() => {
-                  haptics.selection();
-                  setAutoCreate(false);
-                }}
-                style={[styles.choiceCard, !autoCreate && styles.choiceCardActive]}
-              >
-                <Ionicons name="notifications-outline" size={20} color={!autoCreate ? '#FFFFFF' : Colors.primary} />
-                <View style={{ flex: 1 }}>
-                  <AppText variant="bodyStrong" color={!autoCreate ? '#FFFFFF' : Colors.textPrimary}>
-                    Just remind me
-                  </AppText>
-                  <AppText variant="caption" color={!autoCreate ? 'rgba(255,255,255,0.85)' : Colors.textSecondary}>
-                    We&apos;ll send a notification instead
-                  </AppText>
-                </View>
-                {!autoCreate && <Ionicons name="checkmark-circle" size={20} color="#FFFFFF" />}
-              </Pressable>
-
-              {!autoCreate && (
-                <View style={styles.reminderRow}>
-                  {[0, 1, 3].map(days => {
-                    const isSelected = reminderDays === days;
-                    return (
-                      <Pressable
-                        key={days}
-                        onPress={() => {
-                          haptics.selection();
-                          setReminderDays(days);
-                        }}
-                        style={[styles.reminderChip, isSelected && styles.reminderChipActive]}
-                      >
-                        <AppText
-                          variant="caption"
-                          color={isSelected ? '#FFFFFF' : Colors.textPrimary}
-                          style={{ fontWeight: isSelected ? '700' : '500' }}
-                        >
-                          {days === 0 ? 'On the day' : `${days} day${days === 1 ? '' : 's'} before`}
-                        </AppText>
-                      </Pressable>
-                    );
-                  })}
-                </View>
-              )}
-            </View>
+            <RecurringScheduleFields form={schedule} advanced={false} />
           </ScrollView>
 
           {/* Footer */}
@@ -304,63 +187,6 @@ const styles = StyleSheet.create({
   bodyContent: {
     padding: 20,
     gap: Spacing.md,
-  },
-  section: {
-    gap: 8,
-  },
-  sectionTitle: {
-    fontSize: 12,
-    letterSpacing: 0.5,
-  },
-  freqRow: {
-    flexDirection: 'row',
-    gap: 8,
-  },
-  freqCard: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 12,
-    paddingHorizontal: 6,
-    borderRadius: BorderRadius.md,
-    backgroundColor: Colors.controlBg,
-    borderWidth: 1,
-    borderColor: Colors.glassBorder,
-    gap: 6,
-  },
-  freqCardActive: {
-    backgroundColor: Colors.primary,
-    borderColor: 'transparent',
-  },
-  choiceCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-    paddingVertical: 14,
-    paddingHorizontal: 14,
-    borderRadius: BorderRadius.md,
-    backgroundColor: Colors.controlBg,
-    borderWidth: 1,
-    borderColor: Colors.glassBorder,
-  },
-  choiceCardActive: {
-    backgroundColor: Colors.primary,
-    borderColor: 'transparent',
-  },
-  reminderRow: {
-    flexDirection: 'row',
-    gap: 6,
-  },
-  reminderChip: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 8,
-    borderRadius: BorderRadius.sm,
-    backgroundColor: Colors.controlBg,
-  },
-  reminderChipActive: {
-    backgroundColor: Colors.primary,
   },
   footer: {
     paddingHorizontal: 20,

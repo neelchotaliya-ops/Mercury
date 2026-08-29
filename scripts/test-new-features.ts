@@ -18,6 +18,7 @@ import {
   formatDateIso,
   isDue,
 } from '../utils/recurring-engine';
+import { buildRecurringScheduleFields } from '../hooks/use-recurring-schedule-form';
 import {
   detectBankFormat,
   parseBankRow,
@@ -166,6 +167,58 @@ async function run() {
     assert.equal(describeFrequency({ frequency: 'monthly', dayOfMonth: 15 } as any), 'Every month on the 15th');
     assert.equal(describeFrequency({ frequency: 'monthly', dayOfMonth: -1 } as any), 'Every month on the last day');
     assert.equal(describeFrequency({ frequency: 'custom', intervalValue: 3, intervalUnit: 'month' } as any), 'Every 3 months');
+  });
+
+  test('buildRecurringScheduleFields: add-recurring.tsx and repeat-sheet.tsx derive identical fields from the same schedule state', () => {
+    // Both app/add-recurring.tsx and components/finance/repeat-sheet.tsx
+    // call this same pure function through useRecurringScheduleForm — this
+    // is the regression test for the actual bug class that motivated
+    // extracting it: two hand-rolled copies of this derivation drifting
+    // out of sync (one calling setDayOfWeek/setDayOfMonth after they'd
+    // been removed from the other).
+    const monthlyState = {
+      frequency: 'monthly' as const,
+      useCustomInterval: false,
+      intervalUnit: 'month' as const,
+      intervalValue: 1,
+      startDate: new Date(2026, 7, 15), // Aug 15, 2026
+      hasEndDate: false,
+      endDate: null,
+      autoCreate: true,
+      reminderDays: 1,
+      note: '',
+    };
+    const fields = buildRecurringScheduleFields(monthlyState);
+    assert.equal(fields.frequency, 'monthly');
+    assert.equal(fields.dayOfMonth, 15);
+    assert.equal(fields.dayOfWeek, undefined);
+    assert.equal(fields.startDate, '2026-08-15');
+    assert.equal(fields.intervalUnit, undefined);
+    assert.equal(fields.endDate, undefined);
+
+    // A custom interval flips the effective frequency and carries the unit/value.
+    const customState = { ...monthlyState, useCustomInterval: true, intervalUnit: 'week' as const, intervalValue: 2 };
+    const customFields = buildRecurringScheduleFields(customState);
+    assert.equal(customFields.frequency, 'custom');
+    assert.equal(customFields.intervalUnit, 'week');
+    assert.equal(customFields.intervalValue, 2);
+    assert.equal(customFields.dayOfMonth, undefined);
+
+    // A weekly rule derives dayOfWeek from startDate, never dayOfMonth.
+    const weeklyState = { ...monthlyState, frequency: 'weekly' as const };
+    const weeklyFields = buildRecurringScheduleFields(weeklyState);
+    assert.equal(weeklyFields.dayOfWeek, monthlyState.startDate.getDay());
+    assert.equal(weeklyFields.dayOfMonth, undefined);
+
+    // An end date and note only appear when actually set.
+    const withEnd = buildRecurringScheduleFields({
+      ...monthlyState,
+      hasEndDate: true,
+      endDate: new Date(2027, 0, 1),
+      note: '  shared with family  ',
+    });
+    assert.equal(withEnd.endDate, '2027-01-01');
+    assert.equal(withEnd.note, 'shared with family');
   });
 
   console.log('\n--- Bank Statement Parser Tests ---');
