@@ -80,16 +80,13 @@ export default function SplitDetailScreen() {
     setRepayNote(`Repayment from ${p.name}`);
   };
 
-  const handleConfirmRepayment = async () => {
-    if (!settlingParticipant || !receivingAccountId) return;
-    const numericAmt = parseFloat(repayAmount || '0');
-    if (numericAmt <= 0) return;
-
+  const performRepayment = async (participant: SplitParticipant, amount: number) => {
+    if (!receivingAccountId) return;
     try {
       const db = await getDb();
       await recordRepayment(db, {
-        participantId: settlingParticipant.id,
-        amount: numericAmt,
+        participantId: participant.id,
+        amount,
         accountId: receivingAccountId,
         note: repayNote.trim() || undefined,
       });
@@ -100,6 +97,34 @@ export default function SplitDetailScreen() {
     } catch {
       Alert.alert('Error', 'Failed to record repayment.');
     }
+  };
+
+  const handleConfirmRepayment = async () => {
+    if (!settlingParticipant || !receivingAccountId) return;
+    const numericAmt = parseFloat(repayAmount || '0');
+    if (numericAmt <= 0) return;
+
+    const remaining = settlingParticipant.shareAmount - settlingParticipant.paidAmount;
+    if (numericAmt > remaining) {
+      // Overpayment is a legitimate real-world case (rounding, an app that
+      // doesn't support partial amounts) — warn rather than silently clamp,
+      // since the full amount still lands in the account balance even
+      // though the participant's tracked paid_amount caps at their share.
+      Alert.alert(
+        'Amount exceeds what’s owed',
+        `You're recording ${formatCurrency(numericAmt, currency)}, but only ${formatCurrency(remaining, currency)} is owed. The extra will still be added to your account balance, and this split will be marked fully paid.`,
+        [
+          { text: 'Cancel', style: 'cancel' },
+          {
+            text: 'Confirm',
+            onPress: () => performRepayment(settlingParticipant, numericAmt),
+          },
+        ]
+      );
+      return;
+    }
+
+    await performRepayment(settlingParticipant, numericAmt);
   };
 
   const handleSettleAll = () => {
