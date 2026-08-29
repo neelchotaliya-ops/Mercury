@@ -1,5 +1,5 @@
 import React, { useSyncExternalStore } from 'react';
-import { View, StyleSheet, ScrollView, Pressable, Alert } from 'react-native';
+import { View, StyleSheet, ScrollView, Alert } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import Constants from 'expo-constants';
@@ -8,6 +8,7 @@ import { AppText } from '@/components/ui/app-text';
 import { GradientScreen } from '@/components/ui/gradient-screen';
 import { GlassCard } from '@/components/ui/glass-card';
 import { ModalHeader } from '@/components/ui/modal-header';
+import { MenuRow } from '@/components/ui/menu-row';
 import { useFinance } from '@/context/finance-context';
 import { getDb } from '@/db/client';
 import { haptics } from '@/utils/haptics';
@@ -22,36 +23,6 @@ import {
   getActiveOperation,
   subscribeOperations,
 } from '@/db/operation-status';
-
-interface RowProps {
-  icon: keyof typeof Ionicons.glyphMap;
-  label: string;
-  tint?: string;
-  onPress: () => void;
-  trailing?: React.ReactNode;
-  divider?: boolean;
-  disabled?: boolean;
-}
-
-const Row: React.FC<RowProps> = ({ icon, label, tint, onPress, trailing, divider, disabled }) => (
-  <Pressable
-    onPress={onPress}
-    disabled={disabled}
-    style={({ pressed }) => [
-      styles.row,
-      divider && styles.rowDivider,
-      { opacity: disabled ? 0.4 : pressed ? 0.6 : 1 },
-    ]}
-  >
-    <View style={[styles.rowIcon, { backgroundColor: `${tint ?? Colors.primary}1A` }]}>
-      <Ionicons name={icon} size={16} color={tint ?? Colors.primary} />
-    </View>
-    <AppText variant="body" color={tint ?? Colors.textPrimary} style={styles.rowLabel}>
-      {label}
-    </AppText>
-    {trailing ?? <Ionicons name="chevron-forward" size={16} color={Colors.textMuted} />}
-  </Pressable>
-);
 
 export default function SettingsScreen() {
   const router = useRouter();
@@ -270,7 +241,7 @@ export default function SettingsScreen() {
             Preferences
           </AppText>
           <GlassCard padding={0} style={styles.listCard}>
-            <Row
+            <MenuRow
               icon="cash-outline"
               label="Currency"
               onPress={pickCurrency}
@@ -284,11 +255,10 @@ export default function SettingsScreen() {
                 </View>
               }
             />
-            <Row
+            <MenuRow
               icon="calculator-outline"
               label="Digit grouping"
               onPress={pickNumberFormat}
-              divider
               trailing={
                 <View style={styles.trailing}>
                   <AppText variant="micro">
@@ -298,72 +268,68 @@ export default function SettingsScreen() {
                 </View>
               }
             />
-            <Row
-              icon="pricetags-outline"
-              label="Manage categories"
-              onPress={() => router.push('/manage-categories')}
-              divider
-            />
-            <Row
-              icon="wallet-outline"
-              label="Manage accounts"
-              onPress={() => router.push('/accounts')}
-              divider
-            />
-            <Row
-              icon="repeat-outline"
-              label="Recurring payments"
-              onPress={() => router.push('/add-recurring' as any)}
-              divider
-            />
-            <Row
-              icon="flash-outline"
-              label="Widget quick presets"
-              onPress={() => router.push('/quick-presets')}
+          </GlassCard>
+        </View>
+
+        <View style={styles.section}>
+          <AppText variant="label" style={styles.sectionLabel}>
+            Manage
+          </AppText>
+          <GlassCard padding={0} style={styles.listCard}>
+            <MenuRow
+              icon="apps-outline"
+              label="Manage accounts, categories, recurring & more"
+              onPress={() => router.push('/manage' as any)}
             />
           </GlassCard>
         </View>
 
         <View style={styles.section}>
           <AppText variant="label" style={styles.sectionLabel}>
-            Data
+            Backup & Danger Zone
           </AppText>
           <GlassCard padding={0} style={styles.listCard}>
-            <Row
-              icon="document-text-outline"
-              label="Import bank statement (CSV)"
-              onPress={() => router.push('/bank-import' as any)}
-              disabled={busy !== null}
-              divider
-            />
-            <Row
+            <MenuRow
               icon="share-outline"
               label={activeOperation?.id === 'export' ? activeOperation.label : 'Export data'}
               onPress={handleExport}
               disabled={busy !== null}
               divider
             />
-            <Row
+            <MenuRow
               icon="download-outline"
               label={activeOperation?.id === 'import' ? activeOperation.label : 'Import data'}
               onPress={handleImport}
               disabled={busy !== null}
               divider
             />
-            <Row
-              icon="speedometer-outline"
-              label="Fill test data (custom size)"
-              onPress={() => router.push('/fill-test-data' as any)}
-              disabled={busy !== null}
-              divider
-            />
-            <Row
+            <MenuRow
               icon="trash-outline"
               label={activeOperation?.id === 'reset' ? activeOperation.label : 'Reset all data'}
               tint={Colors.expense}
               onPress={handleReset}
               disabled={busy !== null}
               trailing={<View />}
+            />
+          </GlassCard>
+        </View>
+
+        <View style={styles.section}>
+          <AppText variant="label" style={styles.sectionLabel}>
+            Advanced
+          </AppText>
+          <GlassCard padding={0} style={styles.listCard}>
+            <MenuRow
+              icon="speedometer-outline"
+              label="Fill test data (custom size)"
+              onPress={() => router.push('/fill-test-data' as any)}
+              disabled={busy !== null}
+              divider
+            />
+            <MenuRow
+              icon="pulse-outline"
+              label="Database diagnostics"
+              onPress={() => router.push('/db-diagnostics' as any)}
             />
           </GlassCard>
         </View>
@@ -407,27 +373,6 @@ const styles = StyleSheet.create({
   },
   listCard: {
     overflow: 'hidden',
-  },
-  row: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-    paddingVertical: 15,
-    paddingHorizontal: 16,
-  },
-  rowDivider: {
-    borderBottomWidth: 1,
-    borderBottomColor: Colors.divider,
-  },
-  rowIcon: {
-    width: 32,
-    height: 32,
-    borderRadius: 11,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  rowLabel: {
-    flex: 1,
   },
   trailing: {
     flexDirection: 'row',
