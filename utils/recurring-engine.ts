@@ -112,15 +112,37 @@ export function computeNextDue(rule: RecurringRule, after: Date = new Date()): D
     case 'custom': {
       const unit: IntervalUnit = rule.intervalUnit ?? 'month';
       const value = rule.intervalValue ?? 1;
-      const next = new Date(base);
 
-      switch (unit) {
-        case 'day':   next.setDate(next.getDate() + value); break;
-        case 'week':  next.setDate(next.getDate() + value * 7); break;
-        case 'month': next.setMonth(next.getMonth() + value); break;
-        case 'year':  next.setFullYear(next.getFullYear() + value); break;
+      if (unit === 'day') {
+        const next = new Date(base);
+        next.setDate(next.getDate() + value);
+        return next;
       }
-      return next;
+      if (unit === 'week') {
+        const next = new Date(base);
+        next.setDate(next.getDate() + value * 7);
+        return next;
+      }
+
+      // month/year: anchor the day-of-month to the rule's start date and
+      // clamp it per target month, rather than letting `Date.setMonth`
+      // roll a short month's overflow into the following month (e.g. Jan
+      // 31 + 1 month silently landing on Mar 3 instead of Feb 28/29).
+      const startDate = new Date(rule.startDate);
+      const anchorDay = startDate.getDate();
+      let year = base.getFullYear();
+      let month = base.getMonth();
+
+      if (unit === 'month') {
+        month += value;
+        while (month > 11) { month -= 12; year++; }
+        while (month < 0) { month += 12; year--; }
+      } else {
+        year += value;
+        month = startDate.getMonth();
+      }
+      const targetDay = clampDay(year, month, anchorDay);
+      return new Date(year, month, targetDay, 0, 0, 0, 0);
     }
   }
 }

@@ -17,12 +17,12 @@ import { useScreenReady } from '@/hooks/use-screen-ready';
 import { useFinance } from '@/context/finance-context';
 import { DEFAULT_INSIGHT_FILTER, InsightFilter, RecurringInsights, SplitInsights, getRecurringInsights, getSplitInsights } from '@/db/insights';
 import { useInsightsData } from '@/hooks/use-insights-data';
+import { useDbQuery } from '@/hooks/use-db-query';
 import { formatCurrency, getCurrencySymbol } from '@/utils/currency';
 import { monthKeyLabel } from '@/utils/date';
 import { Colors, BorderRadius, Spacing } from '@/constants/theme';
 import { RecurringSummaryCard } from '@/components/finance/recurring-insights';
 import { SplitSummaryCard } from '@/components/finance/split-insights';
-import { getDb } from '@/db/client';
 
 type Kind = 'expense' | 'income';
 
@@ -33,28 +33,16 @@ export default function ReportsScreen() {
   const [selectedMonth, setSelectedMonth] = useState<number | undefined>();
   const [selectedDay, setSelectedDay] = useState<string | undefined>();
 
-  const [recurringData, setRecurringData] = useState<RecurringInsights | null>(null);
-  const [splitData, setSplitData] = useState<SplitInsights | null>(null);
-
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      try {
-        const db = await getDb();
-        const [rec, spl] = await Promise.all([
-          getRecurringInsights(db),
-          getSplitInsights(db),
-        ]);
-        if (!cancelled) {
-          setRecurringData(rec);
-          setSplitData(spl);
-        }
-      } catch {
-        // Best effort
-      }
-    })();
-    return () => { cancelled = true; };
-  }, []);
+  const { data: recurringData } = useDbQuery<RecurringInsights | null>(
+    'reports-recurring-insights',
+    db => getRecurringInsights(db),
+    null
+  );
+  const { data: splitData } = useDbQuery<SplitInsights | null>(
+    'reports-split-insights',
+    db => getSplitInsights(db),
+    null
+  );
 
   const isReady = useScreenReady(180);
 

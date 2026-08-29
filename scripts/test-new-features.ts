@@ -113,6 +113,38 @@ async function run() {
     assert.equal(formatDateIso(next), '2026-04-30');
   });
 
+  test('computeNextDue: custom monthly interval clamps month-end instead of drifting', () => {
+    const rule: RecurringRule = {
+      id: 'r-custom-1', type: 'expense', amount: 500, accountId: 'a1', frequency: 'custom',
+      intervalUnit: 'month', intervalValue: 1,
+      startDate: '2026-01-31', nextDue: '2026-01-31', autoCreate: true, reminderDays: 1,
+      active: true, createdAt: '2026-01-31',
+    };
+    // From Jan 31, +1 month should land on Feb 28 (2026 is not a leap year),
+    // not roll over into March like `Date.setMonth` would.
+    const next = computeNextDue(rule, new Date(2026, 0, 31, 12, 0, 0));
+    assert.equal(formatDateIso(next), '2026-02-28');
+
+    // Advancing again from that Feb 28 result should return to the 31st
+    // once a month with 31 days comes around, not stay pinned at 28 (the
+    // anchor day is always re-derived from the rule's original start date,
+    // never from the previous, possibly-clamped occurrence).
+    const followUp = computeNextDue(rule, next);
+    assert.equal(formatDateIso(followUp), '2026-03-31');
+  });
+
+  test('computeNextDue: custom yearly interval on a leap day clamps correctly', () => {
+    const rule: RecurringRule = {
+      id: 'r-custom-2', type: 'expense', amount: 700, accountId: 'a1', frequency: 'custom',
+      intervalUnit: 'year', intervalValue: 1,
+      startDate: '2024-02-29', nextDue: '2024-02-29', autoCreate: true, reminderDays: 1,
+      active: true, createdAt: '2024-02-29',
+    };
+    // 2025 is not a leap year, so Feb 29 clamps to Feb 28.
+    const next = computeNextDue(rule, new Date(2024, 1, 29, 12, 0, 0));
+    assert.equal(formatDateIso(next), '2025-02-28');
+  });
+
   test('generateOccurrences generates bounded list respecting end_date', () => {
     const rule: RecurringRule = {
       id: 'r5', type: 'expense', amount: 50, accountId: 'a1', frequency: 'weekly',
