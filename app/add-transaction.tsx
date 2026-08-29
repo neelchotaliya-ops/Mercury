@@ -212,7 +212,13 @@ export default function AddTransactionScreen() {
       if (editing) {
         await updateTransaction({ ...editing, ...payload });
       } else {
-        await addTransaction(payload);
+        // addTransaction() generates its own id internally and ignores
+        // payload.id, so the split/recurring linkage below must use the id
+        // it actually saved under — not the locally-generated txId, which
+        // would otherwise point split_participants.transaction_id at a row
+        // that was never inserted (and trip the foreign-key constraint).
+        const created = await addTransaction(payload);
+        const savedTxId = created.id;
 
         // If Split is configured: save split participants atomically.
         // "You" (the payer) is never inserted as a participant row — the
@@ -229,7 +235,7 @@ export default function AddTransactionScreen() {
             splitConfig.participants
               .filter(p => !p.isYou)
               .map(p => ({
-                transactionId: txId,
+                transactionId: savedTxId,
                 name: p.name,
                 shareAmount: p.share,
                 note: note.trim() || (payee ? `Split: ${payee}` : undefined),
