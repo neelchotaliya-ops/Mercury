@@ -73,3 +73,27 @@ export async function notifyOperationComplete(title: string, body: string): Prom
     // Best-effort — see file header.
   }
 }
+
+/**
+ * A due/missed recurring-payment reminder. Carries a `ruleId` payload so
+ * tapping it can route straight to that rule (see
+ * hooks/use-notification-response.ts) instead of just opening the app to
+ * wherever it last was.
+ */
+export async function notifyRecurringReminder(
+  title: string,
+  body: string,
+  ruleId: string
+): Promise<void> {
+  if (Platform.OS === 'web') return;
+  try {
+    await ensureNotificationsReady();
+    const Notifications = await import('expo-notifications');
+    await Notifications.scheduleNotificationAsync({
+      content: { title, body, data: { ruleId } },
+      trigger: null,
+    });
+  } catch {
+    // Best-effort — see file header.
+  }
+}

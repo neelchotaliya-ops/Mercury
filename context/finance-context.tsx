@@ -49,7 +49,7 @@ import {
 import { rebuildRollups } from '@/db/rebuild';
 import { listSubcategories } from '@/db/subcategories';
 import { processDueRules } from '@/db/recurring';
-import { notifyOperationComplete } from '@/utils/notifications';
+import { notifyRecurringReminder } from '@/utils/notifications';
 
 /**
  * The small, bounded entities: accounts, categories, budgets, presets,
@@ -178,8 +178,8 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
         // transactions and fires reminders for manual-confirm rules.
         getDb()
           .then(db =>
-            processDueRules(db, new Date(), (title, body) =>
-              notifyOperationComplete(title, body)
+            processDueRules(db, new Date(), (title, body, ruleId) =>
+              notifyRecurringReminder(title, body, ruleId)
             )
           )
           .catch(() => {

@@ -24,6 +24,7 @@ import { ShareIntentProvider } from 'expo-share-intent';
 
 import { FinanceProvider, useFinance } from '@/context/finance-context';
 import { useSharedReceipt } from '@/hooks/use-shared-receipt';
+import { useNotificationResponse } from '@/hooks/use-notification-response';
 import { PersistErrorBanner } from '@/components/ui/persist-error-banner';
 import { BackgroundOperationBanner } from '@/components/ui/background-operation-banner';
 import { AppSplash } from '@/components/ui/app-splash';
@@ -51,6 +52,8 @@ function RootNavigator() {
 
   // Only route a shared screenshot once accounts and categories exist to match against.
   useSharedReceipt(state.isLoaded && state.settings.hasOnboarded);
+  // Same gating — the target route (add-recurring) needs stored data ready too.
+  useNotificationResponse(state.isLoaded && state.settings.hasOnboarded);
 
   return (
     <View style={{ flex: 1 }}>

@@ -159,7 +159,7 @@ export interface ProcessingResult {
 export async function processDueRules(
   db: Db,
   now: Date = new Date(),
-  notify?: (title: string, body: string) => Promise<void>
+  notify?: (title: string, body: string, ruleId: string) => Promise<void>
 ): Promise<ProcessingResult> {
   const rules = await listActiveRecurringRules(db);
   let created = 0;
@@ -263,7 +263,7 @@ export async function processDueRules(
           count > 1
             ? `${count} missed ${label} payments since you last opened Mercury — tap to review.`
             : `₹${rule.amount.toLocaleString()} due today — tap to review.`;
-        await notify?.(`⏰ ${label}`, body);
+        await notify?.(`⏰ ${label}`, body, rule.id);
 
         await db.runAsync(
           'UPDATE recurring_rules SET next_due = ? WHERE id = ?',
@@ -275,7 +275,8 @@ export async function processDueRules(
         // look-ahead notification, no next_due advance.
         await notify?.(
           `⏰ ${label}`,
-          `₹${rule.amount.toLocaleString()} due in ${rule.reminderDays} day${rule.reminderDays === 1 ? '' : 's'} — tap to review.`
+          `₹${rule.amount.toLocaleString()} due in ${rule.reminderDays} day${rule.reminderDays === 1 ? '' : 's'} — tap to review.`,
+          rule.id
         );
       }
       reminded++;

@@ -101,7 +101,10 @@ export interface RecurringRule {
   /** ISO date string of the next occurrence. Updated after each processing run. */
   nextDue: string;
   /**
-   * When false: creates a "pending" transaction that the user must confirm.
+   * When false: fires a reminder notification on the due date (tapping it
+   * opens the rule for editing); the user must add the transaction
+   * themselves. No transaction is ever written automatically for a manual
+   * rule.
    * When true: creates the transaction silently on the due date.
    */
   autoCreate: boolean;
