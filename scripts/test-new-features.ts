@@ -35,6 +35,7 @@ import { insertTransaction } from '../db/transactions';
 import { insertSplitParticipantsBatch, listSplitParticipants, recordRepayment, getSplitSummary } from '../db/splits';
 import { applyBankImport } from '../db/bank-import';
 import { ParsedBankTransaction } from '../utils/bank-statement';
+import { insertBudget, insertPreset, getAccountDeletionImpact, deleteAccount } from '../db/entities';
 
 async function createInMemoryDb(): Promise<Db> {
   const db = openTestDb();
@@ -403,6 +404,67 @@ async function run() {
     );
     assert.ok(stat);
     assert.equal(stat.n, 3);
+  });
+
+  await test('getAccountDeletionImpact counts cascaded rows before deleteAccount runs', async () => {
+    const db = await createInMemoryDb();
+
+    await db.runAsync(
+      `INSERT INTO accounts (id, name, type, icon, color, initial_balance, created_at, archived, sort_order)
+       VALUES ('acc_target', 'Wallet', 'cash', 'cash', '#22C55E', 1000, '2026-08-01', 0, 0)`
+    );
+    await db.runAsync(
+      `INSERT INTO categories (id, name, icon, color, kind, is_default, sort_order)
+       VALUES ('cat_x', 'Misc', 'card', '#8B5CF6', 'expense', 1, 0)`
+    );
+
+    await insertTransaction(db, {
+      id: 'tx_a', type: 'expense', amount: 100, accountId: 'acc_target',
+      categoryId: 'cat_x', date: '2026-08-05',
+    });
+
+    await insertRecurringRule(db, {
+      id: 'rec_a', type: 'expense', amount: 500, accountId: 'acc_target',
+      frequency: 'monthly', dayOfMonth: 1, startDate: '2026-08-01',
+      nextDue: '2026-09-01', autoCreate: true, reminderDays: 1,
+      active: true, createdAt: '2026-08-01',
+    });
+
+    await insertBudget(db, {
+      id: 'bud_a', categoryId: 'cat_x', accountId: 'acc_target',
+      monthlyLimit: 2000, createdAt: '2026-08-01',
+    }, 0);
+
+    await insertPreset(db, {
+      id: 'preset_a', label: 'Coffee', emoji: '☕', amount: 150,
+      type: 'expense', accountId: 'acc_target',
+    }, 0);
+
+    // Impact is purely a read — nothing should have changed yet.
+    const impact = await getAccountDeletionImpact(db, 'acc_target');
+    assert.equal(impact.transactionCount, 1);
+    assert.equal(impact.recurringRuleCount, 1);
+    assert.equal(impact.budgetCount, 1);
+    assert.equal(impact.danglingPresetCount, 1);
+
+    const stillThere = await db.getFirstAsync('SELECT id FROM accounts WHERE id = ?', ['acc_target']);
+    assert.ok(stillThere);
+
+    await deleteAccount(db, 'acc_target');
+
+    const txAfter = await db.getFirstAsync('SELECT id FROM transactions WHERE id = ?', ['tx_a']);
+    assert.equal(txAfter, null);
+    const ruleAfter = await db.getFirstAsync('SELECT id FROM recurring_rules WHERE id = ?', ['rec_a']);
+    assert.equal(ruleAfter, null);
+    const budgetAfter = await db.getFirstAsync('SELECT id FROM budgets WHERE id = ?', ['bud_a']);
+    assert.equal(budgetAfter, null);
+    // Presets are NOT cascaded (no FK) — left dangling, matching the impact count above.
+    const presetAfter = await db.getFirstAsync<{ account_id: string }>(
+      'SELECT account_id FROM quick_presets WHERE id = ?',
+      ['preset_a']
+    );
+    assert.ok(presetAfter);
+    assert.equal(presetAfter.account_id, 'acc_target');
   });
 
   console.log(`\nAll ${passed} new feature test cases passed!`);

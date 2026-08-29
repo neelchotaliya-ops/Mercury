@@ -14,6 +14,8 @@ import { AccountType } from '@/types/finance';
 import { ACCOUNT_TYPE_META, CATEGORY_COLOR_CHOICES } from '@/constants/categories';
 import { CURRENCIES, getCurrencySymbol } from '@/utils/currency';
 import { Colors, BorderRadius, Spacing } from '@/constants/theme';
+import { getDb } from '@/db/client';
+import { getAccountDeletionImpact } from '@/db/entities';
 
 const ACCOUNT_TYPES = Object.keys(ACCOUNT_TYPE_META) as AccountType[];
 
@@ -50,9 +52,30 @@ export default function AddAccountScreen() {
     router.back();
   };
 
-  const handleDelete = () => {
+  const handleDelete = async () => {
     if (!editing) return;
-    Alert.alert('Delete account', 'Transactions on this account will also be removed.', [
+
+    const db = await getDb();
+    const impact = await getAccountDeletionImpact(db, editing.id);
+
+    const lines: string[] = ['Transactions on this account will also be removed.'];
+    if (impact.recurringRuleCount > 0) {
+      lines.push(
+        `This also deletes ${impact.recurringRuleCount} recurring payment${impact.recurringRuleCount === 1 ? '' : 's'} tied to this account.`
+      );
+    }
+    if (impact.budgetCount > 0) {
+      lines.push(
+        `${impact.budgetCount} budget${impact.budgetCount === 1 ? '' : 's'} scoped to this account will also be deleted.`
+      );
+    }
+    if (impact.danglingPresetCount > 0) {
+      lines.push(
+        `${impact.danglingPresetCount} widget quick preset${impact.danglingPresetCount === 1 ? '' : 's'} pointing at this account will stop working.`
+      );
+    }
+
+    Alert.alert('Delete account', lines.join(' '), [
       { text: 'Cancel', style: 'cancel' },
       {
         text: 'Delete',

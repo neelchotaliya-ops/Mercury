@@ -98,6 +98,50 @@ export async function updateAccount(db: Db, account: Account): Promise<void> {
  * with a large history, reversing row-by-row is the expensive path; a
  * `GROUP BY` over the touched months is not.
  */
+export interface AccountDeletionImpact {
+  transactionCount: number;
+  recurringRuleCount: number;
+  budgetCount: number;
+  /** quick_presets.account_id has no FK — these are left dangling, not cascaded. */
+  danglingPresetCount: number;
+}
+
+/**
+ * Cheap, read-only counts of what deleting this account would cascade away
+ * (transactions, recurring rules, and account-scoped budgets all have
+ * `ON DELETE CASCADE` on `account_id`) or silently orphan (quick_presets has
+ * no FK at all). Meant to be surfaced in a delete confirmation before
+ * `deleteAccount` runs — it does not itself change anything.
+ */
+export async function getAccountDeletionImpact(
+  db: Db,
+  accountId: string
+): Promise<AccountDeletionImpact> {
+  const [transactions, recurringRules, budgets, presets] = await Promise.all([
+    db.getFirstAsync<{ n: number }>(
+      'SELECT COUNT(*) as n FROM transactions WHERE account_id = ? OR to_account_id = ?',
+      [accountId, accountId]
+    ),
+    db.getFirstAsync<{ n: number }>(
+      'SELECT COUNT(*) as n FROM recurring_rules WHERE account_id = ?',
+      [accountId]
+    ),
+    db.getFirstAsync<{ n: number }>('SELECT COUNT(*) as n FROM budgets WHERE account_id = ?', [
+      accountId,
+    ]),
+    db.getFirstAsync<{ n: number }>(
+      'SELECT COUNT(*) as n FROM quick_presets WHERE account_id = ?',
+      [accountId]
+    ),
+  ]);
+  return {
+    transactionCount: transactions?.n ?? 0,
+    recurringRuleCount: recurringRules?.n ?? 0,
+    budgetCount: budgets?.n ?? 0,
+    danglingPresetCount: presets?.n ?? 0,
+  };
+}
+
 export async function deleteAccount(db: Db, accountId: string): Promise<void> {
   const months = await monthKeysTouchingAccount(db, accountId);
   await db.withTransaction(async txn => {
