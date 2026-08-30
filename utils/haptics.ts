@@ -59,4 +59,23 @@ export const haptics = {
   error(): void {
     fire(() => Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error));
   },
+
+  /**
+   * One pulse in a building sequence — a held press ramping toward some
+   * payoff. `intensity` is 0..1 progress through the hold; mapped to
+   * increasingly strong impacts so back-to-back ticks read as escalating
+   * rather than a flat repeated tap. There's no native API for a genuinely
+   * continuous analog ramp on either platform via expo-haptics — the caller
+   * is expected to shorten the gap between ticks as intensity rises too,
+   * which is what actually sells the "continuous" feel.
+   */
+  chargeTick(intensity: number): void {
+    const style =
+      intensity < 0.45
+        ? Haptics.ImpactFeedbackStyle.Light
+        : intensity < 0.8
+          ? Haptics.ImpactFeedbackStyle.Medium
+          : Haptics.ImpactFeedbackStyle.Heavy;
+    fire(() => Haptics.impactAsync(style));
+  },
 } as const;

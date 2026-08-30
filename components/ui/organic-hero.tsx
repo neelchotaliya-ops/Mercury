@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Pressable, View, StyleSheet, ViewStyle } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import Svg, {
@@ -297,6 +297,101 @@ const SmallFloatingBubbleBase: React.FC<SmallFloatingBubbleProps> = ({
 /** Re-rendered by the parent on every data refresh; memoized so it doesn't also re-render on every animation frame. */
 const SmallFloatingBubble = React.memo(SmallFloatingBubbleBase);
 
+/** How long a hold has to run before it pays off. */
+const HOLD_TO_BURST_MS = 1400;
+/** Gap between haptic/charge ticks at the very start of a hold (ms). */
+const MAX_TICK_MS = 190;
+/** Gap between ticks right at the peak — this is what actually sells "continuous": short, tight, back-to-back pulses read as one rising buzz even though each is a discrete impact. */
+const MIN_TICK_MS = 20;
+/** How many pieces the blob bursts into. */
+const SHARD_COUNT = 6;
+
+interface BurstShardProps {
+  index: number;
+  total: number;
+  onCollected: () => void;
+}
+
+/**
+ * One fragment of the blob after it bursts. Flies outward on mount (its own
+ * random-ish angle/distance so the scatter doesn't look mechanical), then sits
+ * there waiting to be tapped — a tap shrinks it back down to the blob's center,
+ * counted immediately by the parent so "all collected" can fire the reform
+ * while the last piece or two are still animating home.
+ */
+const BurstShardBase: React.FC<BurstShardProps> = ({ index, total, onCollected }) => {
+  const tx = useSharedValue(0);
+  const ty = useSharedValue(0);
+  const scale = useSharedValue(0);
+  const opacity = useSharedValue(1);
+  const rotate = useSharedValue(0);
+  const collectedRef = useRef(false);
+
+  useEffect(() => {
+    const jitter = (Math.random() - 0.5) * 0.6;
+    const angle = (index / total) * Math.PI * 2 + jitter;
+    const dist = 58 + Math.random() * 46;
+    const restX = Math.cos(angle) * dist;
+    const restY = Math.sin(angle) * dist + 10; // slight downward gravity bias
+    const spin = (Math.random() - 0.5) * 220;
+    const delay = index * 16;
+
+    scale.value = withDelay(delay, withTiming(0.6 + Math.random() * 0.18, { duration: 240, easing: Ease.out }));
+    rotate.value = withDelay(delay, withTiming(spin, { duration: 340, easing: Ease.out }));
+    tx.value = withDelay(delay, withTiming(restX, { duration: 280, easing: Ease.out }));
+    ty.value = withDelay(
+      delay,
+      withSequence(
+        withTiming(restY - 10, { duration: 230, easing: Ease.out }),
+        withSpring(restY, Spring.settle)
+      )
+    );
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const style = useAnimatedStyle(() => ({
+    opacity: opacity.value,
+    transform: [
+      { translateX: tx.value },
+      { translateY: ty.value },
+      { rotate: `${rotate.value}deg` },
+      { scale: scale.value },
+    ],
+  }));
+
+  const handleTap = () => {
+    if (collectedRef.current) return;
+    collectedRef.current = true;
+    haptics.selection();
+    tx.value = withTiming(0, { duration: 260, easing: Ease.inOut });
+    ty.value = withTiming(0, { duration: 260, easing: Ease.inOut });
+    scale.value = withTiming(0, { duration: 220, easing: Ease.inOut });
+    opacity.value = withTiming(0, { duration: 220, easing: Ease.inOut });
+    onCollected();
+  };
+
+  return (
+    <AnimatedPressable onPress={handleTap} hitSlop={12} style={[styles.shard, style]}>
+      <Svg width={34} height={34} viewBox={`0 0 ${BLOB_VIEWBOX} ${BLOB_VIEWBOX}`}>
+        <Defs>
+          <SvgLinearGradient id={`shardGrad-${index}`} x1="15%" y1="0%" x2="85%" y2="100%">
+            <Stop offset="0%" stopColor="#FFFFFF" stopOpacity="0.99" />
+            <Stop offset="100%" stopColor="#F5E4F0" stopOpacity="0.9" />
+          </SvgLinearGradient>
+        </Defs>
+        <Path
+          d={index % 2 === 0 ? BLOB_PATH : BLOB_PATH_ALT}
+          fill={`url(#shardGrad-${index})`}
+          stroke="rgba(255,255,255,0.96)"
+          strokeWidth={2.4}
+        />
+      </Svg>
+    </AnimatedPressable>
+  );
+};
+
+const BurstShard = React.memo(BurstShardBase);
+
 export const OrganicHero: React.FC<OrganicHeroProps> = ({
   label,
   value,
@@ -323,6 +418,23 @@ export const OrganicHero: React.FC<OrganicHeroProps> = ({
 
   // Tilt the phone, the blob rolls that way — see hooks/use-tilt-gravity.ts.
   const tilt = useTiltGravity();
+
+  // Hold-to-burst: 0..1 progress through the charge, driving the shake/inflate/
+  // glow build-up. blobOpacity/blobPopScale are the blob's own pop-out (burst)
+  // and pop-in (reform) — separate from blobContainerStyle so they don't fight
+  // the position/tilt/charge transforms already living there.
+  const chargeProgress = useSharedValue(0);
+  const blobOpacity = useSharedValue(1);
+  const blobPopScale = useSharedValue(1);
+
+  const [burstActive, setBurstActive] = useState(false);
+  const [collectedCount, setCollectedCount] = useState(0);
+  const [burstKey, setBurstKey] = useState(0);
+
+  const holdStartRef = useRef<number | null>(null);
+  const holdTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const longPressRef = useRef(false);
+  const hasBurstedRef = useRef(false);
 
   useEffect(() => {
     swapAnim.value = 0;
@@ -414,8 +526,30 @@ export const OrganicHero: React.FC<OrganicHeroProps> = ({
     const c36 = (from[36] + (to[36] - from[36]) * p) | 0;
     const c37 = (from[37] + (to[37] - from[37]) * p) | 0;
 
+    // Tilt-driven weight shift: the side of the blob facing downhill bulges
+    // outward, the opposite side pulls thin, so it reads as liquid settling
+    // under gravity rather than a static shape sliding around. `pts` holds
+    // the 19 (x,y) control points computed above; center is the viewBox
+    // midpoint (100,100) since every SHAPE_n array is authored around it.
+    const pts = [c0, c1, c2, c3, c4, c5, c6, c7, c8, c9, c10, c11, c12, c13, c14, c15, c16, c17, c18, c19, c20, c21, c22, c23, c24, c25, c26, c27, c28, c29, c30, c31, c32, c33, c34, c35, c36, c37];
+    const tgx = tilt.gx.value;
+    const tgy = tilt.gy.value;
+    const tiltMag = Math.min(1, Math.sqrt(tgx * tgx + tgy * tgy) / 14);
+    if (tiltMag > 0.02) {
+      const tiltAngle = Math.atan2(tgy, tgx);
+      const bulgeStrength = 9;
+      for (let i = 0; i < pts.length; i += 2) {
+        const dx = pts[i] - 100;
+        const dy = pts[i + 1] - 100;
+        const r = Math.sqrt(dx * dx + dy * dy) || 1;
+        const bulge = Math.cos(Math.atan2(dy, dx) - tiltAngle) * bulgeStrength * tiltMag;
+        pts[i] = (pts[i] + (dx / r) * bulge) | 0;
+        pts[i + 1] = (pts[i + 1] + (dy / r) * bulge) | 0;
+      }
+    }
+
     return {
-      d: `M${c0} ${c1} C${c2} ${c3} ${c4} ${c5} ${c6} ${c7} C${c8} ${c9} ${c10} ${c11} ${c12} ${c13} C${c14} ${c15} ${c16} ${c17} ${c18} ${c19} C${c20} ${c21} ${c22} ${c23} ${c24} ${c25} C${c26} ${c27} ${c28} ${c29} ${c30} ${c31} C${c32} ${c33} ${c34} ${c35} ${c36} ${c37} Z`
+      d: `M${pts[0]} ${pts[1]} C${pts[2]} ${pts[3]} ${pts[4]} ${pts[5]} ${pts[6]} ${pts[7]} C${pts[8]} ${pts[9]} ${pts[10]} ${pts[11]} ${pts[12]} ${pts[13]} C${pts[14]} ${pts[15]} ${pts[16]} ${pts[17]} ${pts[18]} ${pts[19]} C${pts[20]} ${pts[21]} ${pts[22]} ${pts[23]} ${pts[24]} ${pts[25]} C${pts[26]} ${pts[27]} ${pts[28]} ${pts[29]} ${pts[30]} ${pts[31]} C${pts[32]} ${pts[33]} ${pts[34]} ${pts[35]} ${pts[36]} ${pts[37]} Z`
     };
   });
 
@@ -441,13 +575,19 @@ export const OrganicHero: React.FC<OrganicHeroProps> = ({
     const stretchX = (1 - Math.sin(t * 1.2) * 0.03) * swapScale * squashX.value;
     const rotate = Math.sin(t * 0.5) * 4.0;
 
+    // Hold-to-burst charge: a fast, growing shiver plus a slight inflate —
+    // tension visibly building the longer the press holds.
+    const charge = chargeProgress.value;
+    const shake = charge > 0 ? Math.sin(t * 55) * 2.4 * charge : 0;
+    const inflate = 1 + charge * 0.09;
+
     return {
       transform: [
-        { translateX: floatX + tilt.gx.value },
+        { translateX: floatX + tilt.gx.value + shake },
         { translateY: floatY + tilt.gy.value },
         { rotate: `${rotate}deg` },
-        { scaleX: stretchX },
-        { scaleY: stretchY },
+        { scaleX: stretchX * inflate },
+        { scaleY: stretchY * inflate },
       ],
     };
   });
@@ -476,6 +616,17 @@ export const OrganicHero: React.FC<OrganicHeroProps> = ({
     ry: interpolate(ripple.value, [0, 1], [82, 118]),
   }));
 
+  /** Warm highlight that brightens through a hold — the "charging up" cue, independent of the shake/inflate. */
+  const chargeGlowProps = useAnimatedProps(() => ({
+    opacity: chargeProgress.value * 0.5,
+  }));
+
+  /** The blob's own pop-out (burst) / pop-in (reform), kept separate from blobContainerStyle's position/tilt/charge transforms. */
+  const blobInnerStyle = useAnimatedStyle(() => ({
+    opacity: blobOpacity.value,
+    transform: [{ scale: blobPopScale.value }],
+  }));
+
   const contentAnimStyle = useAnimatedStyle(() => {
     const opacity = interpolate(swapAnim.value, [0, 0.3, 1], [0, 0.4, 1], Extrapolation.CLAMP);
     const translateY = interpolate(swapAnim.value, [0, 1], [6, 0], Extrapolation.CLAMP);
@@ -492,21 +643,118 @@ export const OrganicHero: React.FC<OrganicHeroProps> = ({
     1
   );
 
+  const clearHoldTimer = () => {
+    if (holdTimerRef.current) {
+      clearTimeout(holdTimerRef.current);
+      holdTimerRef.current = null;
+    }
+  };
+
+  const triggerBurst = () => {
+    clearHoldTimer();
+    holdStartRef.current = null;
+    hasBurstedRef.current = true;
+    haptics.success();
+    // Quick pop-out, then swap to the shard pieces once it's mostly faded —
+    // this is what makes the burst read as the blob's own doing rather than
+    // an abrupt cut to a different view.
+    blobPopScale.value = withTiming(1.35, { duration: 170, easing: Ease.out });
+    blobOpacity.value = withTiming(0, { duration: 150, easing: Ease.out });
+    chargeProgress.value = withTiming(0, { duration: 100 });
+    setTimeout(() => {
+      setCollectedCount(0);
+      setBurstKey(k => k + 1);
+      setBurstActive(true);
+    }, 150);
+  };
+
   /**
-   * Refined, tactile tap response: springy compression, soft ripple, haptic impact.
+   * Escalating hold: each tick fires a stronger haptic and reschedules itself
+   * sooner than the last, so the gap between pulses shrinks as intensity
+   * rises — the closest cross-platform approximation of a continuous ramp,
+   * since expo-haptics only exposes discrete impacts. chargeProgress eases
+   * toward each new checkpoint over exactly that same shrinking gap, which
+   * keeps the *visual* side genuinely continuous even though the haptic
+   * side is a pulse train underneath it.
+   */
+  const scheduleTick = () => {
+    const start = holdStartRef.current;
+    if (start == null) return;
+    const elapsed = Date.now() - start;
+    const progress = Math.min(1, elapsed / HOLD_TO_BURST_MS);
+    const eased = progress * progress;
+    const nextDelay = Math.round(MAX_TICK_MS - (MAX_TICK_MS - MIN_TICK_MS) * eased);
+
+    chargeProgress.value = withTiming(progress, { duration: nextDelay, easing: Easing.linear });
+    haptics.chargeTick(progress);
+
+    if (progress >= 1) {
+      triggerBurst();
+      return;
+    }
+    if (elapsed > 180) longPressRef.current = true;
+    holdTimerRef.current = setTimeout(scheduleTick, Math.max(nextDelay, 1));
+  };
+
+  const handleShardCollected = useCallback(() => {
+    setCollectedCount(c => c + 1);
+  }, []);
+
+  // All pieces tapped: let the last one or two finish flying home, then
+  // reform the blob and hand control back to it.
+  useEffect(() => {
+    if (!burstActive || collectedCount < SHARD_COUNT) return;
+    const t = setTimeout(() => {
+      setBurstActive(false);
+      haptics.success();
+    }, 320);
+    return () => clearTimeout(t);
+  }, [burstActive, collectedCount]);
+
+  // Pop the blob back in once the shards are gone. Guarded so this never
+  // fires on first mount — hasBurstedRef only flips true inside an actual burst.
+  useEffect(() => {
+    if (burstActive || !hasBurstedRef.current) return;
+    blobOpacity.value = 0;
+    blobPopScale.value = 0.72;
+    blobOpacity.value = withTiming(1, { duration: 220, easing: Ease.out });
+    blobPopScale.value = withSpring(1, Spring.pop);
+  }, [burstActive, blobOpacity, blobPopScale]);
+
+  /**
+   * Refined, tactile tap response: springy compression, soft ripple, haptic
+   * impact — and, if the press keeps holding, the escalating charge that
+   * ends in a burst. Reduced motion skips the whole charge/burst mechanic
+   * (it's exactly the kind of motion that setting exists to suppress) and
+   * falls back to the plain tap response.
    */
   const handlePressIn = () => {
     if (reducedMotion) return;
-    haptics.selection();
+    if (burstActive) return;
+
     squashX.value = withSpring(1.12, Spring.pop);
     squashY.value = withSpring(0.88, Spring.pop);
     ripple.value = 0;
     ripple.value = withTiming(1, { duration: 520, easing: Ease.out });
+
+    longPressRef.current = false;
+    holdStartRef.current = Date.now();
+    scheduleTick();
   };
 
   const handlePressOut = () => {
     squashX.value = withSpring(1, Spring.settle);
     squashY.value = withSpring(1, Spring.settle);
+
+    if (reducedMotion || burstActive) return;
+    clearHoldTimer();
+    holdStartRef.current = null;
+    chargeProgress.value = withSpring(0, Spring.settle);
+  };
+
+  const handlePress = () => {
+    if (longPressRef.current || burstActive) return;
+    onPressMain?.();
   };
 
   return (
@@ -514,9 +762,10 @@ export const OrganicHero: React.FC<OrganicHeroProps> = ({
       style={[styles.container, { width: size + 60, height: size + 30 }, mountStyle]}
     >
       <AnimatedPressable
-        onPress={onPressMain}
+        onPress={handlePress}
         onPressIn={handlePressIn}
         onPressOut={handlePressOut}
+        pointerEvents={burstActive ? 'none' : 'auto'}
         style={({ pressed }) => [
           styles.blobWrap,
           { width: size, height: size, opacity: pressed ? 0.96 : 1 },
@@ -524,7 +773,7 @@ export const OrganicHero: React.FC<OrganicHeroProps> = ({
         ]}
       >
         {/* Aura layer: soft translucent halo behind main bubble */}
-        <Animated.View style={[styles.auraLayer, { width: size * 1.16, height: size * 1.16 }, auraStyle]}>
+        <Animated.View style={[styles.auraLayer, { width: size * 1.16, height: size * 1.16 }, auraStyle, blobInnerStyle]}>
           <Svg width="100%" height="100%" viewBox={`0 0 ${BLOB_VIEWBOX} ${BLOB_VIEWBOX}`}>
             <Defs>
               <SvgLinearGradient id="heroAuraFill" x1="10%" y1="0%" x2="90%" y2="100%">
@@ -538,44 +787,56 @@ export const OrganicHero: React.FC<OrganicHeroProps> = ({
         </Animated.View>
 
         {/* Main hero blob with glow, and pearlescent gradient */}
-        <Svg width={size} height={size} viewBox={`0 0 ${BLOB_VIEWBOX} ${BLOB_VIEWBOX}`}>
-          <Defs>
-            <SvgLinearGradient id="heroBlobFill" x1="15%" y1="0%" x2="85%" y2="100%">
-              <Stop offset="0%" stopColor="#FFFFFF" stopOpacity="0.99" />
-              <Stop offset="45%" stopColor="#FCF4F9" stopOpacity="0.94" />
-              <Stop offset="100%" stopColor="#F5E4F0" stopOpacity="0.86" />
-            </SvgLinearGradient>
+        <Animated.View style={blobInnerStyle}>
+          <Svg width={size} height={size} viewBox={`0 0 ${BLOB_VIEWBOX} ${BLOB_VIEWBOX}`}>
+            <Defs>
+              <SvgLinearGradient id="heroBlobFill" x1="15%" y1="0%" x2="85%" y2="100%">
+                <Stop offset="0%" stopColor="#FFFFFF" stopOpacity="0.99" />
+                <Stop offset="45%" stopColor="#FCF4F9" stopOpacity="0.94" />
+                <Stop offset="100%" stopColor="#F5E4F0" stopOpacity="0.86" />
+              </SvgLinearGradient>
 
-            <SvgRadialGradient id="heroBlobGlow" cx="50%" cy="54%" rx="50%" ry="50%">
-              <Stop offset="58%" stopColor="#6D28D9" stopOpacity="0.14" />
-              <Stop offset="85%" stopColor="#EC4899" stopOpacity="0.06" />
-              <Stop offset="100%" stopColor="#6D28D9" stopOpacity="0" />
-            </SvgRadialGradient>
-          </Defs>
+              <SvgRadialGradient id="heroBlobGlow" cx="50%" cy="54%" rx="50%" ry="50%">
+                <Stop offset="58%" stopColor="#6D28D9" stopOpacity="0.14" />
+                <Stop offset="85%" stopColor="#EC4899" stopOpacity="0.06" />
+                <Stop offset="100%" stopColor="#6D28D9" stopOpacity="0" />
+              </SvgRadialGradient>
+            </Defs>
 
-          {/* Ambient soft glow */}
-          <Ellipse cx={100} cy={108} rx={99} ry={92} fill="url(#heroBlobGlow)" />
+            {/* Ambient soft glow */}
+            <Ellipse cx={100} cy={108} rx={99} ry={92} fill="url(#heroBlobGlow)" />
 
-          {/* Expanding bubble pop ripple on press */}
-          <AnimatedEllipse
-            cx={100}
-            cy={108}
-            animatedProps={rippleProps}
-            fill="none"
-            stroke={Colors.primary}
-            strokeWidth={1.5}
-          />
+            {/* Warm highlight that brightens through a hold */}
+            <AnimatedEllipse
+              cx={100}
+              cy={108}
+              rx={95}
+              ry={88}
+              animatedProps={chargeGlowProps}
+              fill={Colors.primary}
+            />
 
-          {/* Main real-time morphing organic bubble path */}
-          <AnimatedPath
-            animatedProps={blobPathProps}
-            fill="url(#heroBlobFill)"
-            stroke="rgba(255,255,255,0.96)"
-            strokeWidth={1.6}
-          />
-        </Svg>
+            {/* Expanding bubble pop ripple on press */}
+            <AnimatedEllipse
+              cx={100}
+              cy={108}
+              animatedProps={rippleProps}
+              fill="none"
+              stroke={Colors.primary}
+              strokeWidth={1.5}
+            />
 
-        <Animated.View style={[styles.content, contentAnimStyle]}>
+            {/* Main real-time morphing organic bubble path */}
+            <AnimatedPath
+              animatedProps={blobPathProps}
+              fill="url(#heroBlobFill)"
+              stroke="rgba(255,255,255,0.96)"
+              strokeWidth={1.6}
+            />
+          </Svg>
+        </Animated.View>
+
+        <Animated.View style={[styles.content, contentAnimStyle, blobInnerStyle]}>
           {children ?? (
             <>
               {label ? (
@@ -604,6 +865,12 @@ export const OrganicHero: React.FC<OrganicHeroProps> = ({
           )}
         </Animated.View>
       </AnimatedPressable>
+
+      {/* Burst pieces: tap each one to bring it home and reform the blob */}
+      {burstActive &&
+        Array.from({ length: SHARD_COUNT }).map((_, i) => (
+          <BurstShard key={`${burstKey}-${i}`} index={i} total={SHARD_COUNT} onCollected={handleShardCollected} />
+        ))}
 
       {/* Orbiting satellite bubbles */}
       {badges.slice(0, 4).map((badge, index) => {
@@ -678,5 +945,16 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: Colors.textSecondary,
     textAlign: 'center',
+  },
+  shard: {
+    position: 'absolute',
+    top: '50%',
+    left: '50%',
+    marginLeft: -17,
+    marginTop: -17,
+    width: 34,
+    height: 34,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
 });
