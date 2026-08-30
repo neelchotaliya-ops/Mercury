@@ -178,16 +178,6 @@ export default function ReportsScreen() {
           }}
         />
 
-        {/* Recurring/Split used to be full management tabs behind a 3-way
-            switch; they're glanceable summaries here now, with a link into
-            the Manage hub for anything beyond a glance. Shown unconditionally
-            (not gated on the Spending section's own loading/empty state)
-            since they reflect independent data. */}
-        <View style={styles.summarySection}>
-          <RecurringSummaryCard insights={recurringData} />
-          <SplitSummaryCard insights={splitData} />
-        </View>
-
         {isReady && loading ? (
           <View style={styles.refreshingRow}>
             <ActivityIndicator size="small" color={Colors.primary} />
@@ -200,14 +190,26 @@ export default function ReportsScreen() {
         {!isReady ? (
           <ReportsSkeleton />
         ) : isEmpty ? (
-          <View style={styles.section}>
-            <GlassCard>
-              <EmptyState
-                icon="analytics-outline"
-                title={`No ${activeCurrency} data in this range`}
-                subtitle="Widen the date range or clear a filter to see your numbers."
-              />
-            </GlassCard>
+          <View style={styles.sections}>
+            <View style={styles.section}>
+              <GlassCard>
+                <EmptyState
+                  icon="analytics-outline"
+                  title={`No ${activeCurrency} data in this range`}
+                  subtitle="Widen the date range or clear a filter to see your numbers."
+                />
+              </GlassCard>
+            </View>
+
+            <View style={styles.section}>
+              <AppText variant="label" style={styles.sectionLabel}>
+                Ongoing & Shared
+              </AppText>
+              <View style={styles.ongoingCards}>
+                <RecurringSummaryCard insights={recurringData} />
+                <SplitSummaryCard insights={splitData} />
+              </View>
+            </View>
           </View>
         ) : (
           <Animated.View style={[styles.sections, refreshingStyle]}>
@@ -260,11 +262,22 @@ export default function ReportsScreen() {
               </GlassCard>
             </View>
 
+            {/* Commitments & Shared Balances */}
+            <View style={styles.section}>
+              <AppText variant="label" style={styles.sectionLabel}>
+                Ongoing & Shared
+              </AppText>
+              <View style={styles.ongoingCards}>
+                <RecurringSummaryCard insights={recurringData} animateIndex={1} />
+                <SplitSummaryCard insights={splitData} animateIndex={2} />
+              </View>
+            </View>
+
             <View style={styles.section}>
               <AppText variant="label" style={styles.sectionLabel}>
                 Trend by month
               </AppText>
-              <GlassCard style={styles.chartCard} animateIndex={1}>
+              <GlassCard style={styles.chartCard} animateIndex={3}>
                 <TrendAreaChart
                   points={series}
                   currency={activeCurrency}
@@ -434,8 +447,7 @@ const styles = StyleSheet.create({
   kindWrap: {
     paddingHorizontal: 20,
   },
-  summarySection: {
-    paddingHorizontal: 20,
+  ongoingCards: {
     gap: Spacing.sm,
   },
   currencyBar: {
