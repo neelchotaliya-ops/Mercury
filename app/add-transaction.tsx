@@ -720,9 +720,10 @@ const styles = StyleSheet.create({
     position: 'relative',
   },
   content: {
-    padding: 16,
+    paddingHorizontal: 20,
+    paddingTop: Spacing.md,
     paddingBottom: 310,
-    gap: 12,
+    gap: Spacing.md,
   },
   scanBanner: {
     flexDirection: 'row',
@@ -811,11 +812,11 @@ const styles = StyleSheet.create({
     borderColor: Colors.primary,
   },
   detailsCard: {
-    gap: 10,
+    gap: Spacing.md,
     marginTop: 4,
   },
   field: {
-    gap: 4,
+    gap: 6,
   },
   input: {
     height: ControlHeights.lg,
@@ -832,8 +833,8 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     backgroundColor: 'rgba(255, 255, 255, 0.95)',
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
+    borderTopLeftRadius: BorderRadius.lg,
+    borderTopRightRadius: BorderRadius.lg,
     paddingTop: 10,
     paddingBottom: 14,
     paddingHorizontal: 16,

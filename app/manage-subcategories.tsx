@@ -328,7 +328,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   field: {
-    gap: 8,
+    gap: Spacing.sm,
   },
   input: {
     height: ControlHeights.lg,
@@ -346,7 +346,7 @@ const styles = StyleSheet.create({
   iconChoice: {
     width: 40,
     height: 40,
-    borderRadius: 20,
+    borderRadius: BorderRadius.pill,
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: Colors.controlBg,
@@ -356,7 +356,7 @@ const styles = StyleSheet.create({
   colorChoice: {
     width: 32,
     height: 32,
-    borderRadius: 16,
+    borderRadius: BorderRadius.pill,
   },
   colorChoiceSelected: {
     borderWidth: 3,

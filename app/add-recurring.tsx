@@ -571,7 +571,7 @@ const styles = StyleSheet.create({
   emptyIcon: {
     width: 60,
     height: 60,
-    borderRadius: 30,
+    borderRadius: BorderRadius.pill,
     backgroundColor: Colors.primarySoft,
     alignItems: 'center',
     justifyContent: 'center',
@@ -615,10 +615,10 @@ const styles = StyleSheet.create({
     marginBottom: 4,
   },
   card: {
-    gap: Spacing.md,
+    gap: Spacing.lg,
   },
   field: {
-    gap: 8,
+    gap: Spacing.sm,
   },
   amountInputRow: {
     flexDirection: 'row',
@@ -738,7 +738,7 @@ const styles = StyleSheet.create({
   occurrenceDot: {
     width: 8,
     height: 8,
-    borderRadius: 4,
+    borderRadius: BorderRadius.pill,
     backgroundColor: Colors.primary,
   },
 });

@@ -6,7 +6,7 @@ import { AppText } from '@/components/ui/app-text';
 import { IconBadge } from '@/components/finance/icon-badge';
 import { Account, Category, NumberFormat, Transaction } from '@/types/finance';
 import { formatCurrency } from '@/utils/currency';
-import { Colors } from '@/constants/theme';
+import { Colors, BorderRadius } from '@/constants/theme';
 
 export interface TransactionListItemProps {
   transaction: Transaction;
@@ -126,7 +126,7 @@ const styles = StyleSheet.create({
   tagBadge: {
     width: 18,
     height: 18,
-    borderRadius: 9,
+    borderRadius: BorderRadius.pill,
     backgroundColor: Colors.primarySoft,
     alignItems: 'center',
     justifyContent: 'center',

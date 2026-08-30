@@ -235,7 +235,7 @@ export default function AddAccountScreen() {
 const styles = StyleSheet.create({
   content: {
     paddingHorizontal: 20,
-    paddingBottom: 60,
+    paddingBottom: 80,
     gap: Spacing.lg,
   },
   preview: {
@@ -244,10 +244,10 @@ const styles = StyleSheet.create({
     paddingVertical: 26,
   },
   formCard: {
-    gap: Spacing.xl,
+    gap: Spacing.lg,
   },
   field: {
-    gap: 10,
+    gap: Spacing.sm,
   },
   input: {
     height: ControlHeights.lg,
@@ -297,7 +297,7 @@ const styles = StyleSheet.create({
   swatch: {
     width: 34,
     height: 34,
-    borderRadius: 12,
+    borderRadius: BorderRadius.xs,
     alignItems: 'center',
     justifyContent: 'center',
   },

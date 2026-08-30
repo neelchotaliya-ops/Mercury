@@ -523,14 +523,14 @@ const styles = StyleSheet.create({
   toggleIconWrap: {
     width: 32,
     height: 32,
-    borderRadius: 8,
+    borderRadius: BorderRadius.xs,
     backgroundColor: 'rgba(155, 114, 232, 0.08)',
     alignItems: 'center',
     justifyContent: 'center',
   },
   toggleContent: {
     flex: 1,
-    gap: 2,
+    gap: Spacing.xs,
   },
   toggleTitle: {
     fontFamily: 'Manrope_600SemiBold',

@@ -179,7 +179,7 @@ const styles = StyleSheet.create({
   avatar: {
     width: 32,
     height: 32,
-    borderRadius: 16,
+    borderRadius: BorderRadius.pill,
     backgroundColor: Colors.controlBg,
     alignItems: 'center',
     justifyContent: 'center',

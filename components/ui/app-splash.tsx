@@ -10,7 +10,7 @@ import Animated, {
 import Constants from 'expo-constants';
 
 import { AppText } from '@/components/ui/app-text';
-import { Colors } from '@/constants/theme';
+import { Colors, BorderRadius } from '@/constants/theme';
 import { Duration, Ease } from '@/constants/motion';
 
 interface AppSplashProps {
@@ -80,7 +80,7 @@ const styles = StyleSheet.create({
   logo: {
     width: 140,
     height: 140,
-    borderRadius: 30,
+    borderRadius: BorderRadius.lg,
   },
   bottomWrap: {
     position: 'absolute',

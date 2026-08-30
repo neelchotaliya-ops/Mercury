@@ -18,7 +18,7 @@ import { useRecurringScheduleForm } from '@/hooks/use-recurring-schedule-form';
 import { RecurringFrequency, IntervalUnit } from '@/types/finance';
 import { formatCurrency } from '@/utils/currency';
 import { haptics } from '@/utils/haptics';
-import { Colors, Spacing, Shadows } from '@/constants/theme';
+import { Colors, BorderRadius, Spacing, Shadows } from '@/constants/theme';
 
 export interface RepeatSheetConfig {
   frequency: RecurringFrequency;
@@ -147,8 +147,8 @@ const styles = StyleSheet.create({
   },
   sheet: {
     backgroundColor: Colors.surfaceOpaque,
-    borderTopLeftRadius: 28,
-    borderTopRightRadius: 28,
+    borderTopLeftRadius: BorderRadius.lg,
+    borderTopRightRadius: BorderRadius.lg,
     paddingTop: 10,
     maxHeight: '90%',
     overflow: 'hidden',
@@ -157,7 +157,7 @@ const styles = StyleSheet.create({
   dragHandle: {
     width: 36,
     height: 4,
-    borderRadius: 2,
+    borderRadius: BorderRadius.pill,
     backgroundColor: 'rgba(25, 21, 39, 0.15)',
     alignSelf: 'center',
     marginBottom: 8,
@@ -176,7 +176,7 @@ const styles = StyleSheet.create({
   closeBtn: {
     width: 32,
     height: 32,
-    borderRadius: 16,
+    borderRadius: BorderRadius.pill,
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: Colors.controlBg,

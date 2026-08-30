@@ -3,7 +3,7 @@ import { View, StyleSheet, Pressable } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 
 import { AppText } from '@/components/ui/app-text';
-import { Colors } from '@/constants/theme';
+import { Colors, BorderRadius } from '@/constants/theme';
 
 export interface MenuRowProps {
   icon: keyof typeof Ionicons.glyphMap;
@@ -70,12 +70,12 @@ const styles = StyleSheet.create({
   rowIcon: {
     width: 32,
     height: 32,
-    borderRadius: 11,
+    borderRadius: BorderRadius.xs,
     alignItems: 'center',
     justifyContent: 'center',
   },
   rowLabel: {
     flex: 1,
-    gap: 2,
+    gap: 3,
   },
 });

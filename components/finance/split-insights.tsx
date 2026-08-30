@@ -243,7 +243,7 @@ const styles = StyleSheet.create({
   emptyIcon: {
     width: 60,
     height: 60,
-    borderRadius: 30,
+    borderRadius: BorderRadius.pill,
     backgroundColor: Colors.primarySoft,
     alignItems: 'center',
     justifyContent: 'center',
@@ -267,7 +267,7 @@ const styles = StyleSheet.create({
   avatar: {
     width: 36,
     height: 36,
-    borderRadius: 18,
+    borderRadius: BorderRadius.pill,
     backgroundColor: Colors.primarySoft,
     alignItems: 'center',
     justifyContent: 'center',

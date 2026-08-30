@@ -257,9 +257,9 @@ export default function SplitDetailScreen() {
 
 const styles = StyleSheet.create({
   content: {
-    paddingHorizontal: 16,
-    paddingBottom: 40,
-    gap: Spacing.md,
+    paddingHorizontal: 20,
+    paddingBottom: 80,
+    gap: Spacing.lg,
   },
   loadingContainer: {
     flex: 1,
@@ -267,7 +267,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   card: {
-    gap: Spacing.md,
+    gap: Spacing.lg,
   },
   statusBadge: {
     flexDirection: 'row',
@@ -284,17 +284,17 @@ const styles = StyleSheet.create({
   },
   progressBarTrack: {
     height: 6,
-    borderRadius: 3,
+    borderRadius: BorderRadius.pill,
     backgroundColor: Colors.track,
     overflow: 'hidden',
   },
   progressBarFill: {
     height: '100%',
     backgroundColor: Colors.income,
-    borderRadius: 3,
+    borderRadius: BorderRadius.pill,
   },
   participantsList: {
-    gap: 10,
+    gap: Spacing.sm,
   },
   participantItem: {
     flexDirection: 'row',
@@ -312,7 +312,7 @@ const styles = StyleSheet.create({
   avatar: {
     width: 34,
     height: 34,
-    borderRadius: 17,
+    borderRadius: BorderRadius.pill,
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: Colors.controlBg,

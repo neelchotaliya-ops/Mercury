@@ -168,7 +168,7 @@ const styles = StyleSheet.create({
   centerButton: {
     width: 48,
     height: 48,
-    borderRadius: 24,
+    borderRadius: BorderRadius.pill,
     alignItems: 'center',
     justifyContent: 'center',
     overflow: 'hidden',

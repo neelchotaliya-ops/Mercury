@@ -244,7 +244,7 @@ const styles = StyleSheet.create({
   addTile: {
     width: 52,
     height: 52,
-    borderRadius: 52 * 0.34,
+    borderRadius: BorderRadius.sm,
     borderWidth: 1.5,
     borderStyle: 'dashed',
     borderColor: Colors.textMuted,
@@ -269,7 +269,7 @@ const styles = StyleSheet.create({
     color: Colors.textPrimary,
   },
   field: {
-    gap: 10,
+    gap: Spacing.sm,
   },
   iconGrid: {
     flexDirection: 'row',
@@ -284,7 +284,7 @@ const styles = StyleSheet.create({
   swatch: {
     width: 34,
     height: 34,
-    borderRadius: 12,
+    borderRadius: BorderRadius.xs,
     alignItems: 'center',
     justifyContent: 'center',
   },

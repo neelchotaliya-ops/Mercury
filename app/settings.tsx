@@ -14,7 +14,7 @@ import { getDb } from '@/db/client';
 import { haptics } from '@/utils/haptics';
 import { applyImport, exportData, pickAndPreviewImport } from '@/utils/data-transfer-io';
 import { CURRENCIES } from '@/utils/currency';
-import { Colors, Spacing } from '@/constants/theme';
+import { Colors, BorderRadius, Spacing } from '@/constants/theme';
 import {
   startOperation,
   updateOperation,
@@ -356,17 +356,17 @@ const styles = StyleSheet.create({
   summaryIcon: {
     width: 46,
     height: 46,
-    borderRadius: 16,
+    borderRadius: BorderRadius.sm,
     backgroundColor: Colors.primarySoft,
     alignItems: 'center',
     justifyContent: 'center',
   },
   summaryText: {
     flex: 1,
-    gap: 3,
+    gap: Spacing.xs,
   },
   section: {
-    gap: 10,
+    gap: Spacing.sm,
   },
   sectionLabel: {
     marginLeft: 4,

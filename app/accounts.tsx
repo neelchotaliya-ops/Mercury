@@ -150,11 +150,11 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   list: {
-    gap: 12,
+    gap: Spacing.md,
   },
   actions: {
     flexDirection: 'row',
-    gap: 12,
+    gap: Spacing.md,
     marginTop: Spacing.xs,
   },
   actionTile: {

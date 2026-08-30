@@ -436,7 +436,7 @@ const styles = StyleSheet.create({
   },
   summarySection: {
     paddingHorizontal: 20,
-    gap: 10,
+    gap: Spacing.sm,
   },
   currencyBar: {
     flexDirection: 'row',
@@ -463,7 +463,7 @@ const styles = StyleSheet.create({
   },
   section: {
     paddingHorizontal: 20,
-    gap: 10,
+    gap: Spacing.sm,
   },
   sectionLabel: {
     marginLeft: 4,
@@ -475,12 +475,12 @@ const styles = StyleSheet.create({
   },
   statRow: {
     flexDirection: 'row',
-    marginTop: 14,
+    marginTop: Spacing.md,
     gap: 10,
   },
   stat: {
     flex: 1,
-    gap: 2,
+    gap: Spacing.xs,
   },
   chartCard: {
     paddingVertical: 20,
@@ -520,6 +520,6 @@ const styles = StyleSheet.create({
   },
   noteText: {
     flex: 1,
-    gap: 2,
+    gap: Spacing.xs,
   },
 });

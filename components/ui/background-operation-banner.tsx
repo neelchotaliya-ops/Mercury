@@ -158,7 +158,7 @@ const styles = StyleSheet.create({
   ring: {
     width: 30,
     height: 30,
-    borderRadius: 15,
+    borderRadius: BorderRadius.pill,
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: Colors.primarySoft,
@@ -177,7 +177,7 @@ const styles = StyleSheet.create({
   cancelButton: {
     width: 28,
     height: 28,
-    borderRadius: 14,
+    borderRadius: BorderRadius.pill,
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: Colors.controlBg,

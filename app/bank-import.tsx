@@ -684,7 +684,7 @@ const styles = StyleSheet.create({
   iconCircle: {
     width: 72,
     height: 72,
-    borderRadius: 36,
+    borderRadius: BorderRadius.pill,
     backgroundColor: Colors.primarySoft,
     alignItems: 'center',
     justifyContent: 'center',
@@ -708,7 +708,7 @@ const styles = StyleSheet.create({
     borderColor: 'rgba(46, 169, 124, 0.3)',
   },
   field: {
-    gap: 8,
+    gap: Spacing.sm,
   },
   choiceChips: {
     gap: 8,
@@ -782,7 +782,7 @@ const styles = StyleSheet.create({
   importProgressBar: {
     width: '100%',
     height: 8,
-    borderRadius: 4,
+    borderRadius: BorderRadius.pill,
     backgroundColor: Colors.track,
     marginTop: 18,
     overflow: 'hidden',
@@ -790,7 +790,7 @@ const styles = StyleSheet.create({
   importProgressFill: {
     height: '100%',
     backgroundColor: Colors.primary,
-    borderRadius: 4,
+    borderRadius: BorderRadius.pill,
   },
   completeCard: {
     alignItems: 'center',
@@ -799,7 +799,7 @@ const styles = StyleSheet.create({
   successIcon: {
     width: 68,
     height: 68,
-    borderRadius: 34,
+    borderRadius: BorderRadius.pill,
     backgroundColor: Colors.income,
     alignItems: 'center',
     justifyContent: 'center',

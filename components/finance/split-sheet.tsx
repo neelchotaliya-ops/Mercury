@@ -10,7 +10,7 @@ import { GlassCard } from '@/components/ui/glass-card';
 import { SplitParticipantFields } from '@/components/finance/split-participant-fields';
 import { useSplitForm, SplitParticipantEntry } from '@/hooks/use-split-form';
 import { formatCurrency } from '@/utils/currency';
-import { Colors, Spacing, Shadows } from '@/constants/theme';
+import { Colors, BorderRadius, Spacing, Shadows } from '@/constants/theme';
 
 export type SplitParticipantDraft = SplitParticipantEntry;
 
@@ -153,8 +153,8 @@ const styles = StyleSheet.create({
   },
   sheet: {
     backgroundColor: Colors.surfaceOpaque,
-    borderTopLeftRadius: 28,
-    borderTopRightRadius: 28,
+    borderTopLeftRadius: BorderRadius.lg,
+    borderTopRightRadius: BorderRadius.lg,
     paddingTop: 10,
     overflow: 'hidden',
     ...Shadows.lifted,
@@ -162,7 +162,7 @@ const styles = StyleSheet.create({
   dragHandle: {
     width: 36,
     height: 4,
-    borderRadius: 2,
+    borderRadius: BorderRadius.pill,
     backgroundColor: 'rgba(25, 21, 39, 0.15)',
     alignSelf: 'center',
     marginBottom: 8,
@@ -181,7 +181,7 @@ const styles = StyleSheet.create({
   closeBtn: {
     width: 32,
     height: 32,
-    borderRadius: 16,
+    borderRadius: BorderRadius.pill,
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: Colors.controlBg,

@@ -8,7 +8,7 @@ import { ProgressBar } from '@/components/finance/progress-bar';
 import { useFinance } from '@/context/finance-context';
 import { BudgetProgress } from '@/utils/selectors';
 import { formatCurrency } from '@/utils/currency';
-import { Colors } from '@/constants/theme';
+import { Colors, BorderRadius } from '@/constants/theme';
 
 export interface BudgetRowProps {
   progress: BudgetProgress;
@@ -94,7 +94,7 @@ const styles = StyleSheet.create({
   percentPill: {
     paddingHorizontal: 10,
     paddingVertical: 5,
-    borderRadius: 999,
+    borderRadius: BorderRadius.pill,
     backgroundColor: Colors.controlBg,
     borderWidth: 1,
     borderColor: Colors.glassBorderSoft,

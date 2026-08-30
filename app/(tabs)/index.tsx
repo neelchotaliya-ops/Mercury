@@ -28,7 +28,7 @@ import { useScreenReady } from '@/hooks/use-screen-ready';
 import { formatCurrency } from '@/utils/currency';
 import { toMonthKey } from '@/utils/date';
 import { ACCOUNT_TYPE_META } from '@/constants/categories';
-import { Colors, BorderRadius } from '@/constants/theme';
+import { Colors, BorderRadius, Spacing } from '@/constants/theme';
 
 export default function HomeScreen() {
   const router = useRouter();
@@ -411,7 +411,7 @@ const styles = StyleSheet.create({
     marginBottom: 0,
     paddingHorizontal: 14,
     paddingVertical: 7,
-    borderRadius: 20,
+    borderRadius: BorderRadius.pill,
     backgroundColor: `${Colors.primary}18`,
     borderWidth: 1,
     borderColor: `${Colors.primary}33`,
@@ -421,12 +421,12 @@ const styles = StyleSheet.create({
   },
   statsRow: {
     flexDirection: 'row',
-    gap: 12,
-    marginTop: 14,
+    gap: Spacing.md,
+    marginTop: Spacing.md,
   },
   section: {
-    marginTop: 18,
-    gap: 8,
+    marginTop: Spacing.lg,
+    gap: Spacing.sm,
   },
   sectionHeader: {
     flexDirection: 'row',
@@ -434,7 +434,7 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
   },
   accountRow: {
-    gap: 12,
+    gap: Spacing.md,
     paddingVertical: 2,
     paddingRight: 8,
   },
@@ -451,7 +451,7 @@ const styles = StyleSheet.create({
   accountBadge: {
     width: 28,
     height: 28,
-    borderRadius: 10,
+    borderRadius: BorderRadius.xs,
     alignItems: 'center',
     justifyContent: 'center',
   },

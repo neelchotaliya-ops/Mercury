@@ -280,19 +280,19 @@ const styles = StyleSheet.create({
   emojiTile: {
     width: 38,
     height: 38,
-    borderRadius: 13,
+    borderRadius: BorderRadius.xs,
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: Colors.primarySoft,
   },
   rowText: {
     flex: 1,
-    gap: 2,
+    gap: Spacing.xs,
   },
   deleteBtn: {
     width: 26,
     height: 26,
-    borderRadius: 13,
+    borderRadius: BorderRadius.pill,
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: Colors.track,
@@ -306,7 +306,7 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
   },
   field: {
-    gap: 10,
+    gap: Spacing.sm,
   },
   input: {
     height: ControlHeights.lg,
@@ -339,7 +339,7 @@ const styles = StyleSheet.create({
   emojiChoice: {
     width: 42,
     height: 42,
-    borderRadius: 14,
+    borderRadius: BorderRadius.xs,
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: Colors.controlBg,

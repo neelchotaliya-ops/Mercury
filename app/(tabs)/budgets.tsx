@@ -146,7 +146,7 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   headerText: {
-    gap: 3,
+    gap: Spacing.xs,
     flex: 1,
   },
   stepperWrap: {
@@ -175,7 +175,7 @@ const styles = StyleSheet.create({
     gap: Spacing.lg,
   },
   summary: {
-    gap: 16,
+    gap: Spacing.lg,
   },
   summaryTop: {
     flexDirection: 'row',
@@ -184,18 +184,18 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   summaryText: {
-    gap: 3,
+    gap: Spacing.xs,
     flex: 1,
   },
   summaryPill: {
     width: 62,
     height: 62,
-    borderRadius: 31,
+    borderRadius: BorderRadius.pill,
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: Colors.primarySoft,
   },
   list: {
-    gap: 12,
+    gap: Spacing.md,
   },
 });

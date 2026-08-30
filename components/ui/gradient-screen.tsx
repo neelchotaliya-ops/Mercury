@@ -11,7 +11,7 @@ import Animated, {
   Easing,
 } from 'react-native-reanimated';
 
-import { Colors, Gradients } from '@/constants/theme';
+import { Colors, Gradients, BorderRadius } from '@/constants/theme';
 import { TopographicField } from '@/components/ui/topographic-field';
 
 export interface GradientScreenProps {
@@ -140,7 +140,7 @@ const styles = StyleSheet.create({
   },
   orb: {
     position: 'absolute',
-    borderRadius: 999,
+    borderRadius: BorderRadius.pill,
   },
   // Warm blush — top-left area
   orb1: {

@@ -345,7 +345,7 @@ const styles = StyleSheet.create({
     width: '100%',
     maxWidth: 360,
     backgroundColor: Colors.surfaceOpaque,
-    borderRadius: 24,
+    borderRadius: BorderRadius.lg,
     padding: 22,
     borderWidth: 1,
     borderColor: Colors.glassBorder,
@@ -360,7 +360,7 @@ const styles = StyleSheet.create({
   closeBtn: {
     width: 32,
     height: 32,
-    borderRadius: 16,
+    borderRadius: BorderRadius.pill,
     backgroundColor: 'rgba(0, 0, 0, 0.05)',
     alignItems: 'center',
     justifyContent: 'center',
@@ -393,7 +393,7 @@ const styles = StyleSheet.create({
   navArrow: {
     width: 34,
     height: 34,
-    borderRadius: 17,
+    borderRadius: BorderRadius.pill,
     backgroundColor: 'rgba(0, 0, 0, 0.05)',
     alignItems: 'center',
     justifyContent: 'center',
@@ -420,14 +420,14 @@ const styles = StyleSheet.create({
   dayCircle: {
     width: 32,
     height: 32,
-    borderRadius: 16,
+    borderRadius: BorderRadius.pill,
     alignItems: 'center',
     justifyContent: 'center',
   },
   selectedPill: {
     width: 32,
     height: 32,
-    borderRadius: 16,
+    borderRadius: BorderRadius.pill,
     alignItems: 'center',
     justifyContent: 'center',
     ...Shadows.floating,

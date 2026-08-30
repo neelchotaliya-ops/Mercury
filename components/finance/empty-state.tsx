@@ -4,7 +4,7 @@ import { Ionicons } from '@expo/vector-icons';
 
 import { AppText } from '@/components/ui/app-text';
 import { AppButton, ButtonVariant } from '@/components/ui/app-button';
-import { Colors } from '@/constants/theme';
+import { Colors, BorderRadius, Spacing } from '@/constants/theme';
 
 export interface EmptyStateProps {
   icon: keyof typeof Ionicons.glyphMap;
@@ -52,24 +52,25 @@ const styles = StyleSheet.create({
   container: {
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: 26,
-    paddingHorizontal: 12,
-    gap: 6,
+    paddingVertical: Spacing.xl,
+    paddingHorizontal: Spacing.lg,
+    gap: Spacing.xs,
   },
   iconWrap: {
     width: 58,
     height: 58,
-    borderRadius: 20,
+    borderRadius: BorderRadius.md,
     backgroundColor: Colors.primarySoft,
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: 10,
+    marginBottom: Spacing.sm,
   },
   subtitle: {
     maxWidth: 250,
+    marginTop: 2,
   },
   action: {
-    marginTop: 16,
-    paddingHorizontal: 22,
+    marginTop: Spacing.lg,
   },
 });
+

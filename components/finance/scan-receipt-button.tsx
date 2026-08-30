@@ -101,19 +101,19 @@ const styles = StyleSheet.create({
   iconTile: {
     width: 40,
     height: 40,
-    borderRadius: 14,
+    borderRadius: BorderRadius.sm,
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: Colors.primarySoft,
   },
   copy: {
     flex: 1,
-    gap: 2,
+    gap: 3,
   },
   cameraBtn: {
     width: 36,
     height: 36,
-    borderRadius: 18,
+    borderRadius: BorderRadius.pill,
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: Colors.controlBg,

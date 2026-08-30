@@ -231,15 +231,15 @@ export default function AddSplitScreen() {
 
 const styles = StyleSheet.create({
   content: {
-    paddingHorizontal: 16,
+    paddingHorizontal: 20,
     paddingBottom: 80,
-    gap: Spacing.md,
+    gap: Spacing.lg,
   },
   card: {
-    gap: Spacing.md,
+    gap: Spacing.lg,
   },
   field: {
-    gap: 8,
+    gap: Spacing.sm,
   },
   amountInputRow: {
     flexDirection: 'row',
