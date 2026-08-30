@@ -31,6 +31,7 @@ import { Ease, Spring } from '@/constants/motion';
 import { useMountPop } from '@/hooks/use-mount-pop';
 import { haptics } from '@/utils/haptics';
 import { useReducedMotion } from '@/hooks/use-reduced-motion';
+import { useTiltGravity } from '@/hooks/use-tilt-gravity';
 import { BLOB_VIEWBOX, BLOB_PATH, BLOB_PATH_ALT } from '@/constants/shapes';
 
 import { NumberFormat } from '@/types/finance';
@@ -119,6 +120,8 @@ interface SmallFloatingBubbleProps {
   currency?: string;
   numberFormat?: NumberFormat;
   timeShared: { value: number };
+  /** Main blob's tilt-gravity offset, applied at a reduced scale so satellites feel loosely tethered rather than rigidly locked to it. */
+  tiltShared?: { gx: { value: number }; gy: { value: number } };
 }
 
 const SmallFloatingBubbleBase: React.FC<SmallFloatingBubbleProps> = ({
@@ -128,6 +131,7 @@ const SmallFloatingBubbleBase: React.FC<SmallFloatingBubbleProps> = ({
   currency = 'USD',
   numberFormat,
   timeShared,
+  tiltShared,
 }) => {
   const mergeProgress = useSharedValue(0);
   const pressScale = useSharedValue(1);
@@ -210,11 +214,17 @@ const SmallFloatingBubbleBase: React.FC<SmallFloatingBubbleProps> = ({
     const scaleX = stretch * proportionalScale * pressScale.value * popupScale * floatPulse;
     const scaleY = squish * proportionalScale * pressScale.value * popupScale * floatPulse;
 
+    // Loosely tethered to the main blob's tilt — same direction, smaller
+    // magnitude, so the satellites read as trailing it rather than being
+    // rigidly welded on.
+    const tiltX = tiltShared ? tiltShared.gx.value * 0.55 : 0;
+    const tiltY = tiltShared ? tiltShared.gy.value * 0.55 : 0;
+
     return {
       opacity,
       transform: [
-        { translateX: tx + floatX },
-        { translateY: ty + floatY },
+        { translateX: tx + floatX + tiltX },
+        { translateY: ty + floatY + tiltY },
         { rotate: `${rot + floatRot}deg` },
         { scaleX },
         { scaleY },
@@ -310,6 +320,9 @@ export const OrganicHero: React.FC<OrganicHeroProps> = ({
   const squashY = useSharedValue(1);
   const ripple = useSharedValue(0);
   const mountStyle = useMountPop();
+
+  // Tilt the phone, the blob rolls that way — see hooks/use-tilt-gravity.ts.
+  const tilt = useTiltGravity();
 
   useEffect(() => {
     swapAnim.value = 0;
@@ -430,8 +443,8 @@ export const OrganicHero: React.FC<OrganicHeroProps> = ({
 
     return {
       transform: [
-        { translateX: floatX },
-        { translateY: floatY },
+        { translateX: floatX + tilt.gx.value },
+        { translateY: floatY + tilt.gy.value },
         { rotate: `${rotate}deg` },
         { scaleX: stretchX },
         { scaleY: stretchY },
@@ -445,8 +458,12 @@ export const OrganicHero: React.FC<OrganicHeroProps> = ({
     const rotate = Math.cos(t * 0.55 + 1.2) * -12.0;
     const scale = 1.05 + Math.sin(t * 0.8) * 0.04;
 
+    // Trails the main blob's tilt at a reduced scale for a soft parallax
+    // depth cue rather than moving in lockstep with it.
     return {
       transform: [
+        { translateX: tilt.gx.value * 0.35 },
+        { translateY: tilt.gy.value * 0.35 },
         { rotate: `${rotate}deg` },
         { scale },
       ],
@@ -603,6 +620,7 @@ export const OrganicHero: React.FC<OrganicHeroProps> = ({
             currency={currency}
             numberFormat={numberFormat}
             timeShared={timeVal}
+            tiltShared={tilt}
           />
         );
       })}

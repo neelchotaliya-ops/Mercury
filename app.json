@@ -9,7 +9,10 @@
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "infoPlist": {
+        "NSMotionUsageDescription": "Mercury reads your phone's tilt so the home screen blob playfully rolls as you move it. This never leaves your device."
+      }
     },
     "android": {
       "adaptiveIcon": {
