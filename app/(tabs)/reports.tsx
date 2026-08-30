@@ -55,7 +55,7 @@ export default function ReportsScreen() {
     null
   );
 
-  const isReady = useScreenReady(180);
+  const isReady = useScreenReady();
 
   const uniqueCurrencies = useMemo(() => {
     const list = Array.from(

@@ -1,49 +1,39 @@
 import {
   InsightFilter,
-  computeTotals,
-  computeCategoryBreakdown,
-  computeMonthlySeries,
-  computeDailyHeatmap,
-  computeWeekdayPattern,
-  computeTopNotes,
-  compareWithPreviousPeriod,
+  AllInsightsResult,
+  computeAllInsights,
 } from '@/db/insights';
 import { Category } from '@/types/finance';
 import { useDbQuery } from './use-db-query';
 
+const INITIAL: AllInsightsResult = {
+  totals: { total: 0, count: 0, average: 0, dailyAverage: 0, activeDays: 0 },
+  breakdown: [],
+  series: [],
+  heatmap: [],
+  weekdays: [0, 0, 0, 0, 0, 0, 0],
+  topNotes: [],
+  comparison: { current: 0, previous: 0, change: undefined },
+};
+
 /**
- * Every Insights chart's data, one hook per query, all backed by the rollup.
- * Each is independently cheap (O(buckets) in the filtered range, not
- * O(ledger)), so issuing six of them per render is not the problem full
- * ledger scans used to be.
+ * All Insights chart data in a single DB query → single render update.
+ *
+ * Previous implementation used seven separate `useDbQuery` hooks, each running
+ * its own async effect and triggering its own `setState` — that meant seven
+ * cascading re-renders and seven separate roundtrips to the same rollup table.
+ * Now everything resolves in one batched call: one `queryBuckets` read shared
+ * across four computations, remaining independent queries run via
+ * `Promise.all`, and one `setState` at the end.
  */
 export function useInsightsData(filter: InsightFilter, categories: Category[]) {
-  const key = JSON.stringify(filter);
+  const key = JSON.stringify(filter) + categories.length;
 
-  const totals = useDbQuery(key, db => computeTotals(db, filter, new Date(), true), {
-    total: 0, count: 0, average: 0, dailyAverage: 0, activeDays: 0,
-  });
-  const breakdown = useDbQuery(
-    key + categories.length,
-    db => computeCategoryBreakdown(db, filter, categories),
-    []
+  const { data, loading } = useDbQuery<AllInsightsResult>(
+    key,
+    db => computeAllInsights(db, filter, categories),
+    INITIAL
   );
-  const series = useDbQuery(key, db => computeMonthlySeries(db, filter), []);
-  const heatmap = useDbQuery(key, db => computeDailyHeatmap(db, filter), []);
-  const weekdays = useDbQuery(key, db => computeWeekdayPattern(db, filter), [0, 0, 0, 0, 0, 0, 0]);
-  const topNotes = useDbQuery(key, db => computeTopNotes(db, filter), []);
-  const comparison = useDbQuery(key, db => compareWithPreviousPeriod(db, filter), {
-    current: 0, previous: 0, change: undefined,
-  });
 
-  return {
-    totals: totals.data,
-    breakdown: breakdown.data,
-    series: series.data,
-    heatmap: heatmap.data,
-    weekdays: weekdays.data,
-    topNotes: topNotes.data,
-    comparison: comparison.data,
-    loading: totals.loading || breakdown.loading || series.loading || heatmap.loading,
-  };
+  return { ...data, loading };
 }

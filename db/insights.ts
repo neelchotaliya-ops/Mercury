@@ -2,6 +2,8 @@ import { Category, Subcategory } from '@/types/finance';
 
 import { Db } from './types';
 import { Grain, fromMinor } from './rollup-math';
+import { listActiveRecurringRules, getUpcomingPayments } from './recurring';
+import { getSplitSummary, listUnsettledSplits } from './splits';
 
 /**
  * Insights, backed by the `rollup` table instead of a scan over
@@ -128,6 +130,101 @@ async function queryBuckets(
   );
 }
 
+/**
+ * Internal row-processing functions.
+ *
+ * These extract the pure JS computation from each insight function so that
+ * `computeAllInsights` can share one `queryBuckets` call across totals,
+ * breakdown, series, and weekday pattern — four identical roundtrips collapsed
+ * to one.
+ */
+
+function processTotalsFromRows(
+  rows: BucketRow[]
+): { total: number; count: number; activeDays: number } {
+  let total = 0;
+  let count = 0;
+  const activeDayBuckets = new Set<string>();
+  for (const row of rows) {
+    total += fromMinor(row.amount);
+    count += row.n;
+    if (row.n > 0) activeDayBuckets.add(row.bucket);
+  }
+  return { total, count, activeDays: activeDayBuckets.size };
+}
+
+function processBreakdownFromRows(
+  rows: BucketRow[],
+  categories: Category[]
+): CategorySlice[] {
+  const byCategory = new Map<string, { amount: number; count: number }>();
+  let grand = 0;
+  for (const row of rows) {
+    if (!row.category_id) continue;
+    const amount = fromMinor(row.amount);
+    const cur = byCategory.get(row.category_id) ?? { amount: 0, count: 0 };
+    cur.amount += amount;
+    cur.count += row.n;
+    byCategory.set(row.category_id, cur);
+    grand += amount;
+  }
+  const byId = new Map(categories.map(c => [c.id, c]));
+  const slices: CategorySlice[] = [];
+  for (const [id, bucket] of byCategory) {
+    const category = byId.get(id);
+    if (!category) continue;
+    slices.push({
+      category,
+      amount: bucket.amount,
+      count: bucket.count,
+      share: grand > 0 ? bucket.amount / grand : 0,
+    });
+  }
+  return slices.sort((a, b) => b.amount - a.amount);
+}
+
+function processSeriesFromRows(
+  rows: BucketRow[],
+  range: DateRange,
+  now: Date
+): MonthPoint[] {
+  const start =
+    range.start.getTime() === 0
+      ? rows.length > 0
+        ? new Date(rows.reduce((min, r) => (r.bucket < min ? r.bucket : min), rows[0].bucket))
+        : now
+      : range.start;
+
+  const points: MonthPoint[] = [];
+  const index = new Map<string, number>();
+  const cursor = new Date(start.getFullYear(), start.getMonth(), 1);
+  const last = new Date(range.end.getFullYear(), range.end.getMonth(), 1);
+
+  while (cursor <= last && points.length < 60) {
+    const key = monthKeyOf(cursor);
+    index.set(key, points.length);
+    points.push({ monthKey: key, amount: 0 });
+    cursor.setMonth(cursor.getMonth() + 1);
+  }
+
+  for (const row of rows) {
+    const monthKey = row.bucket.slice(0, 7);
+    const at = index.get(monthKey);
+    if (at !== undefined) points[at].amount += fromMinor(row.amount);
+  }
+
+  return points;
+}
+
+function processWeekdaysFromRows(rows: BucketRow[]): number[] {
+  const buckets = new Array(7).fill(0);
+  for (const row of rows) {
+    const [y, m, d] = row.bucket.split('-').map(Number);
+    buckets[new Date(y, m - 1, d).getDay()] += fromMinor(row.amount);
+  }
+  return buckets;
+}
+
 // ---- totals ----
 
 export interface InsightTotals {
@@ -216,6 +313,36 @@ export async function computeTotals(
     dailyAverage: activeDays > 0 ? total / activeDays : 0,
     largestAmount,
   };
+}
+
+/**
+ * The `largestAmount` portion of `computeTotals`, extracted so the batched
+ * `computeAllInsights` can run it in parallel with other independent queries
+ * without duplicating the inline SQL.
+ */
+async function queryLargestAmount(
+  db: Db,
+  filter: InsightFilter,
+  range: DateRange
+): Promise<number | undefined> {
+  const clauses = ['type = ?', 'date_ms BETWEEN ? AND ?'];
+  const params: (string | number)[] = [filter.kind, range.start.getTime(), range.end.getTime()];
+  if (filter.accountIds.length > 0) {
+    clauses.push(`account_id IN (${filter.accountIds.map(() => '?').join(',')})`);
+    params.push(...filter.accountIds);
+  }
+  if (filter.categoryIds.length > 0) {
+    clauses.push(`category_id IN (${filter.categoryIds.map(() => '?').join(',')})`);
+    params.push(...filter.categoryIds);
+  }
+  const row = await db.getFirstAsync<{ amount: number }>(
+    `SELECT MAX(amount) AS amount FROM (
+       SELECT amount FROM transactions WHERE ${clauses.join(' AND ')}
+       ORDER BY date_ms DESC LIMIT ${UNAGGREGATED_SCAN_CAP}
+     )`,
+    params
+  );
+  return row?.amount ?? undefined;
 }
 
 // ---- category breakdown ----
@@ -396,7 +523,15 @@ export async function computeDailyHeatmap(
   now = new Date()
 ): Promise<HeatmapWeek[]> {
   const range = resolveRange(filter.range, now);
-  const rows = await queryBuckets(db, 'D', dayKeyOf(new Date(0)), dayKeyOf(range.end), filter);
+  // Scope the query to at most HEATMAP_MAX_DAYS before the end, rather than
+  // scanning from epoch. Even the 'all' preset clamps to HEATMAP_MAX_DAYS in
+  // the grid logic below, so rows outside that window were fetched and then
+  // thrown away — a wasted full-range scan on every render.
+  const heatmapQueryStart = new Date(
+    Math.max(range.start.getTime(), range.end.getTime() - HEATMAP_MAX_DAYS * 86400000)
+  );
+  const rows = await queryBuckets(db, 'D', dayKeyOf(heatmapQueryStart), dayKeyOf(range.end), filter);
+
   const totals = new Map<string, number>();
   for (const row of rows) totals.set(row.bucket, (totals.get(row.bucket) ?? 0) + fromMinor(row.amount));
 
@@ -495,6 +630,23 @@ export async function compareWithPreviousPeriod(
   return { current, previous, change: previous > 0 ? (current - previous) / previous : undefined };
 }
 
+/**
+ * Queries only the previous period's total — the current-period total is
+ * already known from the shared rollup rows, so `computeAllInsights` passes
+ * it in rather than re-querying.
+ */
+async function queryPreviousPeriodTotal(
+  db: Db,
+  filter: InsightFilter,
+  range: DateRange
+): Promise<number> {
+  const spanMs = range.end.getTime() - range.start.getTime();
+  const previousEnd = new Date(range.start.getTime() - 1);
+  const previousStart = new Date(range.start.getTime() - spanMs);
+  const prevRows = await queryBuckets(db, 'D', dayKeyOf(previousStart), dayKeyOf(previousEnd), filter);
+  return prevRows.reduce((s, r) => s + fromMinor(r.amount), 0);
+}
+
 // ---- top notes (deliberately NOT rollup-backed — see note) ----
 
 export interface TopMerchant {
@@ -573,6 +725,85 @@ export async function computeTopNotes(
     .slice(0, limit);
 }
 
+// ---- Batched insights -------------------------------------------------------
+
+export interface AllInsightsResult {
+  totals: InsightTotals;
+  breakdown: CategorySlice[];
+  series: MonthPoint[];
+  heatmap: HeatmapWeek[];
+  weekdays: number[];
+  topNotes: TopMerchant[];
+  comparison: ComparisonResult;
+}
+
+/**
+ * Every chart on the Insights screen, computed in one `useDbQuery` call.
+ *
+ * Previous approach: seven separate hooks, each opening its own async effect,
+ * each triggering its own `setState`. Four of those ran the identical rollup
+ * query (`queryBuckets` with day grain over the same range), and the comparison
+ * re-queried the current-period total that `computeTotals` already produced.
+ * The result: nine `setState` calls cascading into nine re-renders, and five
+ * redundant SQLite roundtrips — perceptible as a multi-second blank screen
+ * even with a handful of transactions.
+ *
+ * This function:
+ * 1. Shares one `queryBuckets` call across totals, breakdown, series, weekdays.
+ * 2. Runs heatmap, topNotes, largestAmount, and the previous-period comparison
+ *    in parallel via `Promise.all`.
+ * 3. Returns one object → one `setState` → one re-render.
+ */
+export async function computeAllInsights(
+  db: Db,
+  filter: InsightFilter,
+  categories: Category[],
+  now = new Date()
+): Promise<AllInsightsResult> {
+  const range = resolveRange(filter.range, now);
+
+  // ① One rollup read, shared by four computations (was four identical queries)
+  const sharedRows = await queryBuckets(
+    db, 'D', dayKeyOf(range.start), dayKeyOf(range.end), filter
+  );
+
+  // ② Pure JS over the shared rows — no DB, no await
+  const { total, count, activeDays } = processTotalsFromRows(sharedRows);
+  const breakdown = processBreakdownFromRows(sharedRows, categories);
+  const series = processSeriesFromRows(sharedRows, range, now);
+  const weekdays = processWeekdaysFromRows(sharedRows);
+
+  // ③ Independent queries that need their own DB access — run in parallel
+  const [largestAmount, heatmap, topNotes, previousTotal] = await Promise.all([
+    count > 0 ? queryLargestAmount(db, filter, range) : Promise.resolve(undefined),
+    computeDailyHeatmap(db, filter, now),
+    computeTopNotes(db, filter, 5, now),
+    filter.range !== 'all'
+      ? queryPreviousPeriodTotal(db, filter, range)
+      : Promise.resolve(undefined),
+  ]);
+
+  const totals: InsightTotals = {
+    total,
+    count,
+    average: count > 0 ? total / count : 0,
+    activeDays,
+    dailyAverage: activeDays > 0 ? total / activeDays : 0,
+    largestAmount,
+  };
+
+  const comparison: ComparisonResult = {
+    current: total,
+    previous: previousTotal ?? 0,
+    change:
+      previousTotal !== undefined && previousTotal > 0
+        ? (total - previousTotal) / previousTotal
+        : undefined,
+  };
+
+  return { totals, breakdown, series, heatmap, weekdays, topNotes, comparison };
+}
+
 // ---- Recurring Insights -----------------------------------------------------
 
 export interface RecurringInsights {
@@ -587,7 +818,6 @@ export async function getRecurringInsights(
   db: Db,
   now: Date = new Date()
 ): Promise<RecurringInsights> {
-  const { listActiveRecurringRules, getUpcomingPayments } = await import('./recurring');
   const rules = await listActiveRecurringRules(db);
 
   let monthlyTotal = 0;
@@ -636,7 +866,6 @@ export interface SplitInsights {
 }
 
 export async function getSplitInsights(db: Db): Promise<SplitInsights> {
-  const { getSplitSummary, listUnsettledSplits } = await import('./splits');
   const [summary, unsettledSplits] = await Promise.all([
     getSplitSummary(db),
     listUnsettledSplits(db),
