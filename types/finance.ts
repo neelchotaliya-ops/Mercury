@@ -61,6 +61,24 @@ export interface Transaction {
   recurringRuleId?: string;
   /** Set when this is a repayment income linked to a shared expense. */
   splitExpenseId?: string;
+  /** Total number of split participants attached to this transaction. */
+  splitCount?: number;
+  /** Number of split participants who have not yet settled. */
+  splitPendingCount?: number;
+  /** Total sum of participant shares (amount lent to others). */
+  splitOwedAmount?: number;
+  /** Total sum of participant shares that have been paid back. */
+  splitPaidAmount?: number;
+  /** Payee / merchant of the original expense if this is a repayment. */
+  splitOriginalPayee?: string;
+  /** Note of the original expense if this is a repayment. */
+  splitOriginalNote?: string;
+  /** Category ID of the original expense if this is a repayment. */
+  splitOriginalCategoryId?: string;
+  /** Category name of the original expense if this is a repayment. */
+  splitOriginalCategoryName?: string;
+  /** Total amount of the original expense if this is a repayment. */
+  splitOriginalAmount?: number;
 }
 
 // ---- Budgets ----------------------------------------------------------------

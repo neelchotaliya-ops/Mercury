@@ -19,9 +19,7 @@ import { haptics } from '@/utils/haptics';
 import { generateId } from '@/utils/id';
 import { Colors, BorderRadius, ControlHeights, Spacing } from '@/constants/theme';
 import { getDb } from '@/db/client';
-import { insertTransaction } from '@/db/transactions';
-import { insertSplitParticipantsBatch } from '@/db/splits';
-import { bumpDataVersion } from '@/db/version';
+import { createSplitExpense } from '@/db/splits';
 
 export default function AddSplitScreen() {
   const router = useRouter();
@@ -61,34 +59,30 @@ export default function AddSplitScreen() {
       const transactionId = generateId();
       const dateStr = date.toISOString().slice(0, 10);
 
-      // 1. Create the main expense transaction for the whole amount
-      await insertTransaction(db, {
-        id: transactionId,
-        type: 'expense',
-        amount: numericTotal,
-        accountId,
-        categoryId,
-        payee: payee.trim() || undefined,
-        note: note.trim() || (payee ? `Split: ${payee}` : 'Shared Expense'),
-        date: dateStr,
-      });
-
-      // 2. Create the split participant entries (excluding 'You' since You already paid)
+      // Atomic creation of transaction + split participants
       const nonYouParticipants = participants
         .map((p, idx) => ({ ...p, share: shares[idx] }))
         .filter(p => !p.isYou);
 
-      await insertSplitParticipantsBatch(
+      await createSplitExpense(
         db,
+        {
+          id: transactionId,
+          type: 'expense',
+          amount: numericTotal,
+          accountId,
+          categoryId,
+          payee: payee.trim() || undefined,
+          note: note.trim() || (payee ? `Split: ${payee}` : 'Shared Expense'),
+          date: date.toISOString(),
+        },
         nonYouParticipants.map(p => ({
-          transactionId,
           name: p.name,
           shareAmount: p.share,
           note: note.trim() || undefined,
         }))
       );
 
-      await bumpDataVersion();
       haptics.success();
       router.replace({
         pathname: '/split-detail' as any,
@@ -100,6 +94,9 @@ export default function AddSplitScreen() {
   };
 
   const currencySymbol = getCurrencySymbol(state.settings.currency ?? 'INR');
+  const currency = state.settings.currency ?? 'INR';
+  const youShare = shares[0] ?? 0;
+  const othersShare = shares.slice(1).reduce((a, b) => a + b, 0);
 
   return (
     <GradientScreen edges={['top', 'bottom']} contours="top">
@@ -110,64 +107,54 @@ export default function AddSplitScreen() {
         keyboardShouldPersistTaps="handled"
         automaticallyAdjustKeyboardInsets={true}
       >
-        {/* Bill Overview Card */}
-        <GlassCard padding={18} style={styles.card}>
-          <AppText variant="h3">Expense Details</AppText>
+        {/* Hero Bill Amount Card */}
+        <GlassCard strong elevated padding={18} style={styles.heroAmountCard}>
+          <AppText variant="micro" color={Colors.textMuted} style={styles.heroAmountLabel}>
+            TOTAL BILL TO SPLIT
+          </AppText>
+          <View style={styles.heroAmountRow}>
+            <AppText variant="h1" color={Colors.expense} style={styles.heroCurrencySymbol}>
+              {currencySymbol}
+            </AppText>
+            <TextInput
+              value={totalAmountText}
+              onChangeText={setTotalAmountText}
+              placeholder="0"
+              placeholderTextColor={Colors.textMuted}
+              keyboardType="decimal-pad"
+              autoFocus={!params.amount}
+              style={styles.heroAmountInput}
+            />
+          </View>
+        </GlassCard>
 
+        {/* Bill Metadata Card */}
+        <GlassCard padding={18} style={styles.card}>
+          <AppText variant="h3">Bill Details</AppText>
+
+          {/* Merchant / Description */}
           <View style={styles.field}>
-            <AppText variant="label">Total Bill Amount</AppText>
-            <View style={styles.amountInputRow}>
-              <AppText variant="h2" color={Colors.expense}>
-                {currencySymbol}
-              </AppText>
+            <AppText variant="micro" color={Colors.textMuted}>DESCRIPTION / MERCHANT</AppText>
+            <View style={styles.inputRow}>
+              <Ionicons name="receipt-outline" size={18} color={Colors.primary} />
               <TextInput
-                value={totalAmountText}
-                onChangeText={setTotalAmountText}
-                placeholder="0.00"
+                value={payee}
+                onChangeText={setPayee}
+                placeholder="e.g. Dinner at Olive Bistro, Airbnb Goa"
                 placeholderTextColor={Colors.textMuted}
-                keyboardType="decimal-pad"
-                style={styles.amountInput}
+                style={styles.textInput}
               />
             </View>
           </View>
 
+          {/* Date & Quick Meta Row */}
           <View style={styles.field}>
-            <AppText variant="label">Paid From Account</AppText>
-            <AccountPicker
-              accounts={state.accounts}
-              selectedId={accountId}
-              onSelect={a => setAccountId(a.id)}
-            />
-          </View>
-
-          <View style={styles.field}>
-            <AppText variant="label">Category</AppText>
-            <CategoryPicker
-              categories={expenseCategories}
-              selectedId={categoryId}
-              onSelect={c => setCategoryId(c.id)}
-              onManage={() => router.push('/manage-categories?kind=expense')}
-            />
-          </View>
-
-          <View style={styles.field}>
-            <AppText variant="label">Description / Merchant</AppText>
-            <TextInput
-              value={payee}
-              onChangeText={setPayee}
-              placeholder="e.g. Olive Bistro, AirBnB Goa"
-              placeholderTextColor={Colors.textMuted}
-              style={styles.input}
-            />
-          </View>
-
-          <View style={styles.field}>
-            <AppText variant="label">Date</AppText>
+            <AppText variant="micro" color={Colors.textMuted}>DATE</AppText>
             <Pressable
               onPress={() => setShowDatePicker(true)}
               style={styles.datePickerBtn}
             >
-              <Ionicons name="calendar-outline" size={18} color={Colors.primary} />
+              <Ionicons name="calendar-outline" size={17} color={Colors.primary} />
               <AppText variant="bodyStrong">
                 {date.toLocaleDateString(undefined, {
                   day: 'numeric',
@@ -175,47 +162,93 @@ export default function AddSplitScreen() {
                   year: 'numeric',
                 })}
               </AppText>
+              <Ionicons name="chevron-forward" size={14} color={Colors.textMuted} style={{ marginLeft: 'auto' }} />
             </Pressable>
+          </View>
+
+          {/* Paid From Account */}
+          <View style={styles.field}>
+            <AppText variant="micro" color={Colors.textMuted}>PAID FROM ACCOUNT</AppText>
+            <AccountPicker
+              accounts={state.accounts}
+              selectedId={accountId}
+              onSelect={a => setAccountId(a.id)}
+            />
+          </View>
+
+          {/* Category */}
+          <View style={styles.field}>
+            <AppText variant="micro" color={Colors.textMuted}>CATEGORY</AppText>
+            <CategoryPicker
+              categories={expenseCategories}
+              selectedId={categoryId}
+              onSelect={c => setCategoryId(c.id)}
+              onManage={() => router.push('/manage-categories?kind=expense')}
+            />
           </View>
         </GlassCard>
 
         {/* Split Participants Card */}
         <GlassCard padding={18} style={styles.card}>
-          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-            <AppText variant="h3">Split With</AppText>
-            <AppText variant="captionStrong" color={Colors.primaryDeep}>
-              {participants.length} people
-            </AppText>
-          </View>
-
-          <SplitParticipantFields form={splitForm} currency={state.settings.currency ?? 'INR'} />
+          <SplitParticipantFields form={splitForm} currency={currency} />
         </GlassCard>
 
-        {/* You will be owed summary */}
+        {/* Live Breakdown Summary Card */}
         {numericTotal > 0 && participants.length > 1 && (
-          <GlassCard padding={16} style={[styles.card, styles.owedCard]}>
-            <Ionicons name="cash-outline" size={22} color={Colors.income} />
-            <View style={{ flex: 1, marginLeft: 10 }}>
-              <AppText variant="caption" color={Colors.textSecondary}>You will be owed</AppText>
-              <AppText variant="h2" color={Colors.income}>
-                {formatCurrency(
-                  shares.slice(1).reduce((a, b) => a + b, 0),
-                  state.settings.currency ?? 'INR'
-                )}
+          <GlassCard padding={18} style={styles.breakdownCard}>
+            <View style={styles.breakdownHeader}>
+              <View style={styles.breakdownIconWrap}>
+                <Ionicons name="people" size={16} color={Colors.primaryDeep} />
+              </View>
+              <AppText variant="bodyStrong" color={Colors.primaryDeep}>
+                Split Summary
               </AppText>
             </View>
-            <AppText variant="caption" color={Colors.textMuted}>
-              from {participants.length - 1} {participants.length === 2 ? 'person' : 'people'}
+
+            <View style={styles.breakdownRow}>
+              <View style={styles.breakdownItem}>
+                <AppText variant="micro" color={Colors.textMuted}>TOTAL BILL</AppText>
+                <AppText variant="bodyStrong" color={Colors.textPrimary}>
+                  {formatCurrency(numericTotal, currency)}
+                </AppText>
+              </View>
+              <View style={styles.breakdownDivider} />
+              <View style={styles.breakdownItem}>
+                <AppText variant="micro" color={Colors.textMuted}>YOUR SHARE</AppText>
+                <AppText variant="bodyStrong" color={Colors.primaryDeep}>
+                  {formatCurrency(youShare, currency)}
+                </AppText>
+              </View>
+              <View style={styles.breakdownDivider} />
+              <View style={styles.breakdownItem}>
+                <AppText variant="micro" color={Colors.textMuted}>YOU'LL COLLECT</AppText>
+                <AppText variant="bodyStrong" color={Colors.income}>
+                  +{formatCurrency(othersShare, currency)}
+                </AppText>
+              </View>
+            </View>
+
+            <AppText variant="caption" color={Colors.textSecondary} style={styles.breakdownFooterText}>
+              You will collect {formatCurrency(othersShare, currency)} from {participants.length - 1}{' '}
+              {participants.length === 2 ? 'person' : 'people'}.
             </AppText>
           </GlassCard>
         )}
 
         <AppButton
-          title="Create Split Expense"
+          title={
+            !numericTotal
+              ? 'Enter Bill Amount'
+              : participants.length <= 1
+              ? 'Add at Least 1 Person'
+              : !canSave
+              ? 'Balance Total to Save'
+              : `Create Split · ${formatCurrency(numericTotal, currency)}`
+          }
           size="lg"
           onPress={handleSave}
           disabled={!canSave}
-          style={{ marginTop: 4, marginBottom: 20 }}
+          style={styles.submitBtn}
         />
       </ScrollView>
 
@@ -232,55 +265,115 @@ export default function AddSplitScreen() {
 const styles = StyleSheet.create({
   content: {
     paddingHorizontal: 20,
-    paddingBottom: 80,
+    paddingBottom: 60,
     gap: Spacing.lg,
   },
-  card: {
-    gap: Spacing.lg,
+  heroAmountCard: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(255, 255, 255, 0.85)',
+    borderRadius: BorderRadius.lg,
   },
-  field: {
-    gap: Spacing.sm,
+  heroAmountLabel: {
+    letterSpacing: 1,
+    marginBottom: 4,
   },
-  amountInputRow: {
+  heroAmountRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    height: ControlHeights.lg,
-    paddingHorizontal: 16,
-    borderRadius: BorderRadius.sm,
-    backgroundColor: 'rgba(25, 21, 39, 0.04)',
-    gap: 8,
+    justifyContent: 'center',
+    gap: 4,
   },
-  amountInput: {
-    flex: 1,
-    fontSize: 24,
+  heroCurrencySymbol: {
+    fontSize: 28,
+    fontFamily: 'Sora_700Bold',
+    marginRight: 2,
+  },
+  heroAmountInput: {
+    fontSize: 36,
     fontFamily: 'Sora_700Bold',
     color: Colors.textPrimary,
-    padding: 0,
+    minWidth: 120,
+    textAlign: 'center',
+    paddingVertical: 2,
   },
-  input: {
-    height: ControlHeights.lg,
-    paddingHorizontal: 16,
+  card: {
+    gap: Spacing.md,
+  },
+  field: {
+    gap: 6,
+  },
+  inputRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    height: ControlHeights.md,
+    paddingHorizontal: 14,
     borderRadius: BorderRadius.sm,
-    backgroundColor: 'rgba(25, 21, 39, 0.04)',
-    fontSize: 15,
+    backgroundColor: Colors.surfaceOpaque,
+    borderWidth: 1,
+    borderColor: Colors.glassBorder,
+  },
+  textInput: {
+    flex: 1,
+    fontSize: 14,
     fontFamily: 'Manrope_500Medium',
     color: Colors.textPrimary,
+    paddingVertical: 0,
   },
   datePickerBtn: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 10,
-    height: ControlHeights.lg,
-    paddingHorizontal: 16,
+    height: ControlHeights.md,
+    paddingHorizontal: 14,
     borderRadius: BorderRadius.sm,
-    backgroundColor: Colors.controlBg,
+    backgroundColor: Colors.surfaceOpaque,
     borderWidth: 1,
-    borderColor: Colors.glassBorderSoft,
+    borderColor: Colors.glassBorder,
   },
-  owedCard: {
+  breakdownCard: {
+    gap: 12,
+    backgroundColor: 'rgba(255, 255, 255, 0.8)',
+  },
+  breakdownHeader: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: 'rgba(46, 169, 124, 0.08)',
-    borderColor: 'rgba(46, 169, 124, 0.25)',
+    gap: 8,
+  },
+  breakdownIconWrap: {
+    width: 26,
+    height: 26,
+    borderRadius: BorderRadius.pill,
+    backgroundColor: Colors.primarySoft,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  breakdownRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: 12,
+    paddingHorizontal: 8,
+    borderRadius: BorderRadius.sm,
+    backgroundColor: 'rgba(25, 21, 39, 0.03)',
+  },
+  breakdownItem: {
+    flex: 1,
+    alignItems: 'center',
+    gap: 3,
+  },
+  breakdownDivider: {
+    width: 1,
+    height: 24,
+    backgroundColor: Colors.divider,
+  },
+  breakdownFooterText: {
+    textAlign: 'center',
+    marginTop: 2,
+  },
+  submitBtn: {
+    marginTop: 6,
+    marginBottom: 20,
   },
 });

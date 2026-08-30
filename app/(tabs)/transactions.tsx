@@ -49,6 +49,7 @@ const DayGroup = React.memo(function DayGroup({
   numberFormat?: NumberFormat;
   onPressTransaction: (id: string) => void;
 }) {
+  const router = useRouter();
   return (
     <View style={styles.group}>
       <AppText variant="label" style={styles.dayLabel}>
@@ -72,7 +73,15 @@ const DayGroup = React.memo(function DayGroup({
             currency={accountById.get(t.accountId)?.currency ?? currency}
             numberFormat={numberFormat}
             showDivider={i < group.transactions.length - 1}
-            onPress={() => onPressTransaction(t.id)}
+            onPress={() => {
+              if (t.splitCount && t.splitCount > 0) {
+                router.push(`/split-detail?id=${t.id}` as any);
+              } else if (t.splitExpenseId) {
+                router.push(`/split-detail?id=${t.splitExpenseId}` as any);
+              } else {
+                onPressTransaction(t.id);
+              }
+            }}
           />
         ))}
       </GlassCard>

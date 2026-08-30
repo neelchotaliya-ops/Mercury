@@ -62,6 +62,16 @@ export interface TransactionRow {
   recurring_rule_id: string | null;
   // v5 addition
   split_expense_id: string | null;
+  // Derived split aggregations
+  split_count?: number | null;
+  split_pending_count?: number | null;
+  split_owed_amount?: number | null;
+  split_paid_amount?: number | null;
+  split_original_payee?: string | null;
+  split_original_note?: string | null;
+  split_original_category_id?: string | null;
+  split_original_category_name?: string | null;
+  split_original_amount?: number | null;
 }
 
 export interface AccountRow {

@@ -355,7 +355,15 @@ export default function HomeScreen() {
                       currency={accountById.get(t.accountId)?.currency ?? currency}
                       numberFormat={numberFormat}
                       showDivider={index < recent.length - 1}
-                      onPress={() => router.push(`/add-transaction?id=${t.id}`)}
+                      onPress={() => {
+                        if (t.splitCount && t.splitCount > 0) {
+                          router.push(`/split-detail?id=${t.id}` as any);
+                        } else if (t.splitExpenseId) {
+                          router.push(`/split-detail?id=${t.splitExpenseId}` as any);
+                        } else {
+                          router.push(`/add-transaction?id=${t.id}`);
+                        }
+                      }}
                     />
                   ))}
                 </GlassCard>

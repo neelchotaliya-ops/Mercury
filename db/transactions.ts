@@ -32,6 +32,15 @@ export function rowToTransaction(row: TransactionRow): Transaction {
     createdAt: row.created_at,
     recurringRuleId: row.recurring_rule_id ?? undefined,
     splitExpenseId: row.split_expense_id ?? undefined,
+    splitCount: row.split_count ?? undefined,
+    splitPendingCount: row.split_pending_count ?? undefined,
+    splitOwedAmount: row.split_owed_amount ?? undefined,
+    splitPaidAmount: row.split_paid_amount ?? undefined,
+    splitOriginalPayee: row.split_original_payee ?? undefined,
+    splitOriginalNote: row.split_original_note ?? undefined,
+    splitOriginalCategoryId: row.split_original_category_id ?? undefined,
+    splitOriginalCategoryName: row.split_original_category_name ?? undefined,
+    splitOriginalAmount: row.split_original_amount ?? undefined,
   };
 }
 
@@ -50,6 +59,18 @@ function toRollupInput(tx: Transaction): RollupInput {
 
 const ROW_COLUMNS =
   'seq, id, type, amount, account_id, to_account_id, category_id, date, date_ms, month_key, day_key, note, note_lc, created_at, payee, subcategory_id, recurring_rule_id, split_expense_id';
+
+const ROW_COLUMNS_WITH_SPLIT =
+  'seq, id, type, amount, account_id, to_account_id, category_id, date, date_ms, month_key, day_key, note, note_lc, created_at, payee, subcategory_id, recurring_rule_id, split_expense_id, ' +
+  '(SELECT COUNT(*) FROM split_participants sp WHERE sp.transaction_id = transactions.id) AS split_count, ' +
+  '(SELECT COUNT(*) FROM split_participants sp WHERE sp.transaction_id = transactions.id AND sp.status = "pending") AS split_pending_count, ' +
+  '(SELECT COALESCE(SUM(sp.share_amount), 0) FROM split_participants sp WHERE sp.transaction_id = transactions.id) AS split_owed_amount, ' +
+  '(SELECT COALESCE(SUM(sp.paid_amount), 0) FROM split_participants sp WHERE sp.transaction_id = transactions.id) AS split_paid_amount, ' +
+  '(SELECT payee FROM transactions orig WHERE orig.id = transactions.split_expense_id) AS split_original_payee, ' +
+  '(SELECT note FROM transactions orig WHERE orig.id = transactions.split_expense_id) AS split_original_note, ' +
+  '(SELECT category_id FROM transactions orig WHERE orig.id = transactions.split_expense_id) AS split_original_category_id, ' +
+  '(SELECT c.name FROM transactions orig JOIN categories c ON c.id = orig.category_id WHERE orig.id = transactions.split_expense_id) AS split_original_category_name, ' +
+  '(SELECT amount FROM transactions orig WHERE orig.id = transactions.split_expense_id) AS split_original_amount';
 
 export interface TxCursor {
   dateMs: number;
@@ -106,7 +127,7 @@ export async function pageTransactions(
   }
 
   const where = clauses.length > 0 ? `WHERE ${clauses.join(' AND ')}` : '';
-  const sql = `SELECT ${ROW_COLUMNS} FROM transactions ${where} ORDER BY date_ms DESC, seq DESC LIMIT ?`;
+  const sql = `SELECT ${ROW_COLUMNS_WITH_SPLIT} FROM transactions ${where} ORDER BY date_ms DESC, seq DESC LIMIT ?`;
   const rows = await db.getAllAsync<TransactionRow>(sql, [...params, limit + 1]);
 
   const hasMore = rows.length > limit;
@@ -121,7 +142,7 @@ export async function pageTransactions(
 
 export async function getTransactionById(db: Db, id: string): Promise<Transaction | null> {
   const row = await db.getFirstAsync<TransactionRow>(
-    `SELECT ${ROW_COLUMNS} FROM transactions WHERE id = ? LIMIT 1`,
+    `SELECT ${ROW_COLUMNS_WITH_SPLIT} FROM transactions WHERE id = ? LIMIT 1`,
     [id]
   );
   return row ? rowToTransaction(row) : null;
@@ -421,15 +442,24 @@ export async function* iterateTransactions(db: Db): AsyncGenerator<Transaction> 
 export async function getRecentTransactions(db: Db, accountId: string | null, limit = 4): Promise<Transaction[]> {
   if (!accountId) {
     const rows = await db.getAllAsync<TransactionRow>(
-      `SELECT ${ROW_COLUMNS} FROM transactions ORDER BY date_ms DESC, seq DESC LIMIT ?`,
+      `SELECT ${ROW_COLUMNS_WITH_SPLIT} FROM transactions ORDER BY date_ms DESC, seq DESC LIMIT ?`,
       [limit]
     );
     return rows.map(rowToTransaction);
   }
   const rows = await db.getAllAsync<TransactionRow>(
-    `SELECT ${ROW_COLUMNS} FROM transactions WHERE account_id = ? OR to_account_id = ?
+    `SELECT ${ROW_COLUMNS_WITH_SPLIT} FROM transactions WHERE account_id = ? OR to_account_id = ?
      ORDER BY date_ms DESC, seq DESC LIMIT ?`,
     [accountId, accountId, limit]
+  );
+  return rows.map(rowToTransaction);
+}
+
+/** Fetches all repayment transactions recorded for a given split expense ID. */
+export async function getRepaymentsForSplit(db: Db, splitExpenseId: string): Promise<Transaction[]> {
+  const rows = await db.getAllAsync<TransactionRow>(
+    `SELECT ${ROW_COLUMNS_WITH_SPLIT} FROM transactions WHERE split_expense_id = ? ORDER BY date_ms DESC, seq DESC`,
+    [splitExpenseId]
   );
   return rows.map(rowToTransaction);
 }

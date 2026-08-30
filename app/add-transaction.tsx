@@ -31,7 +31,7 @@ import { useKeyboardBottomInset } from '@/hooks/use-keyboard-bottom-inset';
 import { useFinance } from '@/context/finance-context';
 import { getDb } from '@/db/client';
 import { getTransactionById } from '@/db/transactions';
-import { insertSplitParticipantsBatch, listSplitParticipants } from '@/db/splits';
+import { createSplitExpense, insertSplitParticipantsBatch, listSplitParticipants } from '@/db/splits';
 import { insertRecurringRule } from '@/db/recurring';
 import { computeNextDue, formatDateIso, describeFrequency } from '@/utils/recurring-engine';
 import { Transaction, TransactionType } from '@/types/finance';
@@ -240,35 +240,32 @@ export default function AddTransactionScreen() {
       if (editing) {
         await updateTransaction({ ...editing, ...payload });
       } else {
-        // addTransaction() generates its own id internally and ignores
-        // payload.id, so the split/recurring linkage below must use the id
-        // it actually saved under — not the locally-generated txId, which
-        // would otherwise point split_participants.transaction_id at a row
-        // that was never inserted (and trip the foreign-key constraint).
-        const created = await addTransaction(payload);
-        const savedTxId = created.id;
+        let savedTxId: string;
 
-        // If Split is configured: save split participants atomically.
-        // "You" (the payer) is never inserted as a participant row — the
-        // payer's own share is implicit in the transaction's own amount,
-        // matching add-split.tsx's canonical creation path. Inserting a
-        // row for "You" here used to leave a phantom, permanently-pending
-        // "owed to yourself" entry, since insertSplitParticipantsBatch
-        // always writes paidAmount:0/status:'pending' regardless of what
-        // a caller passes.
         if (splitConfig && splitConfig.participants.length > 0 && type === 'expense') {
           const db = await getDb();
-          await insertSplitParticipantsBatch(
+          const nonYou = splitConfig.participants.filter(p => !p.isYou);
+          savedTxId = await createSplitExpense(
             db,
-            splitConfig.participants
-              .filter(p => !p.isYou)
-              .map(p => ({
-                transactionId: savedTxId,
-                name: p.name,
-                shareAmount: p.share,
-                note: note.trim() || (payee ? `Split: ${payee}` : undefined),
-              }))
+            {
+              type: 'expense',
+              amount: numericAmount,
+              accountId,
+              categoryId,
+              subcategoryId,
+              payee: payee.trim() || undefined,
+              note: note.trim() || undefined,
+              date: date.toISOString(),
+            },
+            nonYou.map(p => ({
+              name: p.name,
+              shareAmount: p.share,
+              note: note.trim() || (payee ? `Split: ${payee}` : undefined),
+            }))
           );
+        } else {
+          const created = await addTransaction(payload);
+          savedTxId = created.id;
         }
 
         // If Recurring is configured: save recurring rule
@@ -409,6 +406,60 @@ export default function AddTransactionScreen() {
                 </View>
                 <Pressable onPress={() => setScanned(null)} hitSlop={10} style={styles.scanBannerDismiss}>
                   <Ionicons name="close-circle" size={18} color={Colors.textMuted} />
+                </Pressable>
+              </View>
+            </GlassCard>
+          ) : null}
+
+          {/* Linked Split Bill Banner when editing repayment or split expense */}
+          {editing?.splitExpenseId ? (
+            <GlassCard padding={14} style={styles.linkedSplitBanner}>
+              <View style={styles.linkedSplitRow}>
+                <View style={styles.linkedSplitIcon}>
+                  <Ionicons name="receipt-outline" size={18} color={Colors.income} />
+                </View>
+                <View style={styles.linkedSplitInfo}>
+                  <AppText variant="bodyStrong" color={Colors.income}>
+                    Settlement Repayment
+                  </AppText>
+                  <AppText variant="caption" color={Colors.textSecondary} numberOfLines={1}>
+                    For "{editing.splitOriginalPayee || editing.splitOriginalNote || 'Shared Bill'}"
+                    {editing.splitOriginalAmount ? ` (${formatCurrency(editing.splitOriginalAmount, state.settings.currency ?? 'INR')})` : ''}
+                  </AppText>
+                </View>
+                <Pressable
+                  onPress={() => router.push(`/split-detail?id=${editing.splitExpenseId}` as any)}
+                  style={styles.linkedSplitButton}
+                >
+                  <AppText variant="micro" color={Colors.primaryDeep} style={{ fontWeight: '700' }}>
+                    View Split
+                  </AppText>
+                  <Ionicons name="chevron-forward" size={12} color={Colors.primaryDeep} />
+                </Pressable>
+              </View>
+            </GlassCard>
+          ) : editing?.splitCount && editing.splitCount > 0 ? (
+            <GlassCard padding={14} style={styles.linkedSplitBanner}>
+              <View style={styles.linkedSplitRow}>
+                <View style={styles.linkedSplitIconPrimary}>
+                  <Ionicons name="people-outline" size={18} color={Colors.primary} />
+                </View>
+                <View style={styles.linkedSplitInfo}>
+                  <AppText variant="bodyStrong" color={Colors.primaryDeep}>
+                    Shared Expense
+                  </AppText>
+                  <AppText variant="caption" color={Colors.textSecondary} numberOfLines={1}>
+                    Split with {editing.splitCount} participants
+                  </AppText>
+                </View>
+                <Pressable
+                  onPress={() => router.push(`/split-detail?id=${editing.id}` as any)}
+                  style={styles.linkedSplitButton}
+                >
+                  <AppText variant="micro" color={Colors.primaryDeep} style={{ fontWeight: '700' }}>
+                    View Split
+                  </AppText>
+                  <Ionicons name="chevron-forward" size={12} color={Colors.primaryDeep} />
                 </Pressable>
               </View>
             </GlassCard>
@@ -931,5 +982,43 @@ const styles = StyleSheet.create({
   },
   submitBtn: {
     marginTop: 2,
+  },
+  linkedSplitBanner: {
+    marginBottom: Spacing.sm,
+    backgroundColor: 'rgba(255, 255, 255, 0.7)',
+  },
+  linkedSplitRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  linkedSplitIcon: {
+    width: 36,
+    height: 36,
+    borderRadius: BorderRadius.pill,
+    backgroundColor: Colors.incomeSoft,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  linkedSplitIconPrimary: {
+    width: 36,
+    height: 36,
+    borderRadius: BorderRadius.pill,
+    backgroundColor: Colors.primarySoft,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  linkedSplitInfo: {
+    flex: 1,
+    gap: 2,
+  },
+  linkedSplitButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 2,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: BorderRadius.pill,
+    backgroundColor: Colors.primarySoft,
   },
 });

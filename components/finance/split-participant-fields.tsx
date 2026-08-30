@@ -67,8 +67,8 @@ export const SplitParticipantFields: React.FC<SplitParticipantFieldsProps> = ({ 
       {/* Quick Add pills */}
       {recentFriends.length > 0 && (
         <View style={styles.recentRow}>
-          <AppText variant="caption" color={Colors.textMuted} style={styles.recentLabel}>
-            Quick add:
+          <AppText variant="micro" color={Colors.textMuted} style={styles.recentLabel}>
+            QUICK ADD
           </AppText>
           <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.recentScroll}>
             {recentFriends
@@ -79,7 +79,7 @@ export const SplitParticipantFields: React.FC<SplitParticipantFieldsProps> = ({ 
                     onPress={() => addParticipant(friend)}
                     style={styles.recentChipMain}
                   >
-                    <Ionicons name="add" size={13} color={Colors.primaryDeep} />
+                    <Ionicons name="add-circle" size={14} color={Colors.primary} />
                     <AppText variant="captionStrong" color={Colors.primaryDeep}>
                       {friend}
                     </AppText>
@@ -100,12 +100,12 @@ export const SplitParticipantFields: React.FC<SplitParticipantFieldsProps> = ({ 
       {/* Participants Card List */}
       <View style={styles.participantsList}>
         <View style={styles.participantsHeader}>
-          <AppText variant="label" color={Colors.textSecondary}>
-            PARTICIPANTS ({participants.length})
+          <AppText variant="micro" color={Colors.textMuted}>
+            SPLIT BREAKDOWN ({participants.length})
           </AppText>
           {hasCustomShares && (
             <Pressable onPress={resetToEqual} hitSlop={8} style={styles.resetEqualBtn}>
-              <Ionicons name="sync-outline" size={13} color={Colors.primary} />
+              <Ionicons name="sync-outline" size={12} color={Colors.primary} />
               <AppText variant="captionStrong" color={Colors.primary}>
                 Split equally
               </AppText>
@@ -121,28 +121,34 @@ export const SplitParticipantFields: React.FC<SplitParticipantFieldsProps> = ({ 
           const displayedValue = isFocused ? p.value : (isCustom ? p.value : formattedShare);
 
           return (
-            <View key={p.id} style={styles.participantCard}>
+            <View key={p.id} style={[styles.participantCard, p.isYou && styles.participantCardYou]}>
               {/* Avatar */}
               <View style={[styles.avatar, p.isYou && styles.avatarYou]}>
-                <Ionicons
-                  name={p.isYou ? 'person' : 'person-outline'}
-                  size={16}
-                  color={p.isYou ? Colors.primaryDeep : Colors.textSecondary}
-                />
+                {p.isYou ? (
+                  <Ionicons name="person" size={15} color={Colors.primaryDeep} />
+                ) : (
+                  <AppText variant="captionStrong" color={Colors.textSecondary}>
+                    {p.name.charAt(0).toUpperCase()}
+                  </AppText>
+                )}
               </View>
 
               {/* Name & Share status */}
               <View style={styles.rowInfo}>
-                <AppText variant="bodyStrong" numberOfLines={1}>
-                  {p.name}
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                  <AppText variant="bodyStrong" numberOfLines={1}>
+                    {p.name}
+                  </AppText>
                   {p.isYou && (
-                    <AppText variant="caption" color={Colors.primaryDeep}>
-                      {' '}(You)
-                    </AppText>
+                    <View style={styles.youBadge}>
+                      <AppText variant="micro" color={Colors.primaryDeep} style={{ fontWeight: '700' }}>
+                        Payer
+                      </AppText>
+                    </View>
                   )}
-                </AppText>
+                </View>
                 <AppText variant="caption" color={isCustom ? Colors.primaryDeep : Colors.textMuted}>
-                  {isCustom ? 'Custom share' : 'Equal share'}
+                  {isCustom ? 'Custom amount' : 'Equal split'}
                 </AppText>
               </View>
 
@@ -185,7 +191,7 @@ export const SplitParticipantFields: React.FC<SplitParticipantFieldsProps> = ({ 
               {/* Remove button */}
               {!p.isYou && (
                 <Pressable onPress={() => removeParticipant(p.id)} hitSlop={8} style={styles.removeBtn}>
-                  <Ionicons name="trash-outline" size={16} color={Colors.textMuted} />
+                  <Ionicons name="trash-outline" size={15} color={Colors.textMuted} />
                 </Pressable>
               )}
             </View>
@@ -288,6 +294,16 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.controlBg,
     borderWidth: 1,
     borderColor: Colors.glassBorderSoft,
+  },
+  participantCardYou: {
+    backgroundColor: 'rgba(139, 92, 246, 0.04)',
+    borderColor: 'rgba(139, 92, 246, 0.18)',
+  },
+  youBadge: {
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: BorderRadius.pill,
+    backgroundColor: Colors.primarySoft,
   },
   avatar: {
     width: 36,

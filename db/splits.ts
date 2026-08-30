@@ -153,7 +153,92 @@ export async function insertSplitParticipantsBatch(
       result.push(full);
     }
   });
+  bumpDataVersion();
   return result;
+}
+
+/**
+ * Creates a split expense and its participants in one atomic database transaction.
+ */
+export async function createSplitExpense(
+  db: Db,
+  expense: {
+    id?: string;
+    type?: 'expense';
+    amount: number;
+    accountId: string;
+    categoryId?: string;
+    subcategoryId?: string;
+    payee?: string;
+    note?: string;
+    date: string;
+    createdAt?: string;
+  },
+  participants: Omit<SplitParticipant, 'id' | 'paidAmount' | 'status' | 'createdAt' | 'transactionId'>[]
+): Promise<string> {
+  const txId = expense.id ?? generateId();
+  const now = new Date().toISOString();
+  const dateStr = expense.date;
+  const dateMs = Date.parse(dateStr);
+  const monthKey = monthKeyOf(dateStr);
+  const dayKey = dayKeyOf(dateStr);
+  const noteLc = expense.note ? expense.note.toLowerCase() : null;
+  const createdAt = expense.createdAt ?? now;
+
+  await db.withTransaction(async txn => {
+    // 1. Insert transaction
+    await txn.runAsync(
+      `INSERT INTO transactions
+         (id, type, amount, account_id, to_account_id, category_id,
+          date, date_ms, month_key, day_key, note, note_lc, created_at,
+          payee, subcategory_id, recurring_rule_id, split_expense_id)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        txId,
+        'expense',
+        expense.amount,
+        expense.accountId,
+        null,
+        expense.categoryId ?? null,
+        dateStr,
+        dateMs,
+        monthKey,
+        dayKey,
+        expense.note ?? null,
+        noteLc,
+        createdAt,
+        expense.payee ?? null,
+        expense.subcategoryId ?? null,
+        null,
+        null,
+      ]
+    );
+
+    // 2. Apply rollup
+    await applyRow(txn, {
+      type: 'expense',
+      amount: expense.amount,
+      accountId: expense.accountId,
+      toAccountId: null,
+      categoryId: expense.categoryId ?? null,
+      monthKey,
+      dayKey,
+    });
+
+    // 3. Insert participants
+    for (const p of participants) {
+      const pId = generateId();
+      await txn.runAsync(
+        `INSERT INTO split_participants
+           (id, transaction_id, name, share_amount, paid_amount, status, note, settled_at, created_at)
+         VALUES (?,?,?,?,?,?,?,?,?)`,
+        [pId, txId, p.name, p.shareAmount, 0, 'pending', p.note ?? null, null, now]
+      );
+    }
+  });
+
+  bumpDataVersion();
+  return txId;
 }
 
 /**
@@ -173,12 +258,10 @@ export async function markParticipantPaid(
     /** The account that receives the repayment (same as original expense account by default). */
     accountId: string;
     note?: string;
-    /** ISO date string for the repayment. Defaults to today. */
+    /** ISO date string for the repayment. Defaults to now. */
     date?: string;
   }
 ): Promise<string> {
-  const dateStr = opts.date ?? new Date().toISOString().slice(0, 10);
-
   const row = await db.getFirstAsync<SplitParticipantRow>(
     'SELECT * FROM split_participants WHERE id = ?',
     [opts.participantId]
@@ -188,22 +271,24 @@ export async function markParticipantPaid(
 
   const incomeId = generateId();
   const now = new Date().toISOString();
+  const dateStr = opts.date ?? now;
+  const dateMs = Date.parse(dateStr);
 
   await db.withTransaction(async txn => {
-    // 1. Create the linked income transaction for the full share
+    // 1. Create the linked income transaction for the full share with current timestamp and payee
     await txn.runAsync(
       `INSERT INTO transactions
          (id, type, amount, account_id, to_account_id, category_id,
           note, date, date_ms, month_key, day_key, note_lc,
-          created_at, split_expense_id)
-       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+          created_at, payee, split_expense_id)
+       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
       [
         incomeId, 'income', row.share_amount, opts.accountId, null, null,
-        opts.note ?? `Repayment from ${row.name}`,
-        dateStr, new Date(dateStr).getTime(),
+        opts.note ?? `Repayment for share`,
+        dateStr, dateMs,
         monthKeyOf(dateStr), dayKeyOf(dateStr),
-        (opts.note ?? '').toLowerCase() || null,
-        now, row.transaction_id,
+        (opts.note ?? `Repayment for share`).toLowerCase() || null,
+        now, row.name, row.transaction_id,
       ]
     );
 
@@ -227,7 +312,7 @@ export async function markParticipantPaid(
     );
   });
 
-  await bumpDataVersion();
+  bumpDataVersion();
   return incomeId;
 }
 
