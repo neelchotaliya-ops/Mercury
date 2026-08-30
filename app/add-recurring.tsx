@@ -28,7 +28,7 @@ import { RecurringRule, TransactionType } from '@/types/finance';
 import { getCurrencySymbol, formatCurrency } from '@/utils/currency';
 import { haptics } from '@/utils/haptics';
 import { generateId } from '@/utils/id';
-import { Colors, BorderRadius, ControlHeights, Spacing } from '@/constants/theme';
+import { Colors, BorderRadius, ControlHeights, Shadows, Spacing } from '@/constants/theme';
 import { getDb } from '@/db/client';
 import { bumpDataVersion } from '@/db/version';
 import {
@@ -41,6 +41,8 @@ import {
   resumeRecurringRule,
 } from '@/db/recurring';
 import { computeNextDue, generateOccurrences, describeFrequency } from '@/utils/recurring-engine';
+
+type RuleFilter = 'all' | 'active' | 'paused';
 
 export default function AddRecurringScreen() {
   const router = useRouter();
@@ -60,6 +62,7 @@ export default function AddRecurringScreen() {
 
   const [rules, setRules] = useState<RecurringRule[]>([]);
   const [loadingRules, setLoadingRules] = useState(true);
+  const [ruleFilter, setRuleFilter] = useState<RuleFilter>('all');
 
   // If params.id, params.amount, or params.payee is passed, open in form mode. Otherwise start in hub list mode.
   const [isFormOpen, setIsFormOpen] = useState(
@@ -268,7 +271,18 @@ export default function AddRecurringScreen() {
       }, 0);
   }, [rules]);
 
-  // If form is closed and we have rules or want to view hub list
+  // Filtered rules for Hub view
+  const filteredRules = useMemo(() => {
+    if (ruleFilter === 'active') return rules.filter(r => r.active);
+    if (ruleFilter === 'paused') return rules.filter(r => !r.active);
+    return rules;
+  }, [rules, ruleFilter]);
+
+  const activeCount = rules.filter(r => r.active).length;
+
+  // ---------------------------------------------------------------------------
+  // HUB VIEW (List of all recurring payments)
+  // ---------------------------------------------------------------------------
   if (!isFormOpen && !params.id) {
     return (
       <GradientScreen edges={['top', 'bottom']} contours="top">
@@ -284,7 +298,7 @@ export default function AddRecurringScreen() {
               }}
               style={styles.addRuleBtn}
             >
-              <Ionicons name="add" size={18} color="#FFFFFF" />
+              <Ionicons name="add" size={17} color="#FFFFFF" />
               <AppText variant="captionStrong" color="#FFFFFF">
                 New Rule
               </AppText>
@@ -292,40 +306,74 @@ export default function AddRecurringScreen() {
           }
         />
 
-        <ScrollView contentContainerStyle={styles.content}>
+        <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
           {/* Monthly Commitment Hero Card */}
           <GlassCard padding={18} strong elevated style={styles.heroCard}>
-            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-              <View>
-                <AppText variant="caption" color={Colors.textSecondary}>Monthly Commitment</AppText>
-                <AppText variant="h1" color={Colors.primaryDeep} style={{ marginTop: 2 }}>
-                  {formatCurrency(monthlyExpenseTotal, currency)}
-                </AppText>
-                <AppText variant="caption" color={Colors.textMuted} style={{ marginTop: 2 }}>
-                  ~{formatCurrency(monthlyExpenseTotal * 12, currency)} / year
+            <View style={styles.heroTopRow}>
+              <View style={styles.heroLabelBadge}>
+                <Ionicons name="calendar-outline" size={13} color={Colors.primary} />
+                <AppText variant="micro" color={Colors.primaryDeep} style={styles.heroLabelText}>
+                  MONTHLY COMMITMENT
                 </AppText>
               </View>
 
               <View style={styles.activePill}>
-                <Ionicons name="repeat" size={14} color={Colors.primary} />
-                <AppText variant="captionStrong" color={Colors.primaryDeep} style={{ marginLeft: 4 }}>
-                  {rules.filter(r => r.active).length} Active
+                <View style={styles.activeDot} />
+                <AppText variant="micro" color={Colors.primaryDeep} style={styles.activeCountText}>
+                  {activeCount} Active
+                </AppText>
+              </View>
+            </View>
+
+            <View style={styles.heroAmountRow}>
+              <AppText variant="h1" color={Colors.textPrimary} style={styles.heroAmountText}>
+                {formatCurrency(monthlyExpenseTotal, currency)}
+              </AppText>
+            </View>
+
+            <View style={styles.heroBottomRow}>
+              <View style={styles.annualBadge}>
+                <Ionicons name="trending-up-outline" size={13} color={Colors.textSecondary} />
+                <AppText variant="caption" color={Colors.textSecondary}>
+                  ~{formatCurrency(monthlyExpenseTotal * 12, currency)} / year projected
                 </AppText>
               </View>
             </View>
           </GlassCard>
 
+          {/* Filter Tabs */}
+          {rules.length > 0 && (
+            <View style={styles.filterWrap}>
+              <SegmentedControl<RuleFilter>
+                variant="dark"
+                options={[
+                  { key: 'all', label: `All (${rules.length})` },
+                  { key: 'active', label: `Active (${activeCount})` },
+                  { key: 'paused', label: `Paused (${rules.length - activeCount})` },
+                ]}
+                value={ruleFilter}
+                onChange={next => {
+                  setRuleFilter(next);
+                }}
+              />
+            </View>
+          )}
+
           {/* Rules List */}
           {rules.length === 0 ? (
-            <GlassCard padding={24} style={styles.emptyCard}>
-              <View style={styles.emptyIcon}>
-                <Ionicons name="repeat-outline" size={32} color={Colors.primary} />
+            <GlassCard padding={26} style={styles.emptyCard}>
+              <View style={styles.emptyIconWrap}>
+                <Ionicons name="repeat" size={32} color={Colors.primary} />
               </View>
-              <AppText variant="h3" style={{ textAlign: 'center', marginTop: 12 }}>
+              <AppText variant="h3" color={Colors.textPrimary} style={{ textAlign: 'center', marginTop: 14 }}>
                 No Recurring Rules Yet
               </AppText>
-              <AppText variant="caption" color={Colors.textSecondary} style={{ textAlign: 'center', marginTop: 4 }}>
-                Track subscriptions, rent, utility bills, and salary with automatic logging.
+              <AppText
+                variant="caption"
+                color={Colors.textSecondary}
+                style={{ textAlign: 'center', marginTop: 6, lineHeight: 18 }}
+              >
+                Set up automated repeats for rent, utilities, subscriptions, or salaries.
               </AppText>
               <AppButton
                 title="+ Add First Recurring Rule"
@@ -335,49 +383,80 @@ export default function AddRecurringScreen() {
                   resetForm();
                   setIsFormOpen(true);
                 }}
-                style={{ marginTop: 16 }}
+                style={{ marginTop: 20 }}
               />
+            </GlassCard>
+          ) : filteredRules.length === 0 ? (
+            <GlassCard padding={24} style={styles.emptyCard}>
+              <Ionicons name="filter-outline" size={28} color={Colors.textMuted} />
+              <AppText variant="bodyStrong" color={Colors.textSecondary} style={{ marginTop: 10 }}>
+                No {ruleFilter} recurring rules
+              </AppText>
             </GlassCard>
           ) : (
             <View style={styles.rulesContainer}>
-              <AppText variant="label" style={styles.rulesTitle}>All Recurring Rules</AppText>
-              {rules.map(rule => {
+              <View style={styles.rulesHeaderRow}>
+                <AppText variant="micro" color={Colors.primaryDeep} style={styles.rulesHeaderLabel}>
+                  {ruleFilter === 'all' ? 'ALL RECURRING PAYMENTS' : `${ruleFilter.toUpperCase()} PAYMENTS`}
+                </AppText>
+                <AppText variant="caption" color={Colors.textMuted}>
+                  {filteredRules.length} {filteredRules.length === 1 ? 'rule' : 'rules'}
+                </AppText>
+              </View>
+
+              {filteredRules.map(rule => {
                 const category = state.categories.find(c => c.id === rule.categoryId);
                 const account = state.accounts.find(a => a.id === rule.accountId);
                 const freqText = describeFrequency(rule);
 
                 return (
-                  <GlassCard key={rule.id} padding={14} style={[styles.ruleCard, !rule.active && styles.ruleCardInactive]}>
+                  <GlassCard
+                    key={rule.id}
+                    padding={14}
+                    style={[styles.ruleCard, !rule.active && styles.ruleCardInactive]}
+                  >
                     <Pressable
                       onPress={() => {
                         haptics.press();
                         populateForm(rule);
                         setIsFormOpen(true);
                       }}
-                      style={{ flex: 1, flexDirection: 'row', alignItems: 'center', gap: 12 }}
+                      style={styles.ruleCardPressable}
                     >
                       <IconBadge
                         icon={category?.icon ?? (rule.type === 'income' ? 'cash-outline' : 'repeat-outline')}
                         color={category?.color ?? Colors.primary}
-                        size={38}
+                        size={40}
                       />
-                      <View style={{ flex: 1, gap: 2 }}>
-                        <AppText variant="bodyStrong" numberOfLines={1}>
-                          {rule.payee || rule.note || 'Recurring Rule'}
+
+                      <View style={styles.ruleDetailsCol}>
+                        <AppText variant="bodyStrong" color={Colors.textPrimary} numberOfLines={1}>
+                          {rule.payee || rule.note || category?.name || 'Recurring Payment'}
                         </AppText>
-                        <AppText variant="caption" color={Colors.textSecondary}>
+                        <AppText variant="caption" color={Colors.textSecondary} numberOfLines={1}>
                           {freqText} · {account?.name ?? 'Account'}
                         </AppText>
-                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 2 }}>
+
+                        <View style={styles.ruleBadgesRow}>
                           <View style={[styles.dueBadge, rule.active ? styles.dueBadgeActive : styles.dueBadgePaused]}>
-                            <AppText variant="micro" color={rule.active ? Colors.primaryDeep : Colors.textMuted} style={{ fontWeight: '600' }}>
-                              {rule.active ? `Next: ${new Date(rule.nextDue).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}` : 'Paused'}
+                            <AppText
+                              variant="micro"
+                              color={rule.active ? Colors.primaryDeep : Colors.textMuted}
+                              style={{ fontWeight: '700', fontSize: 10.5 }}
+                            >
+                              {rule.active
+                                ? `Next: ${new Date(rule.nextDue).toLocaleDateString(undefined, {
+                                    month: 'short',
+                                    day: 'numeric',
+                                  })}`
+                                : 'Paused'}
                             </AppText>
                           </View>
+
                           {rule.autoCreate && rule.active && (
                             <View style={styles.autoPill}>
                               <Ionicons name="flash" size={10} color={Colors.income} />
-                              <AppText variant="micro" color={Colors.income} style={{ fontWeight: '600' }}>
+                              <AppText variant="micro" color={Colors.income} style={{ fontWeight: '700', fontSize: 10 }}>
                                 Auto-logs
                               </AppText>
                             </View>
@@ -385,10 +464,16 @@ export default function AddRecurringScreen() {
                         </View>
                       </View>
 
-                      <View style={{ alignItems: 'flex-end', gap: 6 }}>
-                        <AppText variant="bodyStrong" color={rule.type === 'income' ? Colors.income : Colors.textPrimary}>
-                          {rule.type === 'income' ? '+' : '−'}{formatCurrency(rule.amount, currency)}
+                      <View style={styles.ruleRightCol}>
+                        <AppText
+                          variant="bodyStrong"
+                          color={rule.type === 'income' ? Colors.income : Colors.textPrimary}
+                          style={styles.ruleAmountText}
+                        >
+                          {rule.type === 'income' ? '+' : '−'}
+                          {formatCurrency(rule.amount, currency)}
                         </AppText>
+
                         <Switch
                           value={rule.active}
                           onValueChange={() => handleToggleActive(rule)}
@@ -408,7 +493,9 @@ export default function AddRecurringScreen() {
     );
   }
 
-  // Otherwise, render Add / Edit Form
+  // ---------------------------------------------------------------------------
+  // FORM VIEW (Create or Edit Recurring Rule)
+  // ---------------------------------------------------------------------------
   return (
     <GradientScreen edges={['top', 'bottom']} contours="top">
       <ModalHeader
@@ -422,16 +509,18 @@ export default function AddRecurringScreen() {
       />
 
       <ScrollView
-        contentContainerStyle={styles.content}
+        contentContainerStyle={styles.formContent}
         keyboardShouldPersistTaps="handled"
         automaticallyAdjustKeyboardInsets={true}
+        showsVerticalScrollIndicator={false}
       >
         {/* Type selector */}
         <View style={styles.switchWrap}>
           <SegmentedControl<Exclude<TransactionType, 'transfer'>>
+            variant="dark"
             options={[
-              { key: 'expense', label: 'Expense' },
-              { key: 'income', label: 'Income' },
+              { key: 'expense', label: 'Expense', icon: 'arrow-down-circle' },
+              { key: 'income', label: 'Income', icon: 'arrow-up-circle' },
             ]}
             value={type}
             onChange={next => {
@@ -442,11 +531,18 @@ export default function AddRecurringScreen() {
         </View>
 
         {/* Core details card */}
-        <GlassCard padding={18} style={styles.card}>
+        <GlassCard padding={16} style={styles.card}>
+          {/* Amount Field */}
           <View style={styles.field}>
-            <AppText variant="label">Amount</AppText>
+            <AppText variant="micro" color={Colors.primaryDeep} style={styles.formSectionLabel}>
+              AMOUNT
+            </AppText>
             <View style={styles.amountInputRow}>
-              <AppText variant="h2" color={type === 'expense' ? Colors.expense : Colors.income}>
+              <AppText
+                variant="h2"
+                color={type === 'expense' ? Colors.expense : Colors.income}
+                style={styles.currencySymbolText}
+              >
                 {currencySymbol}
               </AppText>
               <TextInput
@@ -460,8 +556,11 @@ export default function AddRecurringScreen() {
             </View>
           </View>
 
+          {/* Account Field */}
           <View style={styles.field}>
-            <AppText variant="label">Account</AppText>
+            <AppText variant="micro" color={Colors.primaryDeep} style={styles.formSectionLabel}>
+              ACCOUNT
+            </AppText>
             <AccountPicker
               accounts={state.accounts}
               selectedId={accountId}
@@ -469,8 +568,11 @@ export default function AddRecurringScreen() {
             />
           </View>
 
+          {/* Category Field */}
           <View style={styles.field}>
-            <AppText variant="label">Category</AppText>
+            <AppText variant="micro" color={Colors.primaryDeep} style={styles.formSectionLabel}>
+              CATEGORY
+            </AppText>
             <CategoryPicker
               categories={categories}
               selectedId={categoryId}
@@ -479,8 +581,11 @@ export default function AddRecurringScreen() {
             />
           </View>
 
+          {/* Payee / Name Field */}
           <View style={styles.field}>
-            <AppText variant="label">Payee / Subscription Name</AppText>
+            <AppText variant="micro" color={Colors.primaryDeep} style={styles.formSectionLabel}>
+              PAYEE / SUBSCRIPTION NAME
+            </AppText>
             <TextInput
               value={payee}
               onChangeText={setPayee}
@@ -489,48 +594,93 @@ export default function AddRecurringScreen() {
               style={styles.input}
             />
           </View>
-
         </GlassCard>
 
-        {/* Schedule Card — frequency, start date, more options, and what
-            happens on the due date, all owned by the shared hook so this
-            stays in lockstep with the inline Repeat sheet. */}
-        <GlassCard padding={18} style={styles.card}>
-          <RecurringScheduleFields form={schedule} advanced />
+        {/* Schedule Configuration Card */}
+        <GlassCard padding={16} style={styles.card}>
+          <RecurringScheduleFields form={schedule} advanced={true} />
         </GlassCard>
 
-        {/* Next occurrences preview card */}
+        {/* Upcoming Occurrences Unboxed Timeline */}
         {numericAmount > 0 && upcomingOccurrences.length > 0 && (
-          <GlassCard padding={18} style={styles.card}>
-            <AppText variant="h3">Upcoming Schedule</AppText>
-            <View style={styles.occurrencesList}>
-              {upcomingOccurrences.map((occDate, idx) => (
-                <View key={idx} style={styles.occurrenceItem}>
-                  <View style={styles.occurrenceDot} />
-                  <AppText variant="bodyStrong" style={{ flex: 1, marginLeft: 10 }}>
-                    {occDate.toLocaleDateString(undefined, {
-                      weekday: 'short',
-                      day: 'numeric',
-                      month: 'short',
-                      year: 'numeric',
-                    })}
-                  </AppText>
-                  <AppText variant="bodyStrong" color={type === 'expense' ? Colors.expense : Colors.income}>
-                    {type === 'income' ? '+' : '−'}{formatCurrency(numericAmount, currency)}
-                  </AppText>
-                </View>
-              ))}
+          <View style={styles.timelineSection}>
+            <View style={styles.timelineHeaderRow}>
+              <AppText variant="micro" color={Colors.primaryDeep} style={styles.formSectionLabel}>
+                UPCOMING TIMELINE
+              </AppText>
             </View>
-          </GlassCard>
+
+            <View style={styles.timelineList}>
+              {upcomingOccurrences.map((occDate, idx) => {
+                const isFirst = idx === 0;
+                const isLast = idx === upcomingOccurrences.length - 1;
+                return (
+                  <View key={idx} style={styles.timelineRow}>
+                    {/* Timeline Axis (Dot + Track) */}
+                    <View style={styles.timelineAxis}>
+                      <View
+                        style={[
+                          styles.timelineDotOuter,
+                          isFirst ? styles.timelineDotOuterActive : styles.timelineDotOuterMuted,
+                        ]}
+                      >
+                        <View
+                          style={[
+                            styles.timelineDotInner,
+                            isFirst ? styles.timelineDotInnerActive : styles.timelineDotInnerMuted,
+                          ]}
+                        />
+                      </View>
+                      {!isLast && <View style={styles.timelineTrack} />}
+                    </View>
+
+                    {/* Timeline Body */}
+                    <View style={[styles.timelineContent, isLast && styles.timelineContentLast]}>
+                      <View style={styles.timelineDateRow}>
+                        <AppText
+                          variant={isFirst ? 'bodyStrong' : 'body'}
+                          color={isFirst ? Colors.textPrimary : Colors.textSecondary}
+                        >
+                          {occDate.toLocaleDateString(undefined, {
+                            weekday: 'short',
+                            day: 'numeric',
+                            month: 'short',
+                            year: 'numeric',
+                          })}
+                        </AppText>
+                        <AppText
+                          variant={isFirst ? 'bodyStrong' : 'caption'}
+                          color={type === 'expense' ? Colors.expense : Colors.income}
+                          style={{ fontWeight: isFirst ? '700' : '500' }}
+                        >
+                          {type === 'income' ? '+' : '−'}
+                          {formatCurrency(numericAmount, currency)}
+                        </AppText>
+                      </View>
+
+                      <AppText
+                        variant="micro"
+                        color={isFirst ? Colors.primaryDeep : Colors.textMuted}
+                        style={{ fontWeight: isFirst ? '600' : '500' }}
+                      >
+                        {isFirst ? 'Next occurrence' : `${idx + 1}${idx === 1 ? 'nd' : 'rd'} cycle`}
+                      </AppText>
+                    </View>
+                  </View>
+                );
+              })}
+            </View>
+          </View>
         )}
 
-        <AppButton
-          title={editingRule ? 'Save Changes' : 'Create Recurring Rule'}
-          size="lg"
-          onPress={handleSave}
-          disabled={!canSave}
-          style={{ marginTop: 4, marginBottom: 20 }}
-        />
+        <View style={styles.submitWrap}>
+          <AppButton
+            title={editingRule ? 'Save Changes' : 'Create Recurring Rule'}
+            size="lg"
+            onPress={handleSave}
+            disabled={!canSave}
+          />
+        </View>
       </ScrollView>
     </GradientScreen>
   );
@@ -539,62 +689,148 @@ export default function AddRecurringScreen() {
 const styles = StyleSheet.create({
   content: {
     paddingHorizontal: 16,
+    paddingTop: 8,
     paddingBottom: 80,
-    gap: Spacing.md,
+    gap: 16,
+  },
+  formContent: {
+    paddingHorizontal: 16,
+    paddingTop: 8,
+    paddingBottom: 40,
+    gap: 16,
   },
   addRuleBtn: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 4,
-    paddingHorizontal: 12,
-    paddingVertical: 6,
+    gap: 6,
+    paddingHorizontal: 14,
+    height: 36,
     borderRadius: BorderRadius.pill,
-    backgroundColor: Colors.primary,
+    backgroundColor: Colors.ctaBg,
+    ...Shadows.soft,
   },
   heroCard: {
-    backgroundColor: 'rgba(139, 92, 246, 0.06)',
-    borderColor: 'rgba(139, 92, 246, 0.25)',
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: 'rgba(139, 92, 246, 0.22)',
+    gap: 12,
+  },
+  heroTopRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  heroLabelBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  heroLabelText: {
+    fontSize: 10.5,
+    letterSpacing: 0.9,
+    fontFamily: 'Manrope_700Bold',
   },
   activePill: {
     flexDirection: 'row',
     alignItems: 'center',
+    gap: 6,
     paddingHorizontal: 10,
-    paddingVertical: 5,
+    paddingVertical: 4,
     borderRadius: BorderRadius.pill,
     backgroundColor: Colors.primarySoft,
+  },
+  activeDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: Colors.primary,
+  },
+  activeCountText: {
+    fontSize: 11,
+    fontWeight: '700',
+    fontFamily: 'Manrope_700Bold',
+  },
+  heroAmountRow: {
+    marginVertical: 2,
+  },
+  heroAmountText: {
+    fontSize: 32,
+    fontFamily: 'Sora_700Bold',
+  },
+  heroBottomRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  annualBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: BorderRadius.xs,
+    backgroundColor: 'rgba(25, 21, 39, 0.04)',
+  },
+  filterWrap: {
+    marginVertical: -2,
   },
   emptyCard: {
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: 32,
+    paddingVertical: 36,
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: 'rgba(25, 21, 39, 0.06)',
   },
-  emptyIcon: {
-    width: 60,
-    height: 60,
+  emptyIconWrap: {
+    width: 64,
+    height: 64,
     borderRadius: BorderRadius.pill,
     backgroundColor: Colors.primarySoft,
     alignItems: 'center',
     justifyContent: 'center',
   },
   rulesContainer: {
-    gap: 8,
+    gap: 10,
   },
-  rulesTitle: {
-    fontSize: 12,
-    letterSpacing: 0.5,
-    marginLeft: 4,
+  rulesHeaderRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 4,
+  },
+  rulesHeaderLabel: {
+    fontSize: 10.5,
+    letterSpacing: 0.9,
+    fontFamily: 'Manrope_700Bold',
   },
   ruleCard: {
+    backgroundColor: '#FFFFFF',
     borderWidth: 1,
-    borderColor: Colors.glassBorder,
+    borderColor: 'rgba(25, 21, 39, 0.06)',
   },
   ruleCardInactive: {
     opacity: 0.6,
   },
+  ruleCardPressable: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  ruleDetailsCol: {
+    flex: 1,
+    gap: 3,
+  },
+  ruleBadgesRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginTop: 2,
+  },
   dueBadge: {
-    paddingHorizontal: 7,
+    paddingHorizontal: 8,
     paddingVertical: 2,
-    borderRadius: BorderRadius.pill,
+    borderRadius: BorderRadius.xs,
   },
   dueBadgeActive: {
     backgroundColor: Colors.primarySoft,
@@ -605,20 +841,37 @@ const styles = StyleSheet.create({
   autoPill: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 2,
-    paddingHorizontal: 6,
+    gap: 3,
+    paddingHorizontal: 7,
     paddingVertical: 2,
-    borderRadius: BorderRadius.pill,
+    borderRadius: BorderRadius.xs,
     backgroundColor: Colors.incomeSoft,
   },
+  ruleRightCol: {
+    alignItems: 'flex-end',
+    gap: 6,
+  },
+  ruleAmountText: {
+    fontSize: 15,
+    fontFamily: 'Sora_700Bold',
+  },
   switchWrap: {
-    marginBottom: 4,
+    marginBottom: 2,
   },
   card: {
-    gap: Spacing.lg,
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: 'rgba(25, 21, 39, 0.06)',
+    gap: 16,
   },
   field: {
-    gap: Spacing.sm,
+    gap: 6,
+  },
+  formSectionLabel: {
+    fontSize: 10.5,
+    letterSpacing: 0.9,
+    fontFamily: 'Manrope_700Bold',
+    paddingHorizontal: 2,
   },
   amountInputRow: {
     flexDirection: 'row',
@@ -626,119 +879,104 @@ const styles = StyleSheet.create({
     height: ControlHeights.lg,
     paddingHorizontal: 16,
     borderRadius: BorderRadius.sm,
-    backgroundColor: 'rgba(25, 21, 39, 0.04)',
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: 'rgba(139, 92, 246, 0.2)',
     gap: 8,
+  },
+  currencySymbolText: {
+    fontFamily: 'Sora_700Bold',
   },
   amountInput: {
     flex: 1,
-    fontSize: 24,
+    fontSize: 22,
     fontFamily: 'Sora_700Bold',
     color: Colors.textPrimary,
     padding: 0,
   },
   input: {
-    height: ControlHeights.lg,
-    paddingHorizontal: 16,
-    borderRadius: BorderRadius.sm,
-    backgroundColor: 'rgba(25, 21, 39, 0.04)',
-    fontSize: 15,
+    height: ControlHeights.md,
+    paddingHorizontal: 14,
+    borderRadius: BorderRadius.xs,
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: 'rgba(25, 21, 39, 0.08)',
+    fontSize: 14,
     fontFamily: 'Manrope_500Medium',
     color: Colors.textPrimary,
   },
-  datePickerBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-    height: ControlHeights.lg,
-    paddingHorizontal: 16,
-    borderRadius: BorderRadius.sm,
-    backgroundColor: 'rgba(25, 21, 39, 0.04)',
-  },
-  frequencyRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
+  timelineSection: {
     gap: 8,
+    marginTop: 4,
   },
-  freqButton: {
-    flex: 1,
-    minWidth: '28%',
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 10,
-    paddingHorizontal: 8,
-    borderRadius: BorderRadius.md,
-    backgroundColor: Colors.controlBg,
-    borderWidth: 1,
-    borderColor: Colors.glassBorderSoft,
+  timelineHeaderRow: {
+    paddingHorizontal: 4,
   },
-  freqButtonActive: {
-    backgroundColor: Colors.primary,
-    borderColor: Colors.primary,
+  timelineList: {
+    paddingHorizontal: 4,
+    paddingTop: 4,
   },
-  moreOptionsToggle: {
+  timelineRow: {
     flexDirection: 'row',
+    minHeight: 44,
+  },
+  timelineAxis: {
+    width: 18,
+    alignItems: 'center',
+    alignSelf: 'stretch',
+  },
+  timelineDotOuter: {
+    width: 14,
+    height: 14,
+    borderRadius: 7,
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 4,
-    paddingVertical: 4,
+    zIndex: 2,
   },
-  choiceCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-    paddingVertical: 14,
-    paddingHorizontal: 14,
-    borderRadius: BorderRadius.md,
-    backgroundColor: Colors.controlBg,
-    borderWidth: 1,
-    borderColor: Colors.glassBorderSoft,
+  timelineDotOuterActive: {
+    backgroundColor: Colors.primarySoft,
+    borderWidth: 1.5,
+    borderColor: 'rgba(139, 92, 246, 0.45)',
   },
-  choiceCardActive: {
+  timelineDotOuterMuted: {
+    backgroundColor: 'rgba(25, 21, 39, 0.05)',
+  },
+  timelineDotInner: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+  },
+  timelineDotInnerActive: {
     backgroundColor: Colors.primary,
-    borderColor: Colors.primary,
   },
-  unitButton: {
+  timelineDotInnerMuted: {
+    backgroundColor: Colors.textMuted,
+  },
+  timelineTrack: {
+    position: 'absolute',
+    top: 14,
+    bottom: -4,
+    width: 2,
+    backgroundColor: 'rgba(139, 92, 246, 0.2)',
+    zIndex: 1,
+  },
+  timelineContent: {
     flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 10,
-    borderRadius: BorderRadius.md,
-    backgroundColor: Colors.controlBg,
+    marginLeft: 12,
+    paddingBottom: 14,
+    gap: 1,
   },
-  unitButtonActive: {
-    backgroundColor: Colors.primary,
+  timelineContentLast: {
+    paddingBottom: 4,
   },
-  switchRow: {
+  timelineDateRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
   },
-  reminderRow: {
-    flexDirection: 'row',
-    gap: 6,
-  },
-  reminderChip: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 8,
-    borderRadius: BorderRadius.sm,
-    backgroundColor: Colors.controlBg,
-  },
-  reminderChipActive: {
-    backgroundColor: Colors.primary,
-  },
-  occurrencesList: {
-    gap: 10,
-  },
-  occurrenceItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  occurrenceDot: {
-    width: 8,
-    height: 8,
-    borderRadius: BorderRadius.pill,
-    backgroundColor: Colors.primary,
+  submitWrap: {
+    marginTop: 8,
+    marginBottom: 20,
   },
 });
+
