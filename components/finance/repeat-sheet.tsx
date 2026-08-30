@@ -174,7 +174,7 @@ export const RepeatSheet: React.FC<RepeatSheetProps> = ({
             </View>
 
             <ScrollView
-              style={[styles.body, { maxHeight: keyboardVisible ? 240 : 480 }]}
+              style={styles.body}
               contentContainerStyle={styles.bodyContent}
               keyboardShouldPersistTaps="handled"
               showsVerticalScrollIndicator={false}
@@ -256,7 +256,7 @@ export const RepeatSheet: React.FC<RepeatSheetProps> = ({
               )}
             </ScrollView>
 
-            {/* Footer Apply Button & Remove Action */}
+            {/* Sticky Footer Apply Button & Remove Action */}
             <View style={styles.footer}>
               {initialConfig && (
                 <Pressable onPress={handleRemove} style={styles.removeBtn}>
@@ -267,12 +267,13 @@ export const RepeatSheet: React.FC<RepeatSheetProps> = ({
                 </Pressable>
               )}
 
-              <AppButton
-                title={`Set ${scheduleDescription}`}
-                size="lg"
-                onPress={handleApply}
-                style={styles.applyBtn}
-              />
+              <View style={styles.btnWrap}>
+                <AppButton
+                  title={`Set ${scheduleDescription}`}
+                  size="lg"
+                  onPress={handleApply}
+                />
+              </View>
             </View>
           </View>
         </View>
@@ -292,6 +293,7 @@ const styles = StyleSheet.create({
   },
   sheetContainer: {
     maxHeight: '90%',
+    width: '100%',
   },
   sheet: {
     backgroundColor: '#FFFFFF',
@@ -299,6 +301,9 @@ const styles = StyleSheet.create({
     borderTopRightRadius: BorderRadius.lg,
     paddingTop: 10,
     overflow: 'hidden',
+    display: 'flex',
+    flexDirection: 'column',
+    maxHeight: '100%',
     ...Shadows.lifted,
   },
   dragHandle: {
@@ -348,7 +353,8 @@ const styles = StyleSheet.create({
     marginLeft: 12,
   },
   body: {
-    maxHeight: 480,
+    flexGrow: 0,
+    flexShrink: 1,
   },
   bodyContent: {
     paddingHorizontal: 20,
@@ -437,7 +443,11 @@ const styles = StyleSheet.create({
     paddingBottom: Platform.OS === 'ios' ? 34 : 20,
     borderTopWidth: 1,
     borderTopColor: 'rgba(25, 21, 39, 0.06)',
+    backgroundColor: '#FFFFFF',
     gap: 10,
+  },
+  btnWrap: {
+    flex: 1,
   },
   removeBtn: {
     flexDirection: 'row',
@@ -445,14 +455,11 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     height: ControlHeights.lg,
     paddingHorizontal: 16,
-    borderRadius: BorderRadius.sm,
+    borderRadius: BorderRadius.pill,
     backgroundColor: 'rgba(224, 92, 126, 0.08)',
     borderWidth: 1,
     borderColor: 'rgba(224, 92, 126, 0.2)',
     gap: 6,
-  },
-  applyBtn: {
-    flex: 1,
   },
 });
 
