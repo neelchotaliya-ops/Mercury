@@ -311,15 +311,14 @@ export const DatePickerModal: React.FC<DatePickerModalProps> = ({
             <AppButton
               title="Cancel"
               variant="ghost"
-              size="sm"
+              size="md"
               fullWidth={false}
               onPress={onClose}
-              style={styles.cancelBtn}
             />
             <AppButton
               title="Done"
               variant="primary"
-              size="sm"
+              size="md"
               fullWidth={false}
               onPress={handleConfirm}
               style={styles.confirmBtn}

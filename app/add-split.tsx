@@ -17,7 +17,7 @@ import { useFinance } from '@/context/finance-context';
 import { getCurrencySymbol, formatCurrency } from '@/utils/currency';
 import { haptics } from '@/utils/haptics';
 import { generateId } from '@/utils/id';
-import { Colors, BorderRadius, Spacing } from '@/constants/theme';
+import { Colors, BorderRadius, ControlHeights, Spacing } from '@/constants/theme';
 import { getDb } from '@/db/client';
 import { insertTransaction } from '@/db/transactions';
 import { insertSplitParticipantsBatch } from '@/db/splits';
@@ -212,7 +212,7 @@ export default function AddSplitScreen() {
 
         <AppButton
           title="Create Split Expense"
-          size="md"
+          size="lg"
           onPress={handleSave}
           disabled={!canSave}
           style={{ marginTop: 4, marginBottom: 20 }}
@@ -244,8 +244,8 @@ const styles = StyleSheet.create({
   amountInputRow: {
     flexDirection: 'row',
     alignItems: 'center',
+    height: ControlHeights.lg,
     paddingHorizontal: 16,
-    paddingVertical: 10,
     borderRadius: BorderRadius.sm,
     backgroundColor: 'rgba(25, 21, 39, 0.04)',
     gap: 8,
@@ -258,11 +258,11 @@ const styles = StyleSheet.create({
     padding: 0,
   },
   input: {
+    height: ControlHeights.lg,
     paddingHorizontal: 16,
-    paddingVertical: 12,
     borderRadius: BorderRadius.sm,
     backgroundColor: 'rgba(25, 21, 39, 0.04)',
-    fontSize: 14,
+    fontSize: 15,
     fontFamily: 'Manrope_500Medium',
     color: Colors.textPrimary,
   },
@@ -270,8 +270,8 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 10,
+    height: ControlHeights.lg,
     paddingHorizontal: 16,
-    paddingVertical: 12,
     borderRadius: BorderRadius.sm,
     backgroundColor: Colors.controlBg,
     borderWidth: 1,

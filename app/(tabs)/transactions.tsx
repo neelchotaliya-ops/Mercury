@@ -17,7 +17,7 @@ import { GroupedTransactions, groupTransactionsByDay } from '@/utils/selectors';
 import { dayLabel } from '@/utils/date';
 import { formatCurrency } from '@/utils/currency';
 import { Account, Category, NumberFormat, TransactionType } from '@/types/finance';
-import { Colors, BorderRadius, Spacing } from '@/constants/theme';
+import { Colors, BorderRadius, ControlHeights, Spacing } from '@/constants/theme';
 
 type FilterType = 'all' | TransactionType;
 
@@ -266,7 +266,7 @@ const styles = StyleSheet.create({
     marginHorizontal: 20,
     marginTop: 10,
     paddingHorizontal: 14,
-    height: 42,
+    height: ControlHeights.md,
     borderRadius: BorderRadius.pill,
     backgroundColor: Colors.controlBg,
     borderWidth: 1,
@@ -283,7 +283,7 @@ const styles = StyleSheet.create({
   filterRow: {
     flexGrow: 0,
     flexShrink: 0,
-    height: 40,
+    height: 44,
     marginTop: 10,
     marginBottom: 2,
   },
@@ -293,7 +293,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   chip: {
-    height: 34,
+    height: ControlHeights.sm,
     paddingHorizontal: 16,
     borderRadius: BorderRadius.pill,
     borderWidth: 1,

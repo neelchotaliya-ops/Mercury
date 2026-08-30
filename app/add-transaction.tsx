@@ -37,7 +37,7 @@ import {
   pickAndScan,
   scanImage,
 } from '@/utils/receipt-scan';
-import { Colors, BorderRadius, Spacing, Shadows } from '@/constants/theme';
+import { Colors, BorderRadius, ControlHeights, Spacing, Shadows } from '@/constants/theme';
 
 const TYPE_COLOR: Record<TransactionType, string> = {
   expense: Colors.expense,
@@ -676,7 +676,7 @@ export default function AddTransactionScreen() {
             <Numpad value={amount} onChangeValue={setAmount} />
             <AppButton
               title={editing ? 'Save changes' : 'Add transaction'}
-              size="md"
+              size="lg"
               onPress={handleSave}
               disabled={!canSave}
               style={styles.submitBtn}
@@ -818,11 +818,11 @@ const styles = StyleSheet.create({
     gap: 4,
   },
   input: {
-    paddingHorizontal: 14,
-    paddingVertical: 10,
+    height: ControlHeights.lg,
+    paddingHorizontal: 16,
     borderRadius: BorderRadius.sm,
     backgroundColor: 'rgba(25, 21, 39, 0.04)',
-    fontSize: 13,
+    fontSize: 15,
     fontFamily: 'Manrope_500Medium',
     color: Colors.textPrimary,
   },

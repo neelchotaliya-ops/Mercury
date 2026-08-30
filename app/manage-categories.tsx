@@ -14,7 +14,7 @@ import { MenuRow } from '@/components/ui/menu-row';
 import { useFinance } from '@/context/finance-context';
 import { CategoryKind, Category } from '@/types/finance';
 import { CATEGORY_ICON_CHOICES, CATEGORY_COLOR_CHOICES } from '@/constants/categories';
-import { Colors, BorderRadius, Spacing } from '@/constants/theme';
+import { Colors, BorderRadius, ControlHeights, Spacing } from '@/constants/theme';
 
 export default function ManageCategoriesScreen() {
   const router = useRouter();
@@ -192,7 +192,7 @@ export default function ManageCategoriesScreen() {
                   title="Delete"
                   onPress={handleDelete}
                   variant="ghost"
-                  size="sm"
+                  size="md"
                   fullWidth={false}
                   textStyle={{ color: Colors.expense }}
                 />
@@ -201,7 +201,7 @@ export default function ManageCategoriesScreen() {
                   title="Cancel"
                   onPress={() => setShowForm(false)}
                   variant="ghost"
-                  size="sm"
+                  size="md"
                   fullWidth={false}
                 />
               )}
@@ -209,7 +209,7 @@ export default function ManageCategoriesScreen() {
                 title="Save"
                 onPress={handleSave}
                 disabled={name.trim().length === 0}
-                size="sm"
+                size="md"
                 fullWidth={false}
                 style={styles.saveButton}
               />
@@ -260,11 +260,11 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   input: {
+    height: ControlHeights.lg,
     paddingHorizontal: 16,
-    paddingVertical: 14,
     borderRadius: BorderRadius.sm,
     backgroundColor: 'rgba(25, 21, 39, 0.04)',
-    fontSize: 14,
+    fontSize: 15,
     fontFamily: 'Manrope_500Medium',
     color: Colors.textPrimary,
   },

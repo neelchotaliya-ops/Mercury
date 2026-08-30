@@ -6,7 +6,7 @@ import { AppText } from '@/components/ui/app-text';
 import { AppButton } from '@/components/ui/app-button';
 import { SplitForm } from '@/hooks/use-split-form';
 import { formatCurrency } from '@/utils/currency';
-import { Colors, BorderRadius } from '@/constants/theme';
+import { Colors, BorderRadius, ControlHeights } from '@/constants/theme';
 
 export interface SplitParticipantFieldsProps {
   form: SplitForm;
@@ -49,11 +49,10 @@ export const SplitParticipantFields: React.FC<SplitParticipantFieldsProps> = ({ 
         />
         <AppButton
           title="+ Add"
-          size="sm"
+          size="md"
           fullWidth={false}
           onPress={() => addParticipant()}
           disabled={!newParticipantName.trim()}
-          style={styles.addBtn}
         />
       </View>
 
@@ -136,18 +135,13 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   input: {
+    height: ControlHeights.md,
     paddingHorizontal: 14,
-    paddingVertical: 12,
-    borderRadius: BorderRadius.md,
+    borderRadius: BorderRadius.sm,
     backgroundColor: 'rgba(25, 21, 39, 0.04)',
     fontSize: 14,
     fontFamily: 'Manrope_500Medium',
     color: Colors.textPrimary,
-  },
-  addBtn: {
-    paddingHorizontal: 16,
-    paddingVertical: 10,
-    borderRadius: BorderRadius.md,
   },
   recentRow: {
     flexDirection: 'row',
@@ -198,7 +192,7 @@ const styles = StyleSheet.create({
   },
   shareInput: {
     width: 88,
-    paddingVertical: 6,
+    height: ControlHeights.sm,
     paddingHorizontal: 8,
     borderRadius: BorderRadius.sm,
     backgroundColor: Colors.surfaceOpaque,

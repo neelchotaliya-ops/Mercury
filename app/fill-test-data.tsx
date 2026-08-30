@@ -13,7 +13,7 @@ import { getDb } from '@/db/client';
 import { seedScaleData, ScaleSeedResult } from '@/db/seed-scale';
 import { haptics } from '@/utils/haptics';
 import { startOperation, updateOperation, finishOperation, cancelOperation, isCancelled } from '@/db/operation-status';
-import { Colors, BorderRadius, Spacing } from '@/constants/theme';
+import { Colors, BorderRadius, ControlHeights, Spacing } from '@/constants/theme';
 import { IconName } from '@/types/finance';
 
 const COUNT_PRESETS: { label: string; value: number; years?: number }[] = [
@@ -321,9 +321,9 @@ export default function FillTestDataScreen() {
 
           <View style={styles.footer}>
             {!outcome ? (
-              <AppButton title="Cancel" size="md" onPress={handleCancel} />
+              <AppButton title="Cancel" size="lg" onPress={handleCancel} />
             ) : (
-              <AppButton title="Done" size="md" onPress={() => router.back()} />
+              <AppButton title="Done" size="lg" onPress={() => router.back()} />
             )}
           </View>
         </>
@@ -498,14 +498,14 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: 14,
-    paddingVertical: 12,
+    height: ControlHeights.lg,
+    paddingHorizontal: 16,
     borderRadius: BorderRadius.sm,
     backgroundColor: 'rgba(25, 21, 39, 0.04)',
   },
   fieldInput: {
     flex: 1,
-    fontSize: 14,
+    fontSize: 15,
     fontFamily: 'Manrope_500Medium',
     color: Colors.textPrimary,
     paddingVertical: 0,

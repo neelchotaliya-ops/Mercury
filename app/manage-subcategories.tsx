@@ -12,7 +12,7 @@ import { IconBadge } from '@/components/finance/icon-badge';
 import { useFinance } from '@/context/finance-context';
 import { Subcategory, IconName } from '@/types/finance';
 import { CATEGORY_ICON_CHOICES, CATEGORY_COLOR_CHOICES } from '@/constants/categories';
-import { Colors, BorderRadius, Spacing } from '@/constants/theme';
+import { Colors, BorderRadius, ControlHeights, Spacing } from '@/constants/theme';
 import { getDb } from '@/db/client';
 import { bumpDataVersion } from '@/db/version';
 import {
@@ -331,11 +331,11 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   input: {
+    height: ControlHeights.lg,
     paddingHorizontal: 16,
-    paddingVertical: 14,
     borderRadius: BorderRadius.sm,
     backgroundColor: 'rgba(25, 21, 39, 0.04)',
-    fontSize: 14,
+    fontSize: 15,
     fontFamily: 'Manrope_500Medium',
     color: Colors.textPrimary,
   },

@@ -12,7 +12,7 @@ import { EmptyState } from '@/components/finance/empty-state';
 import { useFinance } from '@/context/finance-context';
 import { useAccountBalances } from '@/hooks/use-account-balances';
 import { formatCurrency } from '@/utils/currency';
-import { Colors, BorderRadius, Spacing } from '@/constants/theme';
+import { Colors, BorderRadius, ControlHeights, Spacing } from '@/constants/theme';
 
 export default function AccountsScreen() {
   const router = useRouter();
@@ -163,8 +163,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     gap: 8,
-    paddingVertical: 15,
-    borderRadius: BorderRadius.md,
+    height: ControlHeights.lg,
+    paddingHorizontal: 16,
+    borderRadius: BorderRadius.sm,
     borderWidth: 1.5,
     borderStyle: 'dashed',
     borderColor: Colors.textMuted,

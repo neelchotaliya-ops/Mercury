@@ -126,7 +126,7 @@ export const RepeatSheet: React.FC<RepeatSheetProps> = ({
           <View style={styles.footer}>
             <AppButton
               title={`Set ${scheduleDescription}`}
-              size="md"
+              size="lg"
               onPress={handleApply}
             />
           </View>

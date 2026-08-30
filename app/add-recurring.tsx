@@ -28,7 +28,7 @@ import { RecurringRule, TransactionType } from '@/types/finance';
 import { getCurrencySymbol, formatCurrency } from '@/utils/currency';
 import { haptics } from '@/utils/haptics';
 import { generateId } from '@/utils/id';
-import { Colors, BorderRadius, Spacing } from '@/constants/theme';
+import { Colors, BorderRadius, ControlHeights, Spacing } from '@/constants/theme';
 import { getDb } from '@/db/client';
 import { bumpDataVersion } from '@/db/version';
 import {
@@ -526,7 +526,7 @@ export default function AddRecurringScreen() {
 
         <AppButton
           title={editingRule ? 'Save Changes' : 'Create Recurring Rule'}
-          size="md"
+          size="lg"
           onPress={handleSave}
           disabled={!canSave}
           style={{ marginTop: 4, marginBottom: 20 }}
@@ -623,21 +623,23 @@ const styles = StyleSheet.create({
   amountInputRow: {
     flexDirection: 'row',
     alignItems: 'center',
+    height: ControlHeights.lg,
+    paddingHorizontal: 16,
+    borderRadius: BorderRadius.sm,
+    backgroundColor: 'rgba(25, 21, 39, 0.04)',
     gap: 8,
-    borderBottomWidth: 1.5,
-    borderBottomColor: Colors.divider,
-    paddingBottom: 6,
   },
   amountInput: {
     flex: 1,
-    fontSize: 28,
-    fontFamily: 'Manrope_700Bold',
+    fontSize: 24,
+    fontFamily: 'Sora_700Bold',
     color: Colors.textPrimary,
+    padding: 0,
   },
   input: {
-    paddingHorizontal: 14,
-    paddingVertical: 12,
-    borderRadius: BorderRadius.md,
+    height: ControlHeights.lg,
+    paddingHorizontal: 16,
+    borderRadius: BorderRadius.sm,
     backgroundColor: 'rgba(25, 21, 39, 0.04)',
     fontSize: 15,
     fontFamily: 'Manrope_500Medium',
@@ -647,9 +649,9 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 10,
-    paddingHorizontal: 14,
-    paddingVertical: 12,
-    borderRadius: BorderRadius.md,
+    height: ControlHeights.lg,
+    paddingHorizontal: 16,
+    borderRadius: BorderRadius.sm,
     backgroundColor: 'rgba(25, 21, 39, 0.04)',
   },
   frequencyRow: {

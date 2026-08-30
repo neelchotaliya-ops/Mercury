@@ -127,7 +127,7 @@ export const SplitSheet: React.FC<SplitSheetProps> = ({
             <View style={styles.footer}>
               <AppButton
                 title={canSubmit ? `Split with ${participants.length} people` : 'Balance shares to continue'}
-                size="md"
+                size="lg"
                 onPress={handleApply}
                 disabled={!canSubmit}
               />

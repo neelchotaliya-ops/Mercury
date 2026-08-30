@@ -7,7 +7,7 @@ import { DatePickerModal } from '@/components/finance/date-picker-modal';
 import { RecurringScheduleForm } from '@/hooks/use-recurring-schedule-form';
 import { RecurringFrequency, IntervalUnit } from '@/types/finance';
 import { haptics } from '@/utils/haptics';
-import { Colors, BorderRadius } from '@/constants/theme';
+import { Colors, BorderRadius, ControlHeights } from '@/constants/theme';
 
 const FREQUENCY_OPTIONS: { key: Exclude<RecurringFrequency, 'custom'>; label: string; icon: keyof typeof Ionicons.glyphMap }[] = [
   { key: 'monthly', label: 'Monthly', icon: 'calendar-number-outline' },
@@ -392,9 +392,9 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 10,
-    paddingHorizontal: 14,
-    paddingVertical: 12,
-    borderRadius: BorderRadius.md,
+    height: ControlHeights.lg,
+    paddingHorizontal: 16,
+    borderRadius: BorderRadius.sm,
     backgroundColor: 'rgba(25, 21, 39, 0.04)',
   },
   moreOptionsToggle: {
@@ -405,9 +405,9 @@ const styles = StyleSheet.create({
     paddingVertical: 4,
   },
   input: {
-    paddingHorizontal: 14,
-    paddingVertical: 12,
-    borderRadius: BorderRadius.md,
+    height: ControlHeights.lg,
+    paddingHorizontal: 16,
+    borderRadius: BorderRadius.sm,
     backgroundColor: 'rgba(25, 21, 39, 0.04)',
     fontSize: 15,
     fontFamily: 'Manrope_500Medium',
@@ -415,10 +415,10 @@ const styles = StyleSheet.create({
   },
   unitButton: {
     flex: 1,
+    height: ControlHeights.lg,
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: 10,
-    borderRadius: BorderRadius.md,
+    borderRadius: BorderRadius.sm,
     backgroundColor: Colors.controlBg,
   },
   unitButtonActive: {
@@ -433,9 +433,10 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 12,
-    paddingVertical: 14,
-    paddingHorizontal: 14,
-    borderRadius: BorderRadius.md,
+    minHeight: ControlHeights.lg,
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    borderRadius: BorderRadius.sm,
     backgroundColor: Colors.controlBg,
     borderWidth: 1,
     borderColor: Colors.glassBorderSoft,

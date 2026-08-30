@@ -127,6 +127,19 @@ export const BorderRadius = {
   pill: 999,
 };
 
+export const ControlHeights = {
+  /** Micro chips, badges, and inline indicators */
+  xs: 32,
+  /** Compact buttons (e.g. "+ Add", "Mark as Paid", "Cancel"), compact inputs */
+  sm: 38,
+  /** Secondary action buttons, search bars, filter triggers, split add row */
+  md: 46,
+  /** Primary form inputs, main CTA buttons, date picker trigger buttons, form rows */
+  lg: 52,
+  /** Extra prominent hero buttons */
+  xl: 58,
+};
+
 const shadow = (
   y: number,
   radius: number,
@@ -169,7 +182,9 @@ export const Theme = {
   Typography,
   Spacing,
   BorderRadius,
+  ControlHeights,
   Shadows,
 };
 
 export type ThemeType = typeof Theme;
+

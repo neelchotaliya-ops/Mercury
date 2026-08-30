@@ -220,7 +220,7 @@ export default function AddBudgetScreen() {
           <AppButton
             title={editing ? 'Save changes' : 'Create budget'}
             onPress={handleSave}
-            size="md"
+            size="lg"
             disabled={!canSave}
             style={styles.submitBtn}
           />

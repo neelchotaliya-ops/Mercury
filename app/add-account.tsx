@@ -13,7 +13,7 @@ import { useFinance } from '@/context/finance-context';
 import { AccountType } from '@/types/finance';
 import { ACCOUNT_TYPE_META, CATEGORY_COLOR_CHOICES } from '@/constants/categories';
 import { CURRENCIES, getCurrencySymbol } from '@/utils/currency';
-import { Colors, BorderRadius, Spacing } from '@/constants/theme';
+import { Colors, BorderRadius, ControlHeights, Spacing } from '@/constants/theme';
 import { getDb } from '@/db/client';
 import { getAccountDeletionImpact } from '@/db/entities';
 
@@ -250,11 +250,11 @@ const styles = StyleSheet.create({
     gap: 10,
   },
   input: {
+    height: ControlHeights.lg,
     paddingHorizontal: 16,
-    paddingVertical: 14,
     borderRadius: BorderRadius.sm,
     backgroundColor: 'rgba(25, 21, 39, 0.04)',
-    fontSize: 14,
+    fontSize: 15,
     fontFamily: 'Manrope_500Medium',
     color: Colors.textPrimary,
   },
@@ -313,8 +313,8 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
+    height: ControlHeights.lg,
     paddingHorizontal: 16,
-    paddingVertical: 12,
     borderRadius: BorderRadius.sm,
     backgroundColor: 'rgba(25, 21, 39, 0.04)',
   },

@@ -16,7 +16,7 @@ import { useFinance } from '@/context/finance-context';
 import { Account, QuickPreset } from '@/types/finance';
 import { formatCurrency, getCurrencySymbol } from '@/utils/currency';
 import { refreshWidgets } from '@/utils/widget-bridge';
-import { Colors, BorderRadius, Spacing } from '@/constants/theme';
+import { Colors, BorderRadius, ControlHeights, Spacing } from '@/constants/theme';
 
 const EMOJI_CHOICES = [
   '☕', '🍔', '🍫', '🥤', '🚌', '🚕', '⛽', '🛒',
@@ -240,14 +240,14 @@ export default function QuickPresetsScreen() {
               />
             </View>
 
-            <AppButton title="Save preset" onPress={handleSave} size="md" disabled={!canSave} />
+            <AppButton title="Save preset" onPress={handleSave} size="lg" disabled={!canSave} />
           </GlassCard>
         ) : (
           <AppButton
             title="Add preset"
             icon="add"
             onPress={() => openEditor()}
-            size="md"
+            size="lg"
             variant="glass"
           />
         )}
@@ -309,11 +309,11 @@ const styles = StyleSheet.create({
     gap: 10,
   },
   input: {
+    height: ControlHeights.lg,
     paddingHorizontal: 16,
-    paddingVertical: 14,
     borderRadius: BorderRadius.sm,
     backgroundColor: 'rgba(25, 21, 39, 0.04)',
-    fontSize: 14,
+    fontSize: 15,
     fontFamily: 'Manrope_500Medium',
     color: Colors.textPrimary,
   },
@@ -321,9 +321,15 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 10,
+    height: ControlHeights.lg,
+    paddingHorizontal: 16,
+    borderRadius: BorderRadius.sm,
+    backgroundColor: 'rgba(25, 21, 39, 0.04)',
   },
   amountInput: {
     flex: 1,
+    paddingHorizontal: 0,
+    backgroundColor: 'transparent',
   },
   emojiGrid: {
     flexDirection: 'row',

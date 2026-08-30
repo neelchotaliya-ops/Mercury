@@ -5,7 +5,7 @@ import { Ionicons } from '@expo/vector-icons';
 import Animated, { useSharedValue, useAnimatedStyle, withSpring } from 'react-native-reanimated';
 
 import { AppText } from '@/components/ui/app-text';
-import { Colors, Gradients, BorderRadius, Shadows, Spacing } from '@/constants/theme';
+import { Colors, Gradients, BorderRadius, ControlHeights, Shadows, Spacing } from '@/constants/theme';
 import { PressScale, Spring } from '@/constants/motion';
 import { haptics } from '@/utils/haptics';
 
@@ -25,10 +25,10 @@ export interface AppButtonProps {
   textStyle?: TextStyle;
 }
 
-const SIZES: Record<ButtonSize, { paddingVertical: number; paddingHorizontal: number; fontSize: number }> = {
-  sm: { paddingVertical: 10, paddingHorizontal: Spacing.lg, fontSize: 13 },
-  md: { paddingVertical: 14, paddingHorizontal: Spacing.xl, fontSize: 14 },
-  lg: { paddingVertical: 18, paddingHorizontal: Spacing['2xl'], fontSize: 15 },
+const SIZES: Record<ButtonSize, { height: number; paddingHorizontal: number; fontSize: number }> = {
+  sm: { height: ControlHeights.sm, paddingHorizontal: Spacing.md, fontSize: 13 },
+  md: { height: ControlHeights.md, paddingHorizontal: Spacing.lg, fontSize: 14 },
+  lg: { height: ControlHeights.lg, paddingHorizontal: Spacing.xl, fontSize: 15 },
 };
 
 export const AppButton: React.FC<AppButtonProps> = ({
@@ -68,7 +68,8 @@ export const AppButton: React.FC<AppButtonProps> = ({
     justifyContent: 'center',
     gap: 8,
     borderRadius: BorderRadius.pill,
-    paddingVertical: variant === 'text' ? 4 : dims.paddingVertical,
+    height: variant === 'text' ? undefined : dims.height,
+    paddingVertical: variant === 'text' ? 4 : 0,
     paddingHorizontal: variant === 'text' ? 4 : dims.paddingHorizontal,
     overflow: 'hidden',
     opacity: isDisabled ? 0.4 : 1,
@@ -83,6 +84,7 @@ export const AppButton: React.FC<AppButtonProps> = ({
       ? { backgroundColor: 'transparent', borderWidth: 1, borderColor: Colors.track }
       : {}),
   };
+
 
   return (
     <Pressable
