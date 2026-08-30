@@ -1,16 +1,16 @@
-import React from 'react';
-import { View, StyleSheet, Modal, Pressable, ScrollView, Platform } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import React from 'react';
+import { Modal, Platform, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { useKeyboardBottomInset } from '@/hooks/use-keyboard-bottom-inset';
-import { AppText } from '@/components/ui/app-text';
-import { AppButton } from '@/components/ui/app-button';
-import { GlassCard } from '@/components/ui/glass-card';
 import { SplitParticipantFields } from '@/components/finance/split-participant-fields';
-import { useSplitForm, SplitParticipantEntry } from '@/hooks/use-split-form';
+import { AppButton } from '@/components/ui/app-button';
+import { AppText } from '@/components/ui/app-text';
+import { GlassCard } from '@/components/ui/glass-card';
+import { BorderRadius, Colors, Shadows, Spacing } from '@/constants/theme';
+import { useKeyboardBottomInset } from '@/hooks/use-keyboard-bottom-inset';
+import { SplitParticipantEntry, useSplitForm } from '@/hooks/use-split-form';
 import { formatCurrency } from '@/utils/currency';
-import { Colors, BorderRadius, Spacing, Shadows } from '@/constants/theme';
 
 export type SplitParticipantDraft = SplitParticipantEntry;
 

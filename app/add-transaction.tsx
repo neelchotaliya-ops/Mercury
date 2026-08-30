@@ -1,10 +1,21 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { View, StyleSheet, ScrollView, Pressable, TextInput, Alert } from 'react-native';
+import {
+  View,
+  StyleSheet,
+  ScrollView,
+  Pressable,
+  Alert,
+  ActivityIndicator,
+  KeyboardAvoidingView,
+  Platform,
+  Keyboard,
+} from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 
 import { AppText } from '@/components/ui/app-text';
 import { AppButton } from '@/components/ui/app-button';
+import { AppTextInput } from '@/components/ui/app-text-input';
 import { GradientScreen } from '@/components/ui/gradient-screen';
 import { GlassCard } from '@/components/ui/glass-card';
 import { ModalHeader } from '@/components/ui/modal-header';
@@ -88,6 +99,23 @@ export default function AddTransactionScreen() {
   const [showRepeatSheet, setShowRepeatSheet] = useState(false);
   const [existingSplitCount, setExistingSplitCount] = useState<number>(0);
   const { keyboardVisible, keyboardHeight } = useKeyboardBottomInset();
+  const scrollRef = useRef<ScrollView>(null);
+
+  const scrollToInputs = useCallback(() => {
+    scrollRef.current?.scrollToEnd({ animated: true });
+    setTimeout(() => {
+      scrollRef.current?.scrollToEnd({ animated: true });
+    }, 100);
+    setTimeout(() => {
+      scrollRef.current?.scrollToEnd({ animated: true });
+    }, 250);
+  }, []);
+
+  useEffect(() => {
+    if (keyboardVisible) {
+      scrollToInputs();
+    }
+  }, [keyboardVisible, scrollToInputs]);
 
   useEffect(() => {
     if (!editing) return;
@@ -305,13 +333,6 @@ export default function AddTransactionScreen() {
   };
 
   const isToday = new Date().toDateString() === date.toDateString();
-  const [showDetails, setShowDetails] = useState(false);
-
-  useEffect(() => {
-    if (payee.trim() || note.trim()) {
-      setShowDetails(true);
-    }
-  }, [payee, note]);
 
   return (
     <GradientScreen edges={['top']} contours="top">
@@ -323,49 +344,74 @@ export default function AddTransactionScreen() {
           !editing && isScanSupported() ? (
             <Pressable
               onPress={() => {
-                Alert.alert('Scan Receipt', 'Choose a source', [
+                haptics.press();
+                Alert.alert('Scan Receipt', 'Choose a source to extract transaction details:', [
                   { text: 'Take Photo', onPress: () => runScan(captureAndScan) },
                   { text: 'Choose from Gallery', onPress: () => runScan(pickAndScan) },
                   { text: 'Cancel', style: 'cancel' },
                 ]);
               }}
+              disabled={scanning}
               style={({ pressed }) => [styles.headerScanBtn, { opacity: pressed ? 0.75 : 1 }]}
             >
-              <Ionicons name="camera-outline" size={17} color={Colors.primaryDeep} />
-              <AppText variant="captionStrong" color={Colors.primaryDeep}>
-                Scan
-              </AppText>
+              {scanning ? (
+                <ActivityIndicator size="small" color={Colors.primary} />
+              ) : (
+                <>
+                  <Ionicons name="scan-outline" size={16} color={Colors.primary} />
+                  <AppText variant="captionStrong" color={Colors.primaryDeep}>
+                    Scan
+                  </AppText>
+                </>
+              )}
             </Pressable>
           ) : undefined
         }
       />
 
-      <View style={styles.screenBody}>
+      <KeyboardAvoidingView
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        style={styles.screenBody}
+      >
         <ScrollView
+          ref={scrollRef}
           contentContainerStyle={[
             styles.content,
-            keyboardVisible && { paddingBottom: keyboardHeight + 80 },
+            keyboardVisible && { paddingBottom: Math.max(keyboardHeight + 80, 340) },
           ]}
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
-          automaticallyAdjustKeyboardInsets={true}
         >
           {scanned ? (
-            <View style={styles.scanBanner}>
-              <Ionicons
-                name={scanned.confidence >= 0.7 ? 'checkmark-circle' : 'alert-circle'}
-                size={16}
-                color={scanned.confidence >= 0.7 ? Colors.income : Colors.expense}
-              />
-              <AppText variant="micro" style={styles.scanBannerText} numberOfLines={1}>
-                {scanned.confidence >= 0.7
-                  ? `Scanned${scanned.merchant ? `: ${scanned.merchant}` : ''}`
-                  : 'Partially scanned — check details.'}
-              </AppText>
-              <Pressable onPress={() => setScanned(null)} hitSlop={10}>
-                <Ionicons name="close" size={14} color={Colors.textMuted} />
-              </Pressable>
-            </View>
+            <GlassCard padding={12} radius={BorderRadius.md} style={styles.scanBannerCard}>
+              <View style={styles.scanBannerRow}>
+                <View
+                  style={[
+                    styles.scanStatusIcon,
+                    { backgroundColor: scanned.confidence >= 0.7 ? Colors.incomeSoft : Colors.primarySoft },
+                  ]}
+                >
+                  <Ionicons
+                    name={scanned.confidence >= 0.7 ? 'sparkles' : 'document-text'}
+                    size={16}
+                    color={scanned.confidence >= 0.7 ? Colors.income : Colors.primary}
+                  />
+                </View>
+                <View style={styles.scanBannerTextCol}>
+                  <AppText variant="bodyStrong" numberOfLines={1}>
+                    {scanned.merchant ? scanned.merchant : 'Receipt Scanned'}
+                  </AppText>
+                  <AppText variant="micro" color={Colors.textMuted}>
+                    {scanned.confidence >= 0.7
+                      ? 'Details auto-detected from receipt'
+                      : 'Partially parsed — review details below'}
+                  </AppText>
+                </View>
+                <Pressable onPress={() => setScanned(null)} hitSlop={10} style={styles.scanBannerDismiss}>
+                  <Ionicons name="close-circle" size={18} color={Colors.textMuted} />
+                </Pressable>
+              </View>
+            </GlassCard>
           ) : null}
 
           <SegmentedControl<TransactionType>
@@ -444,9 +490,7 @@ export default function AddTransactionScreen() {
             </View>
           )}
 
-          {/* Subcategories are opt-in: this row only appears once a category
-              actually has subcategories set up (via Manage Categories), so
-              new users aren't shown a chip row with nothing useful in it. */}
+          {/* Subcategories are opt-in */}
           {type !== 'transfer' && categoryId && (
             (() => {
               const categorySubcats = (state.subcategories ?? []).filter(s => s.categoryId === categoryId);
@@ -489,16 +533,17 @@ export default function AddTransactionScreen() {
             })()
           )}
 
-          <View style={styles.metaRow}>
+          {/* Meta Action Toolbar: Date, Split, Repeat */}
+          <View style={styles.metaToolbar}>
             <Pressable
               onPress={() => {
                 haptics.press();
                 setShowDatePicker(true);
               }}
-              style={styles.metaChip}
+              style={styles.metaToolbarItem}
             >
-              <Ionicons name="calendar-outline" size={14} color={Colors.primary} />
-              <AppText variant="micro" color={Colors.textPrimary} style={{ fontWeight: '600' }}>
+              <Ionicons name="calendar-outline" size={15} color={Colors.primary} />
+              <AppText variant="micro" color={Colors.textPrimary} style={styles.metaToolbarText}>
                 {isToday
                   ? 'Today'
                   : date.toLocaleDateString(undefined, {
@@ -506,69 +551,26 @@ export default function AddTransactionScreen() {
                       day: 'numeric',
                     })}
               </AppText>
+              <Ionicons name="chevron-down" size={12} color={Colors.textMuted} />
             </Pressable>
 
-            <Pressable
-              onPress={() => setShowDetails(prev => !prev)}
-              style={[
-                styles.metaChip,
-                (payee.trim() || note.trim() || showDetails) && styles.metaChipActive,
-              ]}
-            >
-              <Ionicons
-                name="pricetag-outline"
-                size={14}
-                color={payee.trim() || note.trim() || showDetails ? Colors.primaryDeep : Colors.textSecondary}
-              />
-              <AppText
-                variant="micro"
-                color={payee.trim() || note.trim() || showDetails ? Colors.primaryDeep : Colors.textSecondary}
-                numberOfLines={1}
-                style={{ fontWeight: '600', maxWidth: 100 }}
-              >
-                {payee.trim() ? payee : note.trim() ? note : 'Note / Payee'}
-              </AppText>
-              <Ionicons
-                name={showDetails ? 'chevron-up' : 'chevron-down'}
-                size={12}
-                color={Colors.textMuted}
-              />
-            </Pressable>
-
-            {/* Existing split on this transaction when editing */}
-            {editing && existingSplitCount > 0 && (
-              <Pressable
-                onPress={() => {
-                  haptics.press();
-                  router.push(`/split-detail?id=${editing.id}` as any);
-                }}
-                style={[styles.metaChip, styles.metaChipActive]}
-              >
-                <Ionicons name="people" size={14} color={Colors.primary} />
-                <AppText variant="micro" color={Colors.primaryDeep} style={{ fontWeight: '700' }}>
-                  Split Details ({existingSplitCount} people)
-                </AppText>
-                <Ionicons name="chevron-forward" size={12} color={Colors.primary} />
-              </Pressable>
-            )}
-
-            {/* Split Bill chip / active status */}
+            {/* Split Bill Trigger / Active Tag */}
             {!editing && type === 'expense' && (
               splitConfig ? (
-                <View style={[styles.metaChip, styles.metaChipActive, { paddingRight: 6 }]}>
+                <View style={[styles.metaToolbarItem, styles.metaToolbarItemActive]}>
                   <Pressable
                     onPress={() => {
                       haptics.press();
                       setShowSplitSheet(true);
                     }}
-                    style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}
+                    style={styles.metaActivePressable}
                   >
-                    <Ionicons name="people" size={14} color={Colors.primary} />
-                    <AppText variant="micro" color={Colors.primaryDeep} style={{ fontWeight: '700' }}>
-                      Split ({splitConfig.participants.length} people · +{formatCurrency(
+                    <Ionicons name="people" size={15} color={Colors.primary} />
+                    <AppText variant="micro" color={Colors.primaryDeep} style={styles.metaActiveText}>
+                      Split ({splitConfig.participants.length} · +{formatCurrency(
                         splitConfig.participants.slice(1).reduce((s, p) => s + p.share, 0),
                         state.settings.currency ?? 'INR'
-                      )} owed)
+                      )})
                     </AppText>
                   </Pressable>
                   <Pressable
@@ -577,9 +579,9 @@ export default function AddTransactionScreen() {
                       setSplitConfig(null);
                     }}
                     hitSlop={8}
-                    style={{ marginLeft: 4, padding: 2 }}
+                    style={styles.metaClearBtn}
                   >
-                    <Ionicons name="close-circle" size={16} color={Colors.textMuted} />
+                    <Ionicons name="close-circle" size={16} color={Colors.primary} />
                   </Pressable>
                 </View>
               ) : (
@@ -588,29 +590,29 @@ export default function AddTransactionScreen() {
                     haptics.press();
                     setShowSplitSheet(true);
                   }}
-                  style={styles.metaChip}
+                  style={styles.metaToolbarItem}
                 >
-                  <Ionicons name="people-outline" size={14} color={Colors.primary} />
-                  <AppText variant="micro" color={Colors.primaryDeep} style={{ fontWeight: '600' }}>
+                  <Ionicons name="people-outline" size={15} color={Colors.textSecondary} />
+                  <AppText variant="micro" color={Colors.textSecondary} style={styles.metaToolbarText}>
                     Split
                   </AppText>
                 </Pressable>
               )
             )}
 
-            {/* Repeat / Recurrence chip / active status */}
+            {/* Repeat / Recurrence Trigger / Active Tag */}
             {!editing && type !== 'transfer' && (
               repeatConfig ? (
-                <View style={[styles.metaChip, styles.metaChipActive, { paddingRight: 6 }]}>
+                <View style={[styles.metaToolbarItem, styles.metaToolbarItemActive]}>
                   <Pressable
                     onPress={() => {
                       haptics.press();
                       setShowRepeatSheet(true);
                     }}
-                    style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}
+                    style={styles.metaActivePressable}
                   >
-                    <Ionicons name="repeat" size={14} color={Colors.primary} />
-                    <AppText variant="micro" color={Colors.primaryDeep} style={{ fontWeight: '700' }}>
+                    <Ionicons name="repeat" size={15} color={Colors.primary} />
+                    <AppText variant="micro" color={Colors.primaryDeep} style={styles.metaActiveText}>
                       {describeFrequency(repeatConfig as any)}
                     </AppText>
                   </Pressable>
@@ -620,9 +622,9 @@ export default function AddTransactionScreen() {
                       setRepeatConfig(null);
                     }}
                     hitSlop={8}
-                    style={{ marginLeft: 4, padding: 2 }}
+                    style={styles.metaClearBtn}
                   >
-                    <Ionicons name="close-circle" size={16} color={Colors.textMuted} />
+                    <Ionicons name="close-circle" size={16} color={Colors.primary} />
                   </Pressable>
                 </View>
               ) : (
@@ -631,44 +633,97 @@ export default function AddTransactionScreen() {
                     haptics.press();
                     setShowRepeatSheet(true);
                   }}
-                  style={styles.metaChip}
+                  style={styles.metaToolbarItem}
                 >
-                  <Ionicons name="repeat-outline" size={14} color={Colors.primary} />
-                  <AppText variant="micro" color={Colors.primaryDeep} style={{ fontWeight: '600' }}>
+                  <Ionicons name="repeat-outline" size={15} color={Colors.textSecondary} />
+                  <AppText variant="micro" color={Colors.textSecondary} style={styles.metaToolbarText}>
                     Repeat
                   </AppText>
                 </Pressable>
               )
             )}
+
+            {/* Existing split on this transaction when editing */}
+            {editing && existingSplitCount > 0 && (
+              <Pressable
+                onPress={() => {
+                  haptics.press();
+                  router.push(`/split-detail?id=${editing.id}` as any);
+                }}
+                style={[styles.metaToolbarItem, styles.metaToolbarItemActive]}
+              >
+                <Ionicons name="people" size={15} color={Colors.primary} />
+                <AppText variant="micro" color={Colors.primaryDeep} style={styles.metaActiveText}>
+                  Split Details ({existingSplitCount} people)
+                </AppText>
+                <Ionicons name="chevron-forward" size={12} color={Colors.primary} />
+              </Pressable>
+            )}
           </View>
 
-          {showDetails && (
-            <GlassCard style={styles.detailsCard} padding={12}>
-              {type !== 'transfer' && (
-                <View style={styles.field}>
-                  <AppText variant="label">Payee / Merchant</AppText>
-                  <TextInput
-                    value={payee}
-                    onChangeText={setPayee}
-                    placeholder="e.g. Starbucks, Amazon"
-                    placeholderTextColor={Colors.textMuted}
-                    style={styles.input}
-                  />
-                </View>
-              )}
+          {/* Payee / Merchant & Note Details Card */}
+          <GlassCard style={styles.detailsCard} padding={16} radius={BorderRadius.md}>
+            <View style={styles.detailsHeader}>
+              <View style={styles.detailsHeaderLeft}>
+                <Ionicons name="receipt-outline" size={15} color={Colors.primary} />
+                <AppText variant="label" color={Colors.textSecondary}>
+                  {type === 'transfer' ? 'TRANSFER MEMO' : 'PAYEE & NOTE'}
+                </AppText>
+              </View>
+              {((payee.trim() && type !== 'transfer') || note.trim()) ? (
+                <Pressable
+                  onPress={() => {
+                    haptics.selection();
+                    setPayee('');
+                    setNote('');
+                  }}
+                  hitSlop={8}
+                >
+                  <AppText variant="micro" color={Colors.textMuted}>
+                    Clear all
+                  </AppText>
+                </Pressable>
+              ) : null}
+            </View>
 
+            {type !== 'transfer' && (
               <View style={styles.field}>
-                <AppText variant="label">Note</AppText>
-                <TextInput
-                  value={note}
-                  onChangeText={setNote}
-                  placeholder="Add a note..."
+                <AppText variant="micro" color={Colors.textMuted} style={styles.fieldLabel}>
+                  Payee / Merchant
+                </AppText>
+                <AppTextInput
+                  value={payee}
+                  onChangeText={setPayee}
+                  placeholder="e.g. Starbucks, Amazon, Grocery store"
                   placeholderTextColor={Colors.textMuted}
-                  style={styles.input}
+                  leftIcon="storefront-outline"
+                  rightIcon={payee.trim() ? 'close-circle' : undefined}
+                  onPressRightIcon={() => setPayee('')}
+                  onFocus={scrollToInputs}
+                  returnKeyType="done"
+                  onSubmitEditing={Keyboard.dismiss}
                 />
               </View>
-            </GlassCard>
-          )}
+            )}
+
+            <View style={styles.field}>
+              <AppText variant="micro" color={Colors.textMuted} style={styles.fieldLabel}>
+                {type === 'transfer' ? 'Memo / Reason' : 'Note / Description'}
+              </AppText>
+              <AppTextInput
+                value={note}
+                onChangeText={setNote}
+                placeholder={type === 'transfer' ? 'e.g. Monthly rent, savings' : 'Add note, tags, invoice #...'}
+                placeholderTextColor={Colors.textMuted}
+                leftIcon={type === 'transfer' ? 'swap-horizontal-outline' : 'document-text-outline'}
+                rightIcon={note.trim() ? 'close-circle' : undefined}
+                onPressRightIcon={() => setNote('')}
+                onFocus={scrollToInputs}
+                returnKeyType="done"
+                onSubmitEditing={Keyboard.dismiss}
+              />
+            </View>
+          </GlassCard>
         </ScrollView>
 
         {!keyboardVisible && (
@@ -683,7 +738,7 @@ export default function AddTransactionScreen() {
             />
           </View>
         )}
-      </View>
+      </KeyboardAvoidingView>
 
       <DatePickerModal
         visible={showDatePicker}
@@ -725,32 +780,40 @@ const styles = StyleSheet.create({
     paddingBottom: 310,
     gap: Spacing.md,
   },
-  scanBanner: {
+  scanBannerCard: {
+    borderWidth: 1,
+    borderColor: 'rgba(139, 92, 246, 0.25)',
+    backgroundColor: 'rgba(255, 255, 255, 0.85)',
+  },
+  scanBannerRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: BorderRadius.pill,
-    backgroundColor: 'rgba(255, 255, 255, 0.75)',
-    borderWidth: 1,
-    borderColor: 'rgba(139, 92, 246, 0.15)',
+    gap: 10,
   },
-  scanBannerText: {
+  scanStatusIcon: {
+    width: 32,
+    height: 32,
+    borderRadius: BorderRadius.xs,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  scanBannerTextCol: {
     flex: 1,
-    color: Colors.textPrimary,
-    fontFamily: 'Manrope_600SemiBold',
+    gap: 2,
+  },
+  scanBannerDismiss: {
+    padding: 4,
   },
   headerScanBtn: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 4,
-    paddingVertical: 5,
-    paddingHorizontal: 10,
+    gap: 6,
+    height: 36,
+    paddingHorizontal: 12,
     borderRadius: BorderRadius.pill,
     backgroundColor: 'rgba(139, 92, 246, 0.12)',
     borderWidth: 1,
-    borderColor: 'rgba(139, 92, 246, 0.25)',
+    borderColor: 'rgba(139, 92, 246, 0.28)',
   },
   amountCard: {
     alignItems: 'center',
@@ -789,43 +852,68 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: 'rgba(25, 21, 39, 0.08)',
   },
-  metaRow: {
+  metaToolbar: {
     flexDirection: 'row',
     alignItems: 'center',
     flexWrap: 'wrap',
-    gap: 6,
+    gap: 8,
     marginTop: 2,
   },
-  metaChip: {
+  metaToolbarItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    height: ControlHeights.sm,
+    paddingHorizontal: 12,
+    borderRadius: BorderRadius.pill,
+    backgroundColor: Colors.controlBg,
+    borderWidth: 1,
+    borderColor: Colors.glassBorderSoft,
+  },
+  metaToolbarItemActive: {
+    backgroundColor: Colors.primarySoft,
+    borderColor: Colors.primary,
+  },
+  metaToolbarText: {
+    fontFamily: 'Manrope_600SemiBold',
+    fontSize: 13,
+  },
+  metaActivePressable: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 5,
-    paddingVertical: 7,
-    paddingHorizontal: 10,
-    borderRadius: BorderRadius.pill,
-    backgroundColor: 'rgba(255, 255, 255, 0.7)',
-    borderWidth: 1,
-    borderColor: 'rgba(25, 21, 39, 0.08)',
   },
-  metaChipActive: {
-    backgroundColor: Colors.primarySoft,
-    borderColor: Colors.primary,
+  metaActiveText: {
+    fontFamily: 'Manrope_700Bold',
+    fontSize: 13,
+  },
+  metaClearBtn: {
+    marginLeft: 4,
+    padding: 2,
   },
   detailsCard: {
     gap: Spacing.md,
     marginTop: 4,
   },
-  field: {
+  detailsHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  detailsHeaderLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
     gap: 6,
   },
-  input: {
-    height: ControlHeights.lg,
-    paddingHorizontal: 16,
-    borderRadius: BorderRadius.sm,
-    backgroundColor: 'rgba(25, 21, 39, 0.04)',
-    fontSize: 15,
-    fontFamily: 'Manrope_500Medium',
-    color: Colors.textPrimary,
+  field: {
+    gap: Spacing.sm,
+  },
+  fieldLabel: {
+    fontFamily: 'Manrope_600SemiBold',
+    fontSize: 12,
+    color: Colors.textSecondary,
+    marginLeft: 2,
+    marginBottom: 2,
   },
   fixedBottomContainer: {
     position: 'absolute',

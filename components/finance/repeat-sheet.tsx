@@ -1,24 +1,24 @@
+import { Ionicons } from '@expo/vector-icons';
 import React from 'react';
 import {
-  View,
-  StyleSheet,
   Modal,
+  Platform,
   Pressable,
   ScrollView,
-  Platform,
+  StyleSheet,
+  View,
 } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { useKeyboardBottomInset } from '@/hooks/use-keyboard-bottom-inset';
-import { AppText } from '@/components/ui/app-text';
-import { AppButton } from '@/components/ui/app-button';
 import { RecurringScheduleFields } from '@/components/finance/recurring-schedule-fields';
+import { AppButton } from '@/components/ui/app-button';
+import { AppText } from '@/components/ui/app-text';
+import { BorderRadius, Colors, Shadows, Spacing } from '@/constants/theme';
+import { useKeyboardBottomInset } from '@/hooks/use-keyboard-bottom-inset';
 import { useRecurringScheduleForm } from '@/hooks/use-recurring-schedule-form';
-import { RecurringFrequency, IntervalUnit } from '@/types/finance';
+import { IntervalUnit, RecurringFrequency } from '@/types/finance';
 import { formatCurrency } from '@/utils/currency';
 import { haptics } from '@/utils/haptics';
-import { Colors, BorderRadius, Spacing, Shadows } from '@/constants/theme';
 
 export interface RepeatSheetConfig {
   frequency: RecurringFrequency;
