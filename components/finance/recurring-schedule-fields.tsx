@@ -3,39 +3,27 @@ import { View, StyleSheet, Pressable, TextInput, Switch } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 
 import { AppText } from '@/components/ui/app-text';
+import { SegmentedControl } from '@/components/ui/segmented-control';
 import { DatePickerModal } from '@/components/finance/date-picker-modal';
 import { RecurringScheduleForm } from '@/hooks/use-recurring-schedule-form';
 import { RecurringFrequency, IntervalUnit } from '@/types/finance';
 import { haptics } from '@/utils/haptics';
-import { Colors, BorderRadius, ControlHeights } from '@/constants/theme';
+import { Colors, BorderRadius, ControlHeights, Spacing } from '@/constants/theme';
 
-const FREQUENCY_OPTIONS: { key: Exclude<RecurringFrequency, 'custom'>; label: string; icon: keyof typeof Ionicons.glyphMap }[] = [
-  { key: 'monthly', label: 'Monthly', icon: 'calendar-number-outline' },
-  { key: 'weekly', label: 'Weekly', icon: 'calendar-outline' },
-  { key: 'yearly', label: 'Yearly', icon: 'calendar-clear-outline' },
-  { key: 'daily', label: 'Daily', icon: 'today-outline' },
+const REMINDER_OPTIONS: { days: number; label: string }[] = [
+  { days: 0, label: 'On day' },
+  { days: 1, label: '1 day before' },
+  { days: 3, label: '3 days before' },
+  { days: 7, label: '1 week before' },
 ];
-
-const REMINDER_OPTIONS = [0, 1, 3];
 
 export interface RecurringScheduleFieldsProps {
   form: RecurringScheduleForm;
-  /**
-   * Full editor mode (the default): also renders the "Starts On" date
-   * picker and a "More options" section (custom interval, end date, note).
-   * Set to false for a compact inline context — e.g. the Repeat sheet in
-   * Add Transaction — where the transaction's own date already fixes the
-   * start date and those extra fields aren't offered.
-   */
   advanced?: boolean;
 }
 
 /**
- * The frequency chips, schedule caption, and "on the due date" choice —
- * the entire shape of setting up a recurring rule's schedule. Shared by
- * `app/add-recurring.tsx` and `components/finance/repeat-sheet.tsx` so
- * there is exactly one implementation of this UI, not two that can drift
- * out of sync.
+ * Shared recurring schedule fields adhering strictly to Mercury design system tokens and patterns.
  */
 export const RecurringScheduleFields: React.FC<RecurringScheduleFieldsProps> = ({ form, advanced = true }) => {
   const [showDatePicker, setShowDatePicker] = useState(false);
@@ -64,156 +52,276 @@ export const RecurringScheduleFields: React.FC<RecurringScheduleFieldsProps> = (
     setNote,
     showMoreOptions,
     setShowMoreOptions,
-    dayOfMonth,
+    scheduleDescription,
   } = form;
 
-  const scheduleCaption =
-    frequency === 'weekly'
-      ? `Repeats every ${startDate.toLocaleDateString(undefined, { weekday: 'long' })}`
-      : frequency === 'monthly'
-      ? `Repeats on the ${dayOfMonth}${dayOfMonth === 1 ? 'st' : dayOfMonth === 2 ? 'nd' : dayOfMonth === 3 ? 'rd' : 'th'} of every month`
-      : frequency === 'yearly'
-      ? `Repeats every year on ${startDate.toLocaleDateString(undefined, { month: 'long', day: 'numeric' })}`
-      : 'Repeats every day';
+  const handleStepInterval = (delta: number) => {
+    haptics.selection();
+    setIntervalValue(Math.max(1, Math.min(99, intervalValue + delta)));
+  };
 
   return (
-    <>
-      <View style={styles.section}>
-        <AppText variant="label" style={styles.sectionTitle}>
-          How Often
-        </AppText>
-        <View style={styles.freqRow}>
-          {FREQUENCY_OPTIONS.map(opt => {
-            const isSelected = !useCustomInterval && frequency === opt.key;
-            return (
-              <Pressable
-                key={opt.key}
-                onPress={() => {
-                  haptics.selection();
-                  setUseCustomInterval(false);
-                  setFrequency(opt.key);
-                }}
-                style={[styles.freqButton, isSelected && styles.freqButtonActive]}
-              >
-                <Ionicons name={opt.icon} size={18} color={isSelected ? '#FFFFFF' : Colors.primary} />
-                <AppText
-                  variant="caption"
-                  color={isSelected ? '#FFFFFF' : Colors.textPrimary}
-                  style={{ fontWeight: isSelected ? '700' : '600' }}
-                >
-                  {opt.label}
-                </AppText>
-              </Pressable>
-            );
-          })}
+    <View style={styles.container}>
+      {/* Frequency Segmented Control */}
+      <View style={styles.sectionWrap}>
+        <View style={styles.sectionHeader}>
+          <AppText variant="micro" color={Colors.primaryDeep} style={styles.sectionLabel}>
+            FREQUENCY
+          </AppText>
         </View>
 
-        {!advanced && !useCustomInterval && (
-          <AppText variant="caption" color={Colors.textMuted}>
-            {scheduleCaption}
-          </AppText>
+        <SegmentedControl<RecurringFrequency | 'custom'>
+          variant="dark"
+          options={[
+            { key: 'monthly', label: 'Monthly' },
+            { key: 'weekly', label: 'Weekly' },
+            { key: 'yearly', label: 'Yearly' },
+            { key: 'daily', label: 'Daily' },
+            { key: 'custom', label: 'Custom' },
+          ]}
+          value={useCustomInterval ? 'custom' : frequency}
+          onChange={key => {
+            if (key === 'custom') {
+              setUseCustomInterval(true);
+            } else {
+              setUseCustomInterval(false);
+              setFrequency(key as any);
+            }
+          }}
+        />
+
+        {!useCustomInterval && (
+          <View style={styles.captionBadge}>
+            <Ionicons name="repeat" size={12} color={Colors.primary} />
+            <AppText variant="caption" color={Colors.primaryDeep} style={styles.captionText}>
+              {scheduleDescription}
+            </AppText>
+          </View>
         )}
       </View>
 
+      {/* Custom Stepper & Units (When Custom frequency is selected) */}
+      {useCustomInterval && (
+        <View style={styles.sectionWrap}>
+          <View style={styles.sectionHeader}>
+            <AppText variant="micro" color={Colors.primaryDeep} style={styles.sectionLabel}>
+              REPEAT EVERY
+            </AppText>
+          </View>
+
+          <View style={styles.customRow}>
+            {/* Numeric Stepper */}
+            <View style={styles.stepperContainer}>
+              <Pressable
+                onPress={() => handleStepInterval(-1)}
+                disabled={intervalValue <= 1}
+                style={({ pressed }) => [
+                  styles.stepperBtn,
+                  intervalValue <= 1 && styles.stepperBtnDisabled,
+                  pressed && { opacity: 0.6 },
+                ]}
+              >
+                <Ionicons
+                  name="remove"
+                  size={16}
+                  color={intervalValue <= 1 ? Colors.textMuted : Colors.primary}
+                />
+              </Pressable>
+
+              <TextInput
+                value={String(intervalValue)}
+                onChangeText={v => {
+                  const num = parseInt(v, 10);
+                  if (!isNaN(num)) setIntervalValue(Math.max(1, Math.min(99, num)));
+                  else if (v === '') setIntervalValue(1);
+                }}
+                keyboardType="number-pad"
+                maxLength={2}
+                style={styles.stepperInput}
+              />
+
+              <Pressable
+                onPress={() => handleStepInterval(1)}
+                disabled={intervalValue >= 99}
+                style={({ pressed }) => [
+                  styles.stepperBtn,
+                  intervalValue >= 99 && styles.stepperBtnDisabled,
+                  pressed && { opacity: 0.6 },
+                ]}
+              >
+                <Ionicons
+                  name="add"
+                  size={16}
+                  color={intervalValue >= 99 ? Colors.textMuted : Colors.primary}
+                />
+              </Pressable>
+            </View>
+
+            {/* Units Selector */}
+            <View style={styles.unitsRow}>
+              {(['day', 'week', 'month', 'year'] as IntervalUnit[]).map(unit => {
+                const isSelected = intervalUnit === unit;
+                const label = intervalValue > 1 ? `${unit}s` : unit;
+                return (
+                  <Pressable
+                    key={unit}
+                    onPress={() => {
+                      haptics.selection();
+                      setIntervalUnit(unit);
+                    }}
+                    style={[styles.unitChip, isSelected && styles.unitChipActive]}
+                  >
+                    <AppText
+                      variant="micro"
+                      color={isSelected ? Colors.ctaText : Colors.textPrimary}
+                      style={{ fontWeight: isSelected ? '700' : '500', textTransform: 'capitalize' }}
+                    >
+                      {label}
+                    </AppText>
+                  </Pressable>
+                );
+              })}
+            </View>
+          </View>
+
+          <View style={styles.captionBadge}>
+            <Ionicons name="repeat" size={12} color={Colors.primary} />
+            <AppText variant="caption" color={Colors.primaryDeep} style={styles.captionText}>
+              {scheduleDescription}
+            </AppText>
+          </View>
+        </View>
+      )}
+
+      {/* Starts On Date (Advanced Mode in Add Recurring Screen) */}
       {advanced && (
-        <View style={styles.field}>
-          <AppText variant="label">Starts On</AppText>
+        <View style={styles.sectionWrap}>
+          <View style={styles.sectionHeader}>
+            <AppText variant="micro" color={Colors.primaryDeep} style={styles.sectionLabel}>
+              STARTS ON
+            </AppText>
+          </View>
           <Pressable
             onPress={() => {
+              haptics.press();
               setDatePickerTarget('start');
               setShowDatePicker(true);
             }}
             style={styles.datePickerBtn}
           >
-            <Ionicons name="calendar-outline" size={18} color={Colors.primary} />
-            <AppText variant="bodyStrong">
+            <View style={styles.datePickerIcon}>
+              <Ionicons name="calendar-outline" size={16} color={Colors.primary} />
+            </View>
+            <AppText variant="bodyStrong" style={{ flex: 1 }}>
               {startDate.toLocaleDateString(undefined, {
-                weekday: 'long',
+                weekday: 'short',
                 day: 'numeric',
                 month: 'short',
                 year: 'numeric',
               })}
             </AppText>
+            <Ionicons name="chevron-forward" size={16} color={Colors.textMuted} />
           </Pressable>
-          {!useCustomInterval && (
-            <AppText variant="caption" color={Colors.textMuted}>
-              {scheduleCaption}
-            </AppText>
-          )}
         </View>
       )}
 
+      {/* On Due Date (Execution Mode) */}
+      <View style={styles.sectionWrap}>
+        <View style={styles.sectionHeader}>
+          <AppText variant="micro" color={Colors.primaryDeep} style={styles.sectionLabel}>
+            ON THE DUE DATE
+          </AppText>
+        </View>
+
+        <SegmentedControl<'auto' | 'remind'>
+          variant="dark"
+          options={[
+            { key: 'auto', label: 'Log Automatically', icon: 'flash' },
+            { key: 'remind', label: 'Remind Me Only', icon: 'notifications-outline' },
+          ]}
+          value={autoCreate ? 'auto' : 'remind'}
+          onChange={key => {
+            setAutoCreate(key === 'auto');
+          }}
+        />
+
+        {autoCreate ? (
+          <View style={styles.captionBadge}>
+            <Ionicons name="flash" size={12} color={Colors.income} />
+            <AppText variant="caption" color={Colors.textSecondary} style={styles.captionText}>
+              Automatically records the transaction on each due date
+            </AppText>
+          </View>
+        ) : (
+          <View style={styles.captionBadge}>
+            <Ionicons name="notifications-outline" size={12} color={Colors.primary} />
+            <AppText variant="caption" color={Colors.primaryDeep} style={styles.captionText}>
+              Sends a notification reminder to review and record
+            </AppText>
+          </View>
+        )}
+
+        {/* Reminder Offsets (Shown when Remind Me is selected) */}
+        {!autoCreate && (
+          <View style={styles.remindOffsetWrap}>
+            <AppText variant="micro" color={Colors.primaryDeep} style={styles.subSectionLabel}>
+              REMIND LEAD TIME
+            </AppText>
+            <View style={styles.reminderChipsRow}>
+              {REMINDER_OPTIONS.map(opt => {
+                const isSelected = reminderDays === opt.days;
+                return (
+                  <Pressable
+                    key={opt.days}
+                    onPress={() => {
+                      haptics.selection();
+                      setReminderDays(opt.days);
+                    }}
+                    style={[styles.reminderChip, isSelected && styles.reminderChipActive]}
+                  >
+                    <AppText
+                      variant="micro"
+                      color={isSelected ? Colors.ctaText : Colors.textPrimary}
+                      style={{ fontWeight: isSelected ? '700' : '500' }}
+                    >
+                      {opt.label}
+                    </AppText>
+                  </Pressable>
+                );
+              })}
+            </View>
+          </View>
+        )}
+      </View>
+
+      {/* Advanced / More Options for Full Editor */}
       {advanced && (
-        <>
+        <View style={styles.sectionWrap}>
           <Pressable
-            onPress={() => setShowMoreOptions(v => !v)}
+            onPress={() => {
+              haptics.selection();
+              setShowMoreOptions(v => !v);
+            }}
             hitSlop={8}
             style={styles.moreOptionsToggle}
           >
             <AppText variant="captionStrong" color={Colors.primary}>
-              {showMoreOptions ? 'Fewer options' : 'More options'}
+              {showMoreOptions ? 'Fewer options' : 'More options (End date, note)'}
             </AppText>
-            <Ionicons name={showMoreOptions ? 'chevron-up' : 'chevron-down'} size={14} color={Colors.primary} />
+            <Ionicons
+              name={showMoreOptions ? 'chevron-up' : 'chevron-down'}
+              size={14}
+              color={Colors.primary}
+            />
           </Pressable>
 
           {showMoreOptions && (
-            <>
-              <View style={styles.switchRow}>
-                <View style={{ flex: 1 }}>
-                  <AppText variant="bodyStrong">Custom interval</AppText>
-                  <AppText variant="caption" color={Colors.textSecondary}>
-                    e.g. every 2 weeks, every 3 months
-                  </AppText>
-                </View>
-                <Switch
-                  value={useCustomInterval}
-                  onValueChange={setUseCustomInterval}
-                  trackColor={{ false: 'rgba(25, 21, 39, 0.12)', true: Colors.primary }}
-                  thumbColor="#FFFFFF"
-                />
-              </View>
-
-              {useCustomInterval && (
-                <View style={styles.field}>
-                  <AppText variant="label">Repeat Every</AppText>
-                  <View style={{ flexDirection: 'row', gap: 8, alignItems: 'center' }}>
-                    <TextInput
-                      value={String(intervalValue)}
-                      onChangeText={v => setIntervalValue(Math.max(1, parseInt(v) || 1))}
-                      keyboardType="number-pad"
-                      style={[styles.input, { width: 70, textAlign: 'center' }]}
-                    />
-                    <View style={{ flex: 1, flexDirection: 'row', gap: 6 }}>
-                      {(['day', 'week', 'month', 'year'] as IntervalUnit[]).map(unit => {
-                        const isSelected = intervalUnit === unit;
-                        return (
-                          <Pressable
-                            key={unit}
-                            onPress={() => {
-                              haptics.selection();
-                              setIntervalUnit(unit);
-                            }}
-                            style={[styles.unitButton, isSelected && styles.unitButtonActive]}
-                          >
-                            <AppText
-                              variant="caption"
-                              color={isSelected ? '#FFFFFF' : Colors.textPrimary}
-                              style={{ fontWeight: isSelected ? '700' : '500' }}
-                            >
-                              {unit}s
-                            </AppText>
-                          </Pressable>
-                        );
-                      })}
-                    </View>
-                  </View>
-                </View>
-              )}
-
+            <View style={styles.moreOptionsCard}>
+              {/* Has End Date */}
               <View style={styles.switchRow}>
                 <View style={{ flex: 1 }}>
                   <AppText variant="bodyStrong">Has an end date</AppText>
-                  <AppText variant="caption" color={Colors.textSecondary}>
+                  <AppText variant="micro" color={Colors.textSecondary}>
                     Automatically stop on a specific date
                   </AppText>
                 </View>
@@ -233,113 +341,42 @@ export const RecurringScheduleFields: React.FC<RecurringScheduleFieldsProps> = (
               </View>
 
               {hasEndDate && endDate && (
-                <View style={styles.field}>
-                  <AppText variant="label">End Date</AppText>
-                  <Pressable
-                    onPress={() => {
-                      setDatePickerTarget('end');
-                      setShowDatePicker(true);
-                    }}
-                    style={styles.datePickerBtn}
-                  >
-                    <Ionicons name="calendar-outline" size={18} color={Colors.primary} />
-                    <AppText variant="bodyStrong">
-                      {endDate.toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' })}
-                    </AppText>
-                  </Pressable>
-                </View>
+                <Pressable
+                  onPress={() => {
+                    setDatePickerTarget('end');
+                    setShowDatePicker(true);
+                  }}
+                  style={styles.datePickerBtn}
+                >
+                  <View style={styles.datePickerIcon}>
+                    <Ionicons name="calendar-outline" size={16} color={Colors.primary} />
+                  </View>
+                  <AppText variant="bodyStrong" style={{ flex: 1 }}>
+                    Ends on: {endDate.toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' })}
+                  </AppText>
+                  <Ionicons name="chevron-forward" size={14} color={Colors.textMuted} />
+                </Pressable>
               )}
 
-              <View style={styles.field}>
-                <AppText variant="label">Note</AppText>
+              {/* Note */}
+              <View style={{ gap: 4, marginTop: 4 }}>
+                <AppText variant="micro" color={Colors.primaryDeep} style={styles.sectionLabel}>
+                  NOTE / MEMO
+                </AppText>
                 <TextInput
                   value={note}
                   onChangeText={setNote}
-                  placeholder="e.g. Shared with family"
+                  placeholder="e.g. Shared with family, contract #..."
                   placeholderTextColor={Colors.textMuted}
-                  style={styles.input}
+                  style={styles.inputField}
                 />
               </View>
-            </>
+            </View>
           )}
-        </>
+        </View>
       )}
 
-      <View style={styles.section}>
-        {advanced && (
-          <AppText variant="label" style={styles.sectionTitle}>
-            On the Due Date
-          </AppText>
-        )}
-
-        <Pressable
-          onPress={() => {
-            haptics.selection();
-            setAutoCreate(true);
-          }}
-          style={[styles.choiceCard, autoCreate && styles.choiceCardActive]}
-        >
-          <Ionicons name="flash" size={20} color={autoCreate ? '#FFFFFF' : Colors.primary} />
-          <View style={{ flex: 1 }}>
-            <AppText variant="bodyStrong" color={autoCreate ? '#FFFFFF' : Colors.textPrimary}>
-              Log it automatically
-            </AppText>
-            <AppText variant="caption" color={autoCreate ? 'rgba(255,255,255,0.85)' : Colors.textSecondary}>
-              We&apos;ll add the transaction for you
-            </AppText>
-          </View>
-          {autoCreate && <Ionicons name="checkmark-circle" size={20} color="#FFFFFF" />}
-        </Pressable>
-
-        <Pressable
-          onPress={() => {
-            haptics.selection();
-            setAutoCreate(false);
-          }}
-          style={[styles.choiceCard, !autoCreate && styles.choiceCardActive]}
-        >
-          <Ionicons name="notifications-outline" size={20} color={!autoCreate ? '#FFFFFF' : Colors.primary} />
-          <View style={{ flex: 1 }}>
-            <AppText variant="bodyStrong" color={!autoCreate ? '#FFFFFF' : Colors.textPrimary}>
-              Just remind me
-            </AppText>
-            <AppText variant="caption" color={!autoCreate ? 'rgba(255,255,255,0.85)' : Colors.textSecondary}>
-              We&apos;ll send a notification instead
-            </AppText>
-          </View>
-          {!autoCreate && <Ionicons name="checkmark-circle" size={20} color="#FFFFFF" />}
-        </Pressable>
-
-        {!autoCreate && (
-          <View style={advanced ? styles.field : undefined}>
-            {advanced && <AppText variant="label">Remind Me</AppText>}
-            <View style={styles.reminderRow}>
-              {REMINDER_OPTIONS.map(days => {
-                const isSelected = reminderDays === days;
-                return (
-                  <Pressable
-                    key={days}
-                    onPress={() => {
-                      haptics.selection();
-                      setReminderDays(days);
-                    }}
-                    style={[styles.reminderChip, isSelected && styles.reminderChipActive]}
-                  >
-                    <AppText
-                      variant="caption"
-                      color={isSelected ? '#FFFFFF' : Colors.textPrimary}
-                      style={{ fontWeight: isSelected ? '700' : '500' }}
-                    >
-                      {days === 0 ? 'On the day' : `${days} day${days === 1 ? '' : 's'} before`}
-                    </AppText>
-                  </Pressable>
-                );
-              })}
-            </View>
-          </View>
-        )}
-      </View>
-
+      {/* Date Picker Modal */}
       {advanced && (
         <DatePickerModal
           visible={showDatePicker}
@@ -351,101 +388,105 @@ export const RecurringScheduleFields: React.FC<RecurringScheduleFieldsProps> = (
           onClose={() => setShowDatePicker(false)}
         />
       )}
-    </>
+    </View>
   );
 };
 
 const styles = StyleSheet.create({
-  section: {
-    gap: 8,
+  container: {
+    gap: 18,
   },
-  sectionTitle: {
-    fontSize: 12,
-    letterSpacing: 0.5,
+  sectionWrap: {
+    gap: 7,
   },
-  field: {
-    gap: 8,
-  },
-  freqRow: {
+  sectionHeader: {
     flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 8,
-  },
-  freqButton: {
-    flex: 1,
-    minWidth: '28%',
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 12,
-    paddingHorizontal: 8,
-    borderRadius: BorderRadius.md,
-    backgroundColor: Colors.controlBg,
-    borderWidth: 1,
-    borderColor: Colors.glassBorderSoft,
-    gap: 6,
-  },
-  freqButtonActive: {
-    backgroundColor: Colors.primary,
-    borderColor: Colors.primary,
-  },
-  datePickerBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-    height: ControlHeights.lg,
-    paddingHorizontal: 16,
-    borderRadius: BorderRadius.sm,
-    backgroundColor: 'rgba(25, 21, 39, 0.04)',
-  },
-  moreOptionsToggle: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 4,
-    paddingVertical: 4,
-  },
-  input: {
-    height: ControlHeights.lg,
-    paddingHorizontal: 16,
-    borderRadius: BorderRadius.sm,
-    backgroundColor: 'rgba(25, 21, 39, 0.04)',
-    fontSize: 15,
-    fontFamily: 'Manrope_500Medium',
-    color: Colors.textPrimary,
-  },
-  unitButton: {
-    flex: 1,
-    height: ControlHeights.lg,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderRadius: BorderRadius.sm,
-    backgroundColor: Colors.controlBg,
-  },
-  unitButtonActive: {
-    backgroundColor: Colors.primary,
-  },
-  switchRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
     justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 2,
   },
-  choiceCard: {
+  sectionLabel: {
+    fontSize: 10.5,
+    letterSpacing: 0.9,
+    fontFamily: 'Manrope_700Bold',
+  },
+  subSectionLabel: {
+    fontSize: 9.5,
+    letterSpacing: 0.7,
+    fontFamily: 'Manrope_700Bold',
+    paddingHorizontal: 2,
+  },
+  captionBadge: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 12,
-    minHeight: ControlHeights.lg,
-    paddingVertical: 12,
-    paddingHorizontal: 16,
-    borderRadius: BorderRadius.sm,
-    backgroundColor: Colors.controlBg,
+    gap: 6,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: BorderRadius.xs,
+    backgroundColor: Colors.primarySoft,
+    alignSelf: 'flex-start',
+    marginTop: 2,
+  },
+  captionText: {
+    fontSize: 12,
+    fontFamily: 'Manrope_600SemiBold',
+  },
+  customRow: {
+    flexDirection: 'row',
+    gap: 8,
+    alignItems: 'center',
+  },
+  stepperContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    height: 38,
+    width: 96,
+    borderRadius: BorderRadius.xs,
+    backgroundColor: '#FFFFFF',
     borderWidth: 1,
-    borderColor: Colors.glassBorderSoft,
+    borderColor: 'rgba(139, 92, 246, 0.22)',
   },
-  choiceCardActive: {
-    backgroundColor: Colors.primary,
-    borderColor: Colors.primary,
+  stepperBtn: {
+    width: 30,
+    height: '100%',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
-  reminderRow: {
+  stepperBtnDisabled: {
+    opacity: 0.25,
+  },
+  stepperInput: {
+    flex: 1,
+    textAlign: 'center',
+    fontSize: 15,
+    fontFamily: 'Sora_700Bold',
+    color: Colors.textPrimary,
+    padding: 0,
+  },
+  unitsRow: {
+    flex: 1,
+    flexDirection: 'row',
+    gap: 4,
+  },
+  unitChip: {
+    flex: 1,
+    height: 38,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: BorderRadius.xs,
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: 'rgba(25, 21, 39, 0.08)',
+  },
+  unitChipActive: {
+    backgroundColor: Colors.ctaBg,
+    borderColor: Colors.ctaBg,
+  },
+  remindOffsetWrap: {
+    gap: 6,
+    marginTop: 4,
+  },
+  reminderChipsRow: {
     flexDirection: 'row',
     gap: 6,
   },
@@ -454,10 +495,66 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     paddingVertical: 8,
-    borderRadius: BorderRadius.sm,
-    backgroundColor: Colors.controlBg,
+    borderRadius: BorderRadius.pill,
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: 'rgba(139, 92, 246, 0.18)',
   },
   reminderChipActive: {
-    backgroundColor: Colors.primary,
+    backgroundColor: Colors.ctaBg,
+    borderColor: Colors.ctaBg,
+  },
+  datePickerBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    height: ControlHeights.md,
+    paddingHorizontal: 14,
+    borderRadius: BorderRadius.sm,
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: 'rgba(139, 92, 246, 0.18)',
+  },
+  datePickerIcon: {
+    width: 28,
+    height: 28,
+    borderRadius: BorderRadius.xs,
+    backgroundColor: Colors.primarySoft,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  moreOptionsToggle: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 4,
+    paddingVertical: 4,
+  },
+  moreOptionsCard: {
+    padding: 14,
+    borderRadius: BorderRadius.sm,
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: 'rgba(139, 92, 246, 0.15)',
+    gap: 12,
+  },
+  switchRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  inputField: {
+    height: 38,
+    paddingHorizontal: 12,
+    borderRadius: BorderRadius.xs,
+    backgroundColor: 'rgba(255, 255, 255, 0.9)',
+    borderWidth: 1,
+    borderColor: 'rgba(139, 92, 246, 0.18)',
+    fontSize: 13.5,
+    fontFamily: 'Manrope_500Medium',
+    color: Colors.textPrimary,
   },
 });
+
+
+

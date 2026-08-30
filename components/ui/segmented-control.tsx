@@ -17,6 +17,7 @@ export interface SegmentedControlProps<T extends string> {
   options: SegmentOption<T>[];
   value: T;
   onChange: (key: T) => void;
+  variant?: 'light' | 'dark';
   style?: StyleProp<ViewStyle>;
 }
 
@@ -24,12 +25,18 @@ export function SegmentedControl<T extends string>({
   options,
   value,
   onChange,
+  variant = 'light',
   style,
 }: SegmentedControlProps<T>) {
+  const isDark = variant === 'dark';
+
   return (
     <View style={[styles.container, style]}>
       {options.map(option => {
         const active = option.key === value;
+        const activeTextColor = isDark ? '#FFFFFF' : (option.activeColor ?? Colors.textPrimary);
+        const activeIconColor = isDark ? '#FFFFFF' : (option.activeColor ?? Colors.textPrimary);
+
         return (
           <Pressable
             key={option.key}
@@ -37,18 +44,22 @@ export function SegmentedControl<T extends string>({
               haptics.selection();
               onChange(option.key);
             }}
-            style={[styles.segment, active && styles.segmentActive]}
+            style={[
+              styles.segment,
+              active && (isDark ? styles.segmentActiveDark : styles.segmentActive),
+            ]}
           >
             {option.icon ? (
               <Ionicons
                 name={option.icon}
                 size={15}
-                color={active ? (option.activeColor ?? Colors.textPrimary) : Colors.textMuted}
+                color={active ? activeIconColor : Colors.textMuted}
               />
             ) : null}
             <AppText
               variant="micro"
-              color={active ? (option.activeColor ?? Colors.textPrimary) : Colors.textMuted}
+              color={active ? activeTextColor : Colors.textMuted}
+              style={{ fontWeight: active ? '700' : '500' }}
             >
               {option.label}
             </AppText>
@@ -72,11 +83,19 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     gap: 6,
-    paddingVertical: 11,
+    paddingVertical: 10,
     borderRadius: BorderRadius.pill,
   },
   segmentActive: {
     backgroundColor: Colors.surfaceOpaque,
     ...Shadows.soft,
+  },
+  segmentActiveDark: {
+    backgroundColor: Colors.ctaBg,
+    shadowColor: '#000000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.18,
+    shadowRadius: 4,
+    elevation: 3,
   },
 });

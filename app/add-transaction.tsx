@@ -811,10 +811,11 @@ export default function AddTransactionScreen() {
         visible={showRepeatSheet}
         onClose={() => setShowRepeatSheet(false)}
         amount={numericAmount}
-        currency={state.settings.currency ?? 'INR'}
+        currency={state.accounts.find(a => a.id === accountId)?.currency ?? state.settings.currency ?? 'INR'}
         date={date}
         initialConfig={repeatConfig ?? undefined}
         onApply={cfg => setRepeatConfig(cfg)}
+        onClear={() => setRepeatConfig(null)}
       />
     </GradientScreen>
   );
