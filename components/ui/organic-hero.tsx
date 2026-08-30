@@ -47,6 +47,20 @@ const SHAPE_1 = [96, 6, 136, 3, 174, 22, 187, 57, 200, 93, 182, 126, 160, 150, 1
 const SHAPE_2 = [112, 12, 158, 8, 196, 35, 192, 78, 188, 118, 194, 142, 166, 170, 138, 198, 94, 200, 62, 182, 28, 164, 10, 135, 12, 96, 14, 56, 38, 24, 72, 14, 86, 9, 99, 10, 112, 12];
 const SHAPE_3 = [90, 10, 126, 4, 164, 16, 188, 50, 212, 84, 182, 132, 150, 160, 118, 188, 74, 194, 44, 172, 14, 150, 8, 118, 12, 80, 16, 42, 34, 22, 64, 14, 74, 11, 82, 10, 90, 10];
 
+/**
+ * Small rounded droplet shapes for burst pieces — deliberately simpler and
+ * rounder than BLOB_PATH/BLOB_PATH_ALT, not scaled-down copies of them. A
+ * shrunk copy of the whole hero blob reads as "a tiny clone of the mascot";
+ * a plain droplet reads as a piece of the same liquid, which is what a
+ * burst is supposed to look like.
+ */
+const DROPLET_VIEWBOX = 40;
+const DROPLET_PATHS = [
+  'M20 3 C27 3 33 10 34 18 C35 27 30 34 21 35 C12 36 5 30 4 21 C3 12 9 5 18 3 C19 3 19 3 20 3 Z',
+  'M18 2 C25 1 31 7 32 15 C33 24 29 32 20 35 C11 38 3 32 2 23 C1 15 6 6 14 3 C15 3 17 2 18 2 Z',
+  'M22 4 C29 5 34 13 33 21 C32 30 25 36 16 35 C7 34 2 26 4 17 C6 9 14 3 22 4 Z',
+];
+
 export type BadgeSlot = 'topLeft' | 'topRight' | 'bottomLeft' | 'bottomRight';
 
 export interface HeroBadge {
@@ -313,9 +327,10 @@ interface BurstShardProps {
 }
 
 /**
- * One fragment of the blob after it bursts. Flies outward on mount (its own
- * random-ish angle/distance so the scatter doesn't look mechanical), then sits
- * there waiting to be tapped — a tap shrinks it back down to the blob's center,
+ * One fragment of the blob after it bursts. Flies outward on mount with a
+ * quick, forceful launch that then eases into a soft gravity-drop settle —
+ * anticipation and follow-through, not a flat linear fling — then sits there
+ * waiting to be tapped. A tap draws it back down to the blob's center,
  * counted immediately by the parent so "all collected" can fire the reform
  * while the last piece or two are still animating home.
  */
@@ -327,22 +342,49 @@ const BurstShardBase: React.FC<BurstShardProps> = ({ index, total, onCollected }
   const rotate = useSharedValue(0);
   const collectedRef = useRef(false);
 
-  useEffect(() => {
-    const jitter = (Math.random() - 0.5) * 0.6;
-    const angle = (index / total) * Math.PI * 2 + jitter;
-    const dist = 58 + Math.random() * 46;
-    const restX = Math.cos(angle) * dist;
-    const restY = Math.sin(angle) * dist + 10; // slight downward gravity bias
-    const spin = (Math.random() - 0.5) * 220;
-    const delay = index * 16;
+  // Stable for this shard's lifetime (a fresh burst remounts every shard
+  // with a new key, so this re-rolls each time) — a real fracture scatters
+  // pieces of uneven size, not a uniform set of identical chips.
+  const [variant] = useState(() => ({
+    shapeIndex: Math.floor(Math.random() * DROPLET_PATHS.length),
+    baseSize: 15 + Math.random() * 17,
+    jitter: (Math.random() - 0.5) * 0.7,
+    dist: 56 + Math.random() * 50,
+    spin: (Math.random() - 0.5) * 100,
+    delay: index * 26 + Math.random() * 60,
+    launchMs: 210 + Math.random() * 70,
+  }));
 
-    scale.value = withDelay(delay, withTiming(0.6 + Math.random() * 0.18, { duration: 240, easing: Ease.out }));
-    rotate.value = withDelay(delay, withTiming(spin, { duration: 340, easing: Ease.out }));
-    tx.value = withDelay(delay, withTiming(restX, { duration: 280, easing: Ease.out }));
-    ty.value = withDelay(
-      delay,
+  useEffect(() => {
+    const angle = (index / total) * Math.PI * 2 + variant.jitter;
+    const restX = Math.cos(angle) * variant.dist;
+    const restY = Math.sin(angle) * variant.dist + 12; // slight downward gravity bias
+    const overshootX = restX * 1.14;
+    const overshootY = restY * 1.1 - 6;
+    const peakScale = 0.55 + Math.random() * 0.22;
+
+    // Forceful launch with a touch of overshoot, then a spring settle —
+    // reads as something with real momentum getting caught by gravity,
+    // rather than gliding to a stop.
+    scale.value = withDelay(
+      variant.delay,
       withSequence(
-        withTiming(restY - 10, { duration: 230, easing: Ease.out }),
+        withTiming(peakScale * 1.12, { duration: variant.launchMs * 0.55, easing: Ease.out }),
+        withSpring(peakScale, Spring.settle)
+      )
+    );
+    rotate.value = withDelay(variant.delay, withSpring(variant.spin, Spring.settle));
+    tx.value = withDelay(
+      variant.delay,
+      withSequence(
+        withTiming(overshootX, { duration: variant.launchMs, easing: Ease.out }),
+        withSpring(restX, Spring.settle)
+      )
+    );
+    ty.value = withDelay(
+      variant.delay,
+      withSequence(
+        withTiming(overshootY, { duration: variant.launchMs, easing: Ease.out }),
         withSpring(restY, Spring.settle)
       )
     );
@@ -363,27 +405,40 @@ const BurstShardBase: React.FC<BurstShardProps> = ({ index, total, onCollected }
     if (collectedRef.current) return;
     collectedRef.current = true;
     haptics.selection();
-    tx.value = withTiming(0, { duration: 260, easing: Ease.inOut });
-    ty.value = withTiming(0, { duration: 260, easing: Ease.inOut });
-    scale.value = withTiming(0, { duration: 220, easing: Ease.inOut });
-    opacity.value = withTiming(0, { duration: 220, easing: Ease.inOut });
+    tx.value = withSpring(0, Spring.press);
+    ty.value = withSpring(0, Spring.press);
+    scale.value = withTiming(0, { duration: 200, easing: Ease.inOut });
+    opacity.value = withTiming(0, { duration: 200, easing: Ease.inOut });
     onCollected();
   };
 
+  const path = DROPLET_PATHS[variant.shapeIndex];
+
+  const halfSize = variant.baseSize / 2;
+
   return (
-    <AnimatedPressable onPress={handleTap} hitSlop={12} style={[styles.shard, style]}>
-      <Svg width={34} height={34} viewBox={`0 0 ${BLOB_VIEWBOX} ${BLOB_VIEWBOX}`}>
+    <AnimatedPressable
+      onPress={handleTap}
+      hitSlop={14}
+      style={[
+        styles.shard,
+        { width: variant.baseSize, height: variant.baseSize, marginLeft: -halfSize, marginTop: -halfSize },
+        style,
+      ]}
+    >
+      <Svg width={variant.baseSize} height={variant.baseSize} viewBox={`0 0 ${DROPLET_VIEWBOX} ${DROPLET_VIEWBOX}`}>
         <Defs>
-          <SvgLinearGradient id={`shardGrad-${index}`} x1="15%" y1="0%" x2="85%" y2="100%">
+          <SvgRadialGradient id={`shardGrad-${index}`} cx="35%" cy="28%" rx="75%" ry="75%">
             <Stop offset="0%" stopColor="#FFFFFF" stopOpacity="0.99" />
-            <Stop offset="100%" stopColor="#F5E4F0" stopOpacity="0.9" />
-          </SvgLinearGradient>
+            <Stop offset="65%" stopColor="#FBF2F8" stopOpacity="0.95" />
+            <Stop offset="100%" stopColor="#F0DCEC" stopOpacity="0.88" />
+          </SvgRadialGradient>
         </Defs>
         <Path
-          d={index % 2 === 0 ? BLOB_PATH : BLOB_PATH_ALT}
+          d={path}
           fill={`url(#shardGrad-${index})`}
-          stroke="rgba(255,255,255,0.96)"
-          strokeWidth={2.4}
+          stroke="rgba(255,255,255,0.98)"
+          strokeWidth={1.6}
         />
       </Svg>
     </AnimatedPressable>
@@ -575,15 +630,20 @@ export const OrganicHero: React.FC<OrganicHeroProps> = ({
     const stretchX = (1 - Math.sin(t * 1.2) * 0.03) * swapScale * squashX.value;
     const rotate = Math.sin(t * 0.5) * 4.0;
 
-    // Hold-to-burst charge: a fast, growing shiver plus a slight inflate —
-    // tension visibly building the longer the press holds.
+    // Hold-to-burst charge: a breathing pulse that quickens and deepens as
+    // tension builds, not a positional shake — a held-under-pressure liquid
+    // swells and throbs, it doesn't vibrate sideways. smoothstep (not the raw
+    // linear progress) so the build has a soft start and a hard, urgent climax
+    // instead of a flat linear climb.
     const charge = chargeProgress.value;
-    const shake = charge > 0 ? Math.sin(t * 55) * 2.4 * charge : 0;
-    const inflate = 1 + charge * 0.09;
+    const chargeEase = charge * charge * (3 - 2 * charge);
+    const pulseFreq = 5 + chargeEase * 22;
+    const pulse = Math.sin(t * pulseFreq) * chargeEase * 0.05;
+    const inflate = 1 + chargeEase * 0.07 + pulse;
 
     return {
       transform: [
-        { translateX: floatX + tilt.gx.value + shake },
+        { translateX: floatX + tilt.gx.value },
         { translateY: floatY + tilt.gy.value },
         { rotate: `${rotate}deg` },
         { scaleX: stretchX * inflate },
@@ -616,16 +676,34 @@ export const OrganicHero: React.FC<OrganicHeroProps> = ({
     ry: interpolate(ripple.value, [0, 1], [82, 118]),
   }));
 
-  /** Warm highlight that brightens through a hold — the "charging up" cue, independent of the shake/inflate. */
-  const chargeGlowProps = useAnimatedProps(() => ({
-    opacity: chargeProgress.value * 0.5,
-  }));
+  /** Warm highlight that brightens through a hold — the "charging up" cue, independent of the breathing pulse. */
+  const chargeGlowProps = useAnimatedProps(() => {
+    const c = chargeProgress.value;
+    return { opacity: c * c * (3 - 2 * c) * 0.55 };
+  });
 
   /** The blob's own pop-out (burst) / pop-in (reform), kept separate from blobContainerStyle's position/tilt/charge transforms. */
   const blobInnerStyle = useAnimatedStyle(() => ({
     opacity: blobOpacity.value,
     transform: [{ scale: blobPopScale.value }],
   }));
+
+  /**
+   * The burst's impact flash — a bright ring expanding fast and fading,
+   * independent of blobOpacity so it stays visible through the blob's own
+   * fade rather than vanishing with it. Also replayed (more subtly) on
+   * reform, so releasing and reassembling read as mirror-image beats of the
+   * same physical event rather than two unrelated animations.
+   */
+  const shockwave = useSharedValue(0);
+  const shockwaveProps = useAnimatedProps(() => {
+    const s = shockwave.value;
+    return {
+      opacity: interpolate(s, [0, 0.1, 1], [0, 0.85, 0], Extrapolation.CLAMP),
+      rx: interpolate(s, [0, 1], [70, 152]),
+      ry: interpolate(s, [0, 1], [65, 142]),
+    };
+  });
 
   const contentAnimStyle = useAnimatedStyle(() => {
     const opacity = interpolate(swapAnim.value, [0, 0.3, 1], [0, 0.4, 1], Extrapolation.CLAMP);
@@ -655,17 +733,30 @@ export const OrganicHero: React.FC<OrganicHeroProps> = ({
     holdStartRef.current = null;
     hasBurstedRef.current = true;
     haptics.success();
-    // Quick pop-out, then swap to the shard pieces once it's mostly faded —
-    // this is what makes the burst read as the blob's own doing rather than
-    // an abrupt cut to a different view.
-    blobPopScale.value = withTiming(1.35, { duration: 170, easing: Ease.out });
-    blobOpacity.value = withTiming(0, { duration: 150, easing: Ease.out });
-    chargeProgress.value = withTiming(0, { duration: 100 });
+    chargeProgress.value = withTiming(0, { duration: 60 });
+
+    // Anticipation — a sharp inward gather — then an explosive spring
+    // release with real overshoot, not a flat timing curve to a fixed
+    // target. This one beat (compress, then snap out past rest and settle)
+    // is most of the difference between "a scale animation played" and
+    // "something burst."
+    blobPopScale.value = withSequence(
+      withTiming(0.82, { duration: 70, easing: Ease.out }),
+      withSpring(1.32, { damping: 7, stiffness: 260, mass: 0.7 })
+    );
+    // The fade starts only once the pop has visibly happened, not
+    // simultaneously with it — seeing the shape snap out first is what
+    // sells it as the blob's own action rather than a cut.
+    blobOpacity.value = withDelay(70, withTiming(0, { duration: 130, easing: Ease.out }));
+
+    shockwave.value = 0;
+    shockwave.value = withTiming(1, { duration: 360, easing: Ease.out });
+
     setTimeout(() => {
       setCollectedCount(0);
       setBurstKey(k => k + 1);
       setBurstActive(true);
-    }, 150);
+    }, 210);
   };
 
   /**
@@ -711,15 +802,19 @@ export const OrganicHero: React.FC<OrganicHeroProps> = ({
     return () => clearTimeout(t);
   }, [burstActive, collectedCount]);
 
-  // Pop the blob back in once the shards are gone. Guarded so this never
-  // fires on first mount — hasBurstedRef only flips true inside an actual burst.
+  // Pop the blob back in once the shards are gone — the mirror of the burst:
+  // a small converge flash, then a springy overshoot into place rather than
+  // approaching 1 monotonically. Guarded so this never fires on first mount
+  // — hasBurstedRef only flips true inside an actual burst.
   useEffect(() => {
     if (burstActive || !hasBurstedRef.current) return;
     blobOpacity.value = 0;
-    blobPopScale.value = 0.72;
-    blobOpacity.value = withTiming(1, { duration: 220, easing: Ease.out });
-    blobPopScale.value = withSpring(1, Spring.pop);
-  }, [burstActive, blobOpacity, blobPopScale]);
+    blobPopScale.value = 0.6;
+    blobOpacity.value = withTiming(1, { duration: 160, easing: Ease.out });
+    blobPopScale.value = withSpring(1, { damping: 10, stiffness: 220, mass: 0.7 });
+    shockwave.value = 0;
+    shockwave.value = withTiming(1, { duration: 300, easing: Ease.out });
+  }, [burstActive, blobOpacity, blobPopScale, shockwave]);
 
   /**
    * Refined, tactile tap response: springy compression, soft ripple, haptic
@@ -836,6 +931,25 @@ export const OrganicHero: React.FC<OrganicHeroProps> = ({
           </Svg>
         </Animated.View>
 
+        {/* Burst/reform impact flash — outside blobInnerStyle so it stays
+            visible through the blob's own fade instead of vanishing with it */}
+        <Svg
+          width={size}
+          height={size}
+          viewBox={`0 0 ${BLOB_VIEWBOX} ${BLOB_VIEWBOX}`}
+          style={StyleSheet.absoluteFillObject}
+          pointerEvents="none"
+        >
+          <AnimatedEllipse
+            cx={100}
+            cy={108}
+            animatedProps={shockwaveProps}
+            fill="none"
+            stroke="#FFFFFF"
+            strokeWidth={2.5}
+          />
+        </Svg>
+
         <Animated.View style={[styles.content, contentAnimStyle, blobInnerStyle]}>
           {children ?? (
             <>
@@ -950,10 +1064,6 @@ const styles = StyleSheet.create({
     position: 'absolute',
     top: '50%',
     left: '50%',
-    marginLeft: -17,
-    marginTop: -17,
-    width: 34,
-    height: 34,
     alignItems: 'center',
     justifyContent: 'center',
   },
