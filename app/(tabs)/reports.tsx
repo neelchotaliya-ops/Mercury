@@ -210,7 +210,7 @@ export default function ReportsScreen() {
             </GlassCard>
           </View>
         ) : (
-          <Animated.View style={refreshingStyle}>
+          <Animated.View style={[styles.sections, refreshingStyle]}>
             {/* The headline is one number, so it gets a stat tile rather than a chart. */}
             <View style={styles.section}>
               <GlassCard strong elevated style={styles.heroCard} animateIndex={0}>
@@ -457,6 +457,9 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     borderRadius: BorderRadius.pill,
     borderWidth: 1,
+  },
+  sections: {
+    gap: Spacing.xl,
   },
   section: {
     paddingHorizontal: 20,

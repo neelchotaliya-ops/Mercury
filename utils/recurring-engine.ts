@@ -179,15 +179,17 @@ export function generateOccurrences(
   maxCount = 60
 ): Date[] {
   const results: Date[] = [];
+  const fromDate = startOfDay(from);
+  const toDate = startOfDay(to);
   let cursor = startOfDay(new Date(rule.nextDue));
 
   // Fast-forward to `from` if nextDue is in the past relative to `from`
-  while (cursor < from && results.length === 0) {
+  while (cursor < fromDate && results.length === 0) {
     cursor = computeNextDue(rule, cursor);
   }
 
-  while (cursor <= to && results.length < maxCount) {
-    if (cursor >= from) {
+  while (cursor <= toDate && results.length < maxCount) {
+    if (cursor >= fromDate) {
       // Respect end_date
       if (rule.endDate && cursor > new Date(rule.endDate)) break;
       results.push(new Date(cursor));

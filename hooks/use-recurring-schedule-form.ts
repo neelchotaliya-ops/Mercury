@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 
 import { RecurringFrequency, IntervalUnit, RecurringRule } from '@/types/finance';
-import { describeFrequency } from '@/utils/recurring-engine';
+import { describeFrequency, formatDateIso } from '@/utils/recurring-engine';
 
 /**
  * Everything a recurring rule's schedule needs, independent of the
@@ -53,8 +53,8 @@ export function buildRecurringScheduleFields(state: RecurringScheduleState): Rec
     intervalValue: activeFrequency === 'custom' ? intervalValue : undefined,
     dayOfWeek: activeFrequency === 'weekly' ? dayOfWeek : undefined,
     dayOfMonth: activeFrequency === 'monthly' ? dayOfMonth : undefined,
-    startDate: startDate.toISOString().slice(0, 10),
-    endDate: hasEndDate && endDate ? endDate.toISOString().slice(0, 10) : undefined,
+    startDate: formatDateIso(startDate),
+    endDate: hasEndDate && endDate ? formatDateIso(endDate) : undefined,
     autoCreate,
     reminderDays,
     note: note.trim() || undefined,

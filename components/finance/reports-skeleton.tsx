@@ -3,11 +3,11 @@ import { View, StyleSheet } from 'react-native';
 import { AppText } from '@/components/ui/app-text';
 import { GlassCard } from '@/components/ui/glass-card';
 import { Skeleton } from '@/components/ui/skeleton';
-import { BorderRadius } from '@/constants/theme';
+import { BorderRadius, Spacing } from '@/constants/theme';
 
 export const ReportsSkeleton: React.FC = () => {
   return (
-    <>
+    <View style={styles.sections}>
       {/* 1. Hero Summary GlassCard */}
       <View style={styles.section}>
         <GlassCard strong elevated style={styles.heroCard} animate={false}>
@@ -102,11 +102,14 @@ export const ReportsSkeleton: React.FC = () => {
           </View>
         </GlassCard>
       </View>
-    </>
+    </View>
   );
 };
 
 const styles = StyleSheet.create({
+  sections: {
+    gap: Spacing.xl,
+  },
   section: {
     paddingHorizontal: 20,
     gap: 10,
