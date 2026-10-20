@@ -58,6 +58,8 @@ export interface TransactionRow {
   // v3 additions (nullable on pre-migration rows)
   payee: string | null;
   subcategory_id: string | null;
+  // v7 addition: comma-joined tag ids, null when untagged
+  tag_ids?: string | null;
   // v4 addition
   recurring_rule_id: string | null;
   // v5 addition
@@ -105,6 +107,13 @@ export interface SubcategoryRow {
   color: string;
   is_default: number;
   sort_order: number;
+}
+
+export interface TagRow {
+  id: string;
+  name: string;
+  name_lc: string;
+  created_at: string;
 }
 
 export interface BudgetRow {

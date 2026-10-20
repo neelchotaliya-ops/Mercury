@@ -15,6 +15,7 @@ import {
   Budget,
   Category,
   QuickPreset,
+  Tag,
   Transaction,
 } from '@/types/finance';
 import { DEFAULT_EXPENSE_CATEGORIES, DEFAULT_INCOME_CATEGORIES, ACCOUNT_TYPE_META } from '@/constants/categories';
@@ -48,6 +49,7 @@ import {
 } from '@/db/transactions';
 import { rebuildRollups } from '@/db/rebuild';
 import { listSubcategories } from '@/db/subcategories';
+import { listTags, getOrCreateTag } from '@/db/tags';
 import { processDueRules } from '@/db/recurring';
 import { notifyRecurringReminder } from '@/utils/notifications';
 
@@ -71,6 +73,7 @@ export interface FinanceEntities {
   accounts: Account[];
   categories: Category[];
   subcategories?: import('@/types/finance').Subcategory[];
+  tags: Tag[];
   budgets: Budget[];
   quickPresets: QuickPreset[];
   settings: AppSettings;
@@ -87,6 +90,8 @@ interface FinanceActions {
   addTransaction: (input: Omit<Transaction, 'id' | 'createdAt'>) => Promise<Transaction>;
   updateTransaction: (transaction: Transaction) => Promise<void>;
   deleteTransaction: (id: string) => Promise<void>;
+  /** Finds the tag with this name (case-insensitive) or creates it; null for a blank name. */
+  getOrCreateTag: (name: string) => Promise<Tag | null>;
   addBudget: (input: Omit<Budget, 'id' | 'createdAt'>) => Promise<Budget>;
   updateBudget: (budget: Budget) => Promise<void>;
   deleteBudget: (id: string) => Promise<void>;
@@ -149,6 +154,7 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
     accounts: [],
     categories: [],
     subcategories: [],
+    tags: [],
     budgets: [],
     quickPresets: [],
     settings: defaultSettings,
@@ -212,6 +218,7 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
         // Load subcategories in parallel — not destructured above to avoid
         // breaking the existing tuple order.
         const subcategories = await listSubcategories(db);
+        const tags = await listTags(db);
         if (cancelled) return;
 
         // First launch: SQLite has no categories yet (the migration only
@@ -243,13 +250,14 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
             accounts: [defaultAccount],
             categories: seededCategories,
             subcategories: [],
+            tags,
             budgets: [],
             quickPresets: presets,
             settings,
             isLoaded: true,
           });
         } else {
-          setEntities({ accounts, categories, subcategories, budgets, quickPresets, settings, isLoaded: true });
+          setEntities({ accounts, categories, subcategories, tags, budgets, quickPresets, settings, isLoaded: true });
         }
 
         const migration = await getBlobMigrationResult();
@@ -311,6 +319,7 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
         }),
       updateTransaction: transaction => withDb(db => dbUpdateTransaction(db, transaction)),
       deleteTransaction: id => withDb(db => dbDeleteTransaction(db, id)),
+      getOrCreateTag: name => withDb(db => getOrCreateTag(db, name)),
 
       addBudget: input =>
         withDb(async db => {
@@ -336,7 +345,7 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
       resetAllData: () =>
         withDb(async db => {
           await db.execAsync(
-            "DELETE FROM split_participants; DELETE FROM recurring_rules; DELETE FROM subcategories; DELETE FROM transactions; DELETE FROM accounts; DELETE FROM categories; DELETE FROM budgets; DELETE FROM quick_presets; DELETE FROM rollup; DELETE FROM account_balance; DELETE FROM settings; UPDATE ledger_stat SET n = 0, net = 0 WHERE key IN ('all','income','expense','transfer');"
+            "DELETE FROM split_participants; DELETE FROM recurring_rules; DELETE FROM subcategories; DELETE FROM transactions; DELETE FROM tags; DELETE FROM accounts; DELETE FROM categories; DELETE FROM budgets; DELETE FROM quick_presets; DELETE FROM rollup; DELETE FROM account_balance; DELETE FROM settings; UPDATE ledger_stat SET n = 0, net = 0 WHERE key IN ('all','income','expense','transfer');"
           );
           const seeded = buildDefaultCategories();
           for (let i = 0; i < seeded.length; i++) await insertCategory(db, seeded[i], i);

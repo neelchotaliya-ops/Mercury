@@ -89,7 +89,14 @@ const CASES: Case[] = [
       };
       await insertTransaction(db, tx);
       const back = await getTransactionById(db, 'x1');
-      return deepEq('round-trip', back, tx);
+      // Reads carry the split summary, which is zeroed for a non-split row.
+      return deepEq('round-trip', back, {
+        ...tx,
+        splitCount: 0,
+        splitPendingCount: 0,
+        splitOwedAmount: 0,
+        splitPaidAmount: 0,
+      });
     },
   },
   {

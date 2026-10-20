@@ -293,6 +293,29 @@ const MIGRATIONS: string[] = [
       paid_amount = CASE WHEN paid_amount >= share_amount THEN share_amount ELSE 0 END
   WHERE status = 'partial';
   `,
+
+  // v7 — reusable tags + transaction↔tag links
+  //
+  // Tags are a many-to-many label on top of category/subcategory. name_lc is
+  // UNIQUE so "Work" and "work" resolve to the same tag. Like subcategories,
+  // they never flow into the rollup — the per-category tag breakdown uses a
+  // bounded raw scan over the one category the user has drilled into.
+  `
+  CREATE TABLE tags (
+    id         TEXT PRIMARY KEY,
+    name       TEXT NOT NULL,
+    name_lc    TEXT NOT NULL UNIQUE,
+    created_at TEXT NOT NULL
+  );
+
+  CREATE TABLE transaction_tags (
+    transaction_id TEXT NOT NULL REFERENCES transactions(id) ON DELETE CASCADE,
+    tag_id         TEXT NOT NULL REFERENCES tags(id) ON DELETE CASCADE,
+    PRIMARY KEY (transaction_id, tag_id)
+  ) WITHOUT ROWID;
+
+  CREATE INDEX idx_txtag_tag ON transaction_tags(tag_id, transaction_id);
+  `,
 ];
 
 export const LATEST_SCHEMA_VERSION = MIGRATIONS.length;

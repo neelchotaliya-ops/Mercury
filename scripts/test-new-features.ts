@@ -37,7 +37,9 @@ import { insertSplitParticipantsBatch, listSplitParticipants, markParticipantPai
 import { applyBankImport } from '../db/bank-import';
 import { ParsedBankTransaction } from '../utils/bank-statement';
 import { insertBudget, insertPreset, getAccountDeletionImpact, deleteAccount } from '../db/entities';
-import { computeSubcategoryBreakdown, DEFAULT_INSIGHT_FILTER } from '../db/insights';
+import { computeSubcategoryBreakdown, computeTagBreakdown, DEFAULT_INSIGHT_FILTER } from '../db/insights';
+import { getOrCreateTag, listTags, normalizeTagName } from '../db/tags';
+import { getTransactionById, updateTransaction, deleteTransaction } from '../db/transactions';
 
 async function createInMemoryDb(): Promise<Db> {
   const db = openTestDb();
@@ -365,6 +367,73 @@ async function run() {
     assert.ok(Math.abs((bySubName.get('Mobile')?.share ?? 0) - 550 / total) < 1e-9);
     // Sorted descending by amount.
     assert.equal(slices[0].subcategory?.name, 'Mobile');
+  });
+
+  await test('Tags are reusable (case-insensitive) and round-trip through transactions', async () => {
+    const db = await createInMemoryDb();
+    await db.runAsync(
+      `INSERT INTO accounts (id, name, type, icon, color, initial_balance, created_at, archived, sort_order)
+       VALUES ('acc_t', 'Bank', 'bank', 'card', '#3B82F6', 0, '2026-08-01', 0, 0)`
+    );
+
+    assert.equal(normalizeTagName('  #  Work   trip '), 'Work trip');
+    assert.equal(await getOrCreateTag(db, '   '), null);
+
+    const work = await getOrCreateTag(db, 'Work');
+    const again = await getOrCreateTag(db, ' work ');
+    assert.ok(work && again);
+    assert.equal(again.id, work.id, 'same name in a different case must reuse the tag');
+    assert.equal((await listTags(db)).length, 1);
+
+    const trip = await getOrCreateTag(db, 'trip');
+    assert.ok(trip);
+
+    await insertTransaction(db, { id: 'tg1', type: 'expense', amount: 10, accountId: 'acc_t', date: '2026-08-05', tagIds: [work.id, trip.id, work.id] });
+    const loaded = await getTransactionById(db, 'tg1');
+    assert.deepEqual([...(loaded?.tagIds ?? [])].sort(), [trip.id, work.id].sort());
+
+    // undefined leaves links alone; an array replaces them.
+    await updateTransaction(db, { ...loaded!, note: 'edited' });
+    assert.equal((await getTransactionById(db, 'tg1'))?.tagIds?.length, 2);
+    await updateTransaction(db, { ...loaded!, tagIds: [trip.id] });
+    assert.deepEqual((await getTransactionById(db, 'tg1'))?.tagIds, [trip.id]);
+    await updateTransaction(db, { ...loaded!, tagIds: [] });
+    assert.equal((await getTransactionById(db, 'tg1'))?.tagIds, undefined);
+
+    // Links go with the transaction; the reusable tag itself stays.
+    await updateTransaction(db, { ...loaded!, tagIds: [work.id] });
+    await deleteTransaction(db, 'tg1');
+    const links = await db.getFirstAsync<{ n: number }>('SELECT COUNT(*) AS n FROM transaction_tags');
+    assert.equal(links?.n, 0);
+    assert.equal((await listTags(db)).length, 2);
+  });
+
+  await test('computeTagBreakdown scopes to the category and counts multi-tag spend under each tag', async () => {
+    const db = await createInMemoryDb();
+    await db.runAsync(
+      `INSERT INTO categories (id, name, icon, color, kind, is_default, sort_order)
+       VALUES ('cat_f', 'Food', 'restaurant', '#F97316', 'expense', 1, 0), ('cat_o', 'Other', 'ellipsis-horizontal', '#999999', 'expense', 1, 1)`
+    );
+    await db.runAsync(
+      `INSERT INTO accounts (id, name, type, icon, color, initial_balance, created_at, archived, sort_order)
+       VALUES ('acc_f', 'Bank', 'bank', 'card', '#3B82F6', 0, '2026-08-01', 0, 0)`
+    );
+    const work = (await getOrCreateTag(db, 'work'))!;
+    const trip = (await getOrCreateTag(db, 'trip'))!;
+    const tags = await listTags(db);
+
+    await insertTransaction(db, { id: 'a', type: 'expense', amount: 100, accountId: 'acc_f', categoryId: 'cat_f', date: '2026-08-05', tagIds: [work.id] });
+    await insertTransaction(db, { id: 'b', type: 'expense', amount: 300, accountId: 'acc_f', categoryId: 'cat_f', date: '2026-08-06', tagIds: [work.id, trip.id] });
+    await insertTransaction(db, { id: 'c', type: 'expense', amount: 100, accountId: 'acc_f', categoryId: 'cat_f', date: '2026-08-07' });
+    await insertTransaction(db, { id: 'd', type: 'expense', amount: 9999, accountId: 'acc_f', categoryId: 'cat_o', date: '2026-08-07', tagIds: [work.id] });
+
+    const slices = await computeTagBreakdown(db, { ...DEFAULT_INSIGHT_FILTER, range: 'all' }, 'cat_f', tags);
+    assert.deepEqual(
+      slices.map(s => [s.tag?.name ?? null, s.amount, s.count]),
+      [['work', 400, 2], ['trip', 300, 1], [null, 100, 1]],
+      'sorted by amount, "No tag" last, other categories excluded'
+    );
+    assert.ok(Math.abs(slices[0].share - 0.8) < 1e-9, 'share is of the category total (500)');
   });
 
   await test('Recurring rule execution writes transaction and advances next_due', async () => {

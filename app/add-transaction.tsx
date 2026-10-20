@@ -24,6 +24,7 @@ import { AmountDisplay, Numpad } from '@/components/finance/amount-input';
 import { CategoryPicker } from '@/components/finance/category-picker';
 import { AccountPicker } from '@/components/finance/account-picker';
 import { DatePickerModal } from '@/components/finance/date-picker-modal';
+import { TagInput } from '@/components/finance/tag-input';
 import { ScanReceiptButton } from '@/components/finance/scan-receipt-button';
 import { SplitSheet, SplitSheetResult } from '@/components/finance/split-sheet';
 import { RepeatSheet, RepeatSheetConfig } from '@/components/finance/repeat-sheet';
@@ -34,7 +35,7 @@ import { getTransactionById } from '@/db/transactions';
 import { createSplitExpense, insertSplitParticipantsBatch, listSplitParticipants } from '@/db/splits';
 import { insertRecurringRule } from '@/db/recurring';
 import { computeNextDue, formatDateIso, describeFrequency } from '@/utils/recurring-engine';
-import { Transaction, TransactionType } from '@/types/finance';
+import { Tag, Transaction, TransactionType } from '@/types/finance';
 import { getCurrencySymbol, formatCurrency } from '@/utils/currency';
 import { generateId } from '@/utils/id';
 import { haptics } from '@/utils/haptics';
@@ -59,7 +60,7 @@ const TYPE_COLOR: Record<TransactionType, string> = {
 export default function AddTransactionScreen() {
   const router = useRouter();
   const params = useLocalSearchParams<{ id?: string; fromScan?: string; imageUri?: string }>();
-  const { state, addTransaction, updateTransaction, deleteTransaction } = useFinance();
+  const { state, addTransaction, updateTransaction, deleteTransaction, getOrCreateTag } = useFinance();
 
   const [editing, setEditing] = useState<Transaction | undefined>(undefined);
 
@@ -90,6 +91,9 @@ export default function AddTransactionScreen() {
   const [subcategoryId, setSubcategoryId] = useState<string | undefined>(undefined);
   const [note, setNote] = useState('');
   const [payee, setPayee] = useState('');
+  // Full Tag objects, not ids: a tag created a moment ago may not be in
+  // state.tags yet (the entity list reloads asynchronously after the write).
+  const [selectedTags, setSelectedTags] = useState<Tag[]>([]);
   const [date, setDate] = useState<Date>(new Date());
   const [showDatePicker, setShowDatePicker] = useState(false);
 
@@ -127,7 +131,14 @@ export default function AddTransactionScreen() {
     setSubcategoryId(editing.subcategoryId);
     setNote(editing.note ?? '');
     setPayee(editing.payee ?? '');
+    setSelectedTags(
+      (editing.tagIds ?? []).flatMap(id => {
+        const tag = state.tags.find(t => t.id === id);
+        return tag ? [tag] : [];
+      })
+    );
     setDate(new Date(editing.date));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [editing]);
 
   // Handle scanned receipt auto-fill
@@ -232,6 +243,7 @@ export default function AddTransactionScreen() {
       categoryId: type !== 'transfer' ? categoryId : undefined,
       subcategoryId: type !== 'transfer' ? subcategoryId : undefined,
       payee: type !== 'transfer' && payee.trim() ? payee.trim() : undefined,
+      tagIds: type !== 'transfer' ? selectedTags.map(t => t.id) : [],
       date: date.toISOString(),
       note: note.trim() || undefined,
     };
@@ -254,6 +266,7 @@ export default function AddTransactionScreen() {
               categoryId,
               subcategoryId,
               payee: payee.trim() || undefined,
+              tagIds: selectedTags.map(t => t.id),
               note: note.trim() || undefined,
               date: date.toISOString(),
             },
@@ -718,15 +731,16 @@ export default function AddTransactionScreen() {
               <View style={styles.detailsHeaderLeft}>
                 <Ionicons name="receipt-outline" size={15} color={Colors.primary} />
                 <AppText variant="label" color={Colors.textSecondary}>
-                  {type === 'transfer' ? 'TRANSFER MEMO' : 'PAYEE & NOTE'}
+                  {type === 'transfer' ? 'TRANSFER MEMO' : 'PAYEE, NOTE & TAGS'}
                 </AppText>
               </View>
-              {((payee.trim() && type !== 'transfer') || note.trim()) ? (
+              {((payee.trim() && type !== 'transfer') || note.trim() || (selectedTags.length > 0 && type !== 'transfer')) ? (
                 <Pressable
                   onPress={() => {
                     haptics.selection();
                     setPayee('');
                     setNote('');
+                    setSelectedTags([]);
                   }}
                   hitSlop={8}
                 >
@@ -764,7 +778,7 @@ export default function AddTransactionScreen() {
               <AppTextInput
                 value={note}
                 onChangeText={setNote}
-                placeholder={type === 'transfer' ? 'e.g. Monthly rent, savings' : 'Add note, tags, invoice #...'}
+                placeholder={type === 'transfer' ? 'e.g. Monthly rent, savings' : 'Add a note or invoice #...'}
                 placeholderTextColor={Colors.textMuted}
                 leftIcon={type === 'transfer' ? 'swap-horizontal-outline' : 'document-text-outline'}
                 rightIcon={note.trim() ? 'close-circle' : undefined}
@@ -774,6 +788,21 @@ export default function AddTransactionScreen() {
                 onSubmitEditing={Keyboard.dismiss}
               />
             </View>
+
+            {type !== 'transfer' && (
+              <View style={styles.field}>
+                <AppText variant="micro" color={Colors.textMuted} style={styles.fieldLabel}>
+                  Tags
+                </AppText>
+                <TagInput
+                  selected={selectedTags}
+                  available={state.tags}
+                  onResolveTag={getOrCreateTag}
+                  onChange={setSelectedTags}
+                  onFocus={scrollToInputs}
+                />
+              </View>
+            )}
           </GlassCard>
         </ScrollView>
 

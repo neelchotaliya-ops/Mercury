@@ -241,6 +241,24 @@ implemented copy of the equal/custom/percentage participant-management UI
 
 ---
 
+## 3b. Tags (schema v7)
+
+Tables: `tags` (`id, name, name_lc UNIQUE, created_at`) and
+`transaction_tags` (`transaction_id, tag_id`, both `ON DELETE CASCADE`).
+Tags are reusable across transactions; names are unique case-insensitively,
+so `db/tags.ts#getOrCreateTag` reuses "Work" for "work". Like subcategories
+they never flow into the rollup. `Transaction.tagIds` is hydrated by a
+`GROUP_CONCAT` subquery in the transaction row columns; `updateTransaction`
+replaces the links only when `tagIds` is defined.
+
+UI: `components/finance/tag-input.tsx` (chips + existing-tag suggestions +
+"Create" for new names) inside the Payee/Note card of `app/add-transaction.tsx`.
+Insights: selecting a category in the donut shows a Subcategories and a Tags
+breakdown (`computeTagBreakdown`); a multi-tag transaction counts in full
+under each tag, so shares are of the category total and may exceed 100% combined.
+
+---
+
 ## 4. Subcategories (schema v3)
 
 Table: `subcategories` (`db/schema.ts:194-202`) — `id, category_id (FK→categories,

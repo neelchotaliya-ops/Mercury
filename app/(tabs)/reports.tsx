@@ -21,9 +21,11 @@ import {
   RecurringInsights,
   SplitInsights,
   SubcategorySlice,
+  TagSlice,
   getRecurringInsights,
   getSplitInsights,
   computeSubcategoryBreakdown,
+  computeTagBreakdown,
 } from '@/db/insights';
 import { useInsightsData } from '@/hooks/use-insights-data';
 import { useDbQuery } from '@/hooks/use-db-query';
@@ -97,6 +99,14 @@ export default function ReportsScreen() {
     db =>
       selectedCategory
         ? computeSubcategoryBreakdown(db, effectiveFilter, selectedCategory, state.subcategories ?? [])
+        : Promise.resolve([]),
+    []
+  );
+  const { data: tagBreakdown } = useDbQuery<TagSlice[]>(
+    `tags|${JSON.stringify(effectiveFilter)}|${selectedCategory ?? ''}`,
+    db =>
+      selectedCategory
+        ? computeTagBreakdown(db, effectiveFilter, selectedCategory, state.tags)
         : Promise.resolve([]),
     []
   );
@@ -319,15 +329,17 @@ export default function ReportsScreen() {
                   {selectedCategoryObj.name} breakdown
                 </AppText>
                 <GlassCard style={styles.chartCard} animateIndex={2}>
-                  {subcategoryBreakdown.length === 0 ? (
-                    <EmptyState
-                      icon="pricetags-outline"
-                      title="No subcategories here"
-                      subtitle={`Add subcategories to ${selectedCategoryObj.name} from Manage Categories to see a breakdown.`}
-                    />
-                  ) : (
-                    <View style={styles.subcatList}>
-                      {subcategoryBreakdown.map(slice => (
+                  <View style={styles.subcatList}>
+                    <AppText variant="micro" color={Colors.textSecondary}>
+                      SUBCATEGORIES
+                    </AppText>
+                    {subcategoryBreakdown.length === 0 ||
+                    (subcategoryBreakdown.length === 1 && !subcategoryBreakdown[0].subcategory) ? (
+                      <AppText variant="caption" color={Colors.textMuted}>
+                        {`No subcategories used in ${selectedCategoryObj.name}. Add them from Manage Categories.`}
+                      </AppText>
+                    ) : (
+                      subcategoryBreakdown.map(slice => (
                         <View key={slice.subcategory?.id ?? '__none__'} style={styles.subcatRow}>
                           <IconBadge
                             icon={slice.subcategory?.icon ?? 'ellipsis-horizontal'}
@@ -350,9 +362,51 @@ export default function ReportsScreen() {
                             />
                           </View>
                         </View>
-                      ))}
-                    </View>
-                  )}
+                      ))
+                    )}
+                  </View>
+
+                  <View style={styles.divider} />
+
+                  <View style={styles.subcatList}>
+                    <AppText variant="micro" color={Colors.textSecondary}>
+                      TAGS
+                    </AppText>
+                    {tagBreakdown.length === 0 ||
+                    (tagBreakdown.length === 1 && !tagBreakdown[0].tag) ? (
+                      <AppText variant="caption" color={Colors.textMuted}>
+                        {`No tags used in ${selectedCategoryObj.name}. Add tags when logging a transaction.`}
+                      </AppText>
+                    ) : (
+                      tagBreakdown.map(slice => (
+                        <View key={slice.tag?.id ?? '__untagged__'} style={styles.subcatRow}>
+                          <IconBadge
+                            icon={slice.tag ? 'pricetag' : 'ellipsis-horizontal'}
+                            color={slice.tag ? selectedCategoryObj.color : Colors.textMuted}
+                            size={32}
+                          />
+                          <View style={styles.subcatRowBody}>
+                            <View style={styles.subcatRowHeader}>
+                              <AppText variant="bodyStrong" numberOfLines={1} style={{ flex: 1 }}>
+                                {slice.tag ? `#${slice.tag.name}` : 'No tag'}
+                              </AppText>
+                              <AppText variant="bodyStrong">
+                                {formatCurrency(slice.amount, activeCurrency, numberFormat)}
+                              </AppText>
+                            </View>
+                            <ProgressBar
+                              progress={slice.share}
+                              height={6}
+                              color={slice.tag ? selectedCategoryObj.color : Colors.textMuted}
+                            />
+                            <AppText variant="micro" color={Colors.textMuted}>
+                              {slice.count} {slice.count === 1 ? 'entry' : 'entries'} · {Math.round(slice.share * 100)}%
+                            </AppText>
+                          </View>
+                        </View>
+                      ))
+                    )}
+                  </View>
                 </GlassCard>
               </View>
             )}
@@ -505,6 +559,10 @@ const styles = StyleSheet.create({
   },
   subcatList: {
     gap: 16,
+  },
+  divider: {
+    height: 1,
+    backgroundColor: Colors.divider,
   },
   subcatRow: {
     flexDirection: 'row',

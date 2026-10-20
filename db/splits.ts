@@ -24,6 +24,7 @@ import { dayKeyOf, monthKeyOf } from '@/utils/date';
 
 import { Db, SplitParticipantRow } from './types';
 import { applyRow } from './apply';
+import { setTransactionTags } from './tags';
 import { bumpDataVersion } from './version';
 
 // ---- Row ↔ domain mapping --------------------------------------------------
@@ -170,6 +171,7 @@ export async function createSplitExpense(
     categoryId?: string;
     subcategoryId?: string;
     payee?: string;
+    tagIds?: string[];
     note?: string;
     date: string;
     createdAt?: string;
@@ -213,6 +215,8 @@ export async function createSplitExpense(
         null,
       ]
     );
+
+    if (expense.tagIds && expense.tagIds.length > 0) await setTransactionTags(txn, txId, expense.tagIds);
 
     // 2. Apply rollup
     await applyRow(txn, {

@@ -1,4 +1,4 @@
-import { Category, Subcategory } from '@/types/finance';
+import { Category, Subcategory, Tag } from '@/types/finance';
 
 import { Db } from './types';
 import { Grain, fromMinor } from './rollup-math';
@@ -453,6 +453,78 @@ export async function computeSubcategoryBreakdown(
   for (const slice of slices) slice.share = grand > 0 ? slice.amount / grand : 0;
 
   return slices.sort((a, b) => b.amount - a.amount);
+}
+
+// ---- tag breakdown ----
+
+export interface TagSlice {
+  /** Null is the "No tag" bucket — transactions in the category with no tags at all. */
+  tag: Tag | null;
+  amount: number;
+  count: number;
+  /**
+   * Share of the *category's* total, not of the sum of slices: a transaction
+   * with two tags counts in full under each, so slices can add to more than
+   * 100%. That is the honest reading of "how much of this category touched
+   * this tag".
+   */
+  share: number;
+}
+
+/**
+ * Tag split for one category, under the same range/account filters as the
+ * donut. A bounded raw scan over only the category the user drilled into —
+ * tags are not part of the rollup (see `computeSubcategoryBreakdown`).
+ */
+export async function computeTagBreakdown(
+  db: Db,
+  filter: InsightFilter,
+  categoryId: string,
+  tags: Tag[],
+  now = new Date()
+): Promise<TagSlice[]> {
+  const range = resolveRange(filter.range, now);
+  const clauses = ['t.type = ?', 't.category_id = ?', 't.date_ms BETWEEN ? AND ?'];
+  const params: (string | number)[] = [filter.kind, categoryId, range.start.getTime(), range.end.getTime()];
+  if (filter.accountIds.length > 0) {
+    clauses.push(`t.account_id IN (${filter.accountIds.map(() => '?').join(',')})`);
+    params.push(...filter.accountIds);
+  }
+  const where = clauses.join(' AND ');
+
+  const tagged = await db.getAllAsync<{ tag_id: string; amount: number; n: number }>(
+    `SELECT tt.tag_id AS tag_id, SUM(t.amount) AS amount, COUNT(*) AS n
+     FROM transactions t JOIN transaction_tags tt ON tt.transaction_id = t.id
+     WHERE ${where}
+     GROUP BY tt.tag_id`,
+    params
+  );
+  const totals = await db.getFirstAsync<{ amount: number | null }>(
+    `SELECT SUM(t.amount) AS amount FROM transactions t WHERE ${where}`,
+    params
+  );
+  const untagged = await db.getFirstAsync<{ amount: number | null; n: number }>(
+    `SELECT SUM(t.amount) AS amount, COUNT(*) AS n FROM transactions t
+     WHERE ${where} AND NOT EXISTS (SELECT 1 FROM transaction_tags tt WHERE tt.transaction_id = t.id)`,
+    params
+  );
+
+  const grand = totals?.amount ?? 0;
+  const byId = new Map(tags.map(t => [t.id, t]));
+  const slices: TagSlice[] = [];
+  for (const row of tagged) {
+    const tag = byId.get(row.tag_id);
+    if (!tag) continue;
+    slices.push({ tag, amount: row.amount, count: row.n, share: grand > 0 ? row.amount / grand : 0 });
+  }
+  slices.sort((a, b) => b.amount - a.amount);
+  // "No tag" always closes the list, whatever its size.
+  if (untagged && untagged.n > 0) {
+    const amount = untagged.amount ?? 0;
+    slices.push({ tag: null, amount, count: untagged.n, share: grand > 0 ? amount / grand : 0 });
+  }
+
+  return slices;
 }
 
 // ---- monthly series ----

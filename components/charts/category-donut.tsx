@@ -25,6 +25,8 @@ export interface CategoryDonutProps {
 /** Part-to-whole reads at a glance only while the segment count stays small. */
 const MAX_SEGMENTS = 6;
 const STROKE = 22;
+/** Extra stroke width on the selected segment. */
+const SELECTED_GROW = 4;
 /** Surface-coloured gap so neighbouring segments never appear to merge. */
 const GAP_DEGREES = 2;
 
@@ -105,7 +107,7 @@ const DonutSegment: React.FC<DonutSegmentProps> = ({
       cy={cy}
       r={radius}
       stroke={segment.color}
-      strokeWidth={selected ? STROKE + 4 : STROKE}
+      strokeWidth={selected ? STROKE + SELECTED_GROW : STROKE}
       animatedProps={animatedProps}
       strokeLinecap="butt"
       fill="none"
@@ -162,7 +164,10 @@ export const CategoryDonut: React.FC<CategoryDonutProps> = ({
     sweep.value = withTiming(1, { duration: Duration.emphasis + 260, easing: Ease.out });
   }, [total, segments.length, sweep]);
 
-  const radius = (size - STROKE) / 2;
+  // The ring is sized for the *widest* stroke it can ever draw. Sizing it for
+  // STROKE alone left the selected segment's outer edge past the SVG viewport,
+  // clipping it flat at the canvas edge.
+  const radius = (size - (STROKE + SELECTED_GROW)) / 2;
   const circumference = 2 * Math.PI * radius;
 
   return (

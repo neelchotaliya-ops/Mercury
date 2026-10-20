@@ -39,6 +39,15 @@ export interface Subcategory {
   isDefault?: boolean;
 }
 
+// ---- Tags -------------------------------------------------------------------
+
+/** A reusable free-form label, attachable to any number of transactions. */
+export interface Tag {
+  id: string;
+  name: string;
+  createdAt: string;
+}
+
 // ---- Transactions -----------------------------------------------------------
 
 export type TransactionType = 'income' | 'expense' | 'transfer';
@@ -54,6 +63,8 @@ export interface Transaction {
   subcategoryId?: string;
   /** Free-text merchant / payee name (e.g. "Swiggy", "Amazon"). */
   payee?: string;
+  /** Reusable tags attached to this transaction (ids into the `tags` table). */
+  tagIds?: string[];
   date: string;
   note?: string;
   createdAt: string;

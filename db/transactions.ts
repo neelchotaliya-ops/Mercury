@@ -5,6 +5,7 @@ import { Db, TransactionRow } from './types';
 import { applyRow, reverseRow } from './apply';
 import { bumpDataVersion } from './version';
 import { RollupInput } from './rollup-math';
+import { setTransactionTags } from './tags';
 
 /**
  * Transaction reads and writes.
@@ -27,6 +28,7 @@ export function rowToTransaction(row: TransactionRow): Transaction {
     categoryId: row.category_id ?? undefined,
     subcategoryId: row.subcategory_id ?? undefined,
     payee: row.payee ?? undefined,
+    tagIds: row.tag_ids ? row.tag_ids.split(',') : undefined,
     date: row.date,
     note: row.note ?? undefined,
     createdAt: row.created_at,
@@ -57,13 +59,19 @@ function toRollupInput(tx: Transaction): RollupInput {
   };
 }
 
+const TAG_IDS_COLUMN =
+  '(SELECT GROUP_CONCAT(tag_id) FROM transaction_tags tt WHERE tt.transaction_id = transactions.id) AS tag_ids';
+
 const ROW_COLUMNS =
-  'seq, id, type, amount, account_id, to_account_id, category_id, date, date_ms, month_key, day_key, note, note_lc, created_at, payee, subcategory_id, recurring_rule_id, split_expense_id';
+  'seq, id, type, amount, account_id, to_account_id, category_id, date, date_ms, month_key, day_key, note, note_lc, created_at, payee, subcategory_id, recurring_rule_id, split_expense_id, ' +
+  TAG_IDS_COLUMN;
 
 const ROW_COLUMNS_WITH_SPLIT =
   'seq, id, type, amount, account_id, to_account_id, category_id, date, date_ms, month_key, day_key, note, note_lc, created_at, payee, subcategory_id, recurring_rule_id, split_expense_id, ' +
+  TAG_IDS_COLUMN +
+  ', ' +
   '(SELECT COUNT(*) FROM split_participants sp WHERE sp.transaction_id = transactions.id) AS split_count, ' +
-  '(SELECT COUNT(*) FROM split_participants sp WHERE sp.transaction_id = transactions.id AND sp.status = "pending") AS split_pending_count, ' +
+  '(SELECT COUNT(*) FROM split_participants sp WHERE sp.transaction_id = transactions.id AND sp.status = \'pending\') AS split_pending_count, ' +
   '(SELECT COALESCE(SUM(sp.share_amount), 0) FROM split_participants sp WHERE sp.transaction_id = transactions.id) AS split_owed_amount, ' +
   '(SELECT COALESCE(SUM(sp.paid_amount), 0) FROM split_participants sp WHERE sp.transaction_id = transactions.id) AS split_paid_amount, ' +
   '(SELECT payee FROM transactions orig WHERE orig.id = transactions.split_expense_id) AS split_original_payee, ' +
@@ -238,6 +246,7 @@ export async function insertTransaction(
         tx.splitExpenseId ?? null,
       ]
     );
+    if (tx.tagIds && tx.tagIds.length > 0) await setTransactionTags(txn, tx.id, tx.tagIds);
     await applyRow(txn, toRollupInput({ ...tx, createdAt }));
   });
   bumpDataVersion();
@@ -395,6 +404,9 @@ export async function updateTransaction(db: Db, next: Transaction): Promise<void
       ]
     );
 
+    // Undefined means "leave the links alone" (callers that never touch tags);
+    // an array, even an empty one, is the full new set.
+    if (next.tagIds !== undefined) await setTransactionTags(txn, next.id, next.tagIds);
     await applyRow(txn, toRollupInput(next));
   });
   bumpDataVersion();
