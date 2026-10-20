@@ -265,12 +265,14 @@ export default function ManageSubcategoriesScreen() {
                 title="Cancel"
                 variant="glass"
                 size="md"
+                fullWidth={false}
                 onPress={() => setShowForm(false)}
                 style={{ flex: 1 }}
               />
               <AppButton
-                title={editingSubcat ? 'Update' : 'Save'}
+                title={editingSubcat ? 'Update' : 'Create'}
                 size="md"
+                fullWidth={false}
                 onPress={handleSave}
                 disabled={!name.trim()}
                 style={{ flex: 1 }}

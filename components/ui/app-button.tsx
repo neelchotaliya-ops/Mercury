@@ -49,6 +49,15 @@ export const AppButton: React.FC<AppButtonProps> = ({
   const dims = SIZES[size];
   const isDisabled = disabled || loading;
 
+  const flattened = StyleSheet.flatten(style) as ViewStyle | undefined;
+  const hasFlex =
+    flattened?.flex !== undefined ||
+    (flattened?.flexGrow !== undefined && (flattened.flexGrow as number) > 0);
+  const hasExplicitWidth = flattened?.width !== undefined;
+  const shouldBeFullWidth = fullWidth && !hasFlex && !hasExplicitWidth;
+
+  const { flex, flexGrow, flexShrink, flexBasis, ...innerStyle } = flattened || {};
+
   const textColor =
     variant === 'primary'
       ? Colors.ctaText
@@ -73,7 +82,7 @@ export const AppButton: React.FC<AppButtonProps> = ({
     paddingHorizontal: variant === 'text' ? 4 : dims.paddingHorizontal,
     overflow: 'hidden',
     opacity: isDisabled ? 0.4 : 1,
-    ...(fullWidth ? { width: '100%' } : {}),
+    ...(shouldBeFullWidth || hasFlex ? { width: '100%' } : {}),
     ...(variant === 'primary'
       ? { backgroundColor: Colors.ctaBg, ...Shadows.floating }
       : {}),
@@ -85,6 +94,18 @@ export const AppButton: React.FC<AppButtonProps> = ({
       : {}),
   };
 
+  const pressableStyle: StyleProp<ViewStyle> = [
+    shouldBeFullWidth && styles.fullWidth,
+    hasFlex && {
+      flex: flattened?.flex,
+      flexGrow: flattened?.flexGrow,
+      flexShrink: flattened?.flexShrink,
+    },
+    hasExplicitWidth && { width: flattened?.width },
+    flattened?.minWidth !== undefined && { minWidth: flattened.minWidth },
+    flattened?.maxWidth !== undefined && { maxWidth: flattened.maxWidth },
+    flattened?.alignSelf !== undefined && { alignSelf: flattened.alignSelf },
+  ];
 
   return (
     <Pressable
@@ -96,9 +117,9 @@ export const AppButton: React.FC<AppButtonProps> = ({
       onPressOut={() => {
         scale.value = withSpring(1, Spring.settle);
       }}
-      style={fullWidth ? styles.fullWidth : undefined}
+      style={pressableStyle}
     >
-      <Animated.View style={[container, animatedStyle, style]}>
+      <Animated.View style={[container, animatedStyle, innerStyle]}>
         {variant === 'primary' && (
           <LinearGradient
             colors={Gradients.cta as [string, string]}
