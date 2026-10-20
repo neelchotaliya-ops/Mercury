@@ -41,6 +41,7 @@ import {
   listRecurringRules,
   pauseRecurringRule,
   resumeRecurringRule,
+  logRecurringOccurrence,
 } from '@/db/recurring';
 import { computeNextDue, generateOccurrences, describeFrequency } from '@/utils/recurring-engine';
 
@@ -230,6 +231,46 @@ export default function AddRecurringScreen() {
     } catch {
       Alert.alert('Error', 'Failed to update rule status.');
     }
+  };
+
+  const shortDate = (d: Date) =>
+    d.toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' });
+
+  /**
+   * Logs the rule's next occurrence today, ahead of schedule (rent paid
+   * early, salary landed early). The confirmation spells out the due-date
+   * move, because pressing it twice would log the following cycle too.
+   */
+  const handleLogNow = (rule: RecurringRule) => {
+    const label = rule.payee || rule.note || 'recurring payment';
+    const dueDate = new Date(rule.nextDue);
+    const followingDue = computeNextDue(rule, dueDate);
+    Alert.alert(
+      'Log this entry now?',
+      `Adds ${rule.type === 'income' ? '+' : '−'}${formatCurrency(rule.amount, currency, numberFormat)} for ${label} dated today, counting as the ${shortDate(dueDate)} payment. The next due date moves to ${shortDate(followingDue)}.`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Log it',
+          onPress: async () => {
+            try {
+              const db = await getDb();
+              await logRecurringOccurrence(db, rule.id);
+              haptics.success();
+              await loadRules();
+              // The form saves next_due from this copy; leaving it stale would
+              // roll the due date back on the next "Save changes".
+              if (editingRule?.id === rule.id) {
+                const fresh = await getRecurringRule(db, rule.id);
+                if (fresh) setEditingRule(fresh);
+              }
+            } catch {
+              Alert.alert('Error', 'Failed to log this entry.');
+            }
+          },
+        },
+      ]
+    );
   };
 
   const handleDelete = (ruleId: string) => {
@@ -431,6 +472,21 @@ export default function AddRecurringScreen() {
                         />
                       </View>
                     </Pressable>
+
+                    {rule.active && (
+                      <Pressable
+                        onPress={() => {
+                          haptics.press();
+                          handleLogNow(rule);
+                        }}
+                        style={({ pressed }) => [styles.logBtn, { opacity: pressed ? 0.6 : 1 }]}
+                      >
+                        <Ionicons name="add-circle-outline" size={15} color={Colors.primary} />
+                        <AppText variant="micro" color={Colors.primary} style={{ fontWeight: '700' }}>
+                          Log it now
+                        </AppText>
+                      </Pressable>
+                    )}
                   </GlassCard>
                 );
               })}
@@ -557,6 +613,15 @@ export default function AddRecurringScreen() {
           <RecurringScheduleFields form={schedule} advanced={true} />
         </GlassCard>
 
+        {editingRule?.active && (
+          <AppButton
+            title={`Log it now · ${formatCurrency(editingRule.amount, currency, numberFormat)}`}
+            icon="add-circle-outline"
+            variant="glass"
+            onPress={() => handleLogNow(editingRule)}
+          />
+        )}
+
         {/* Upcoming Occurrences Timeline Card */}
         {numericAmount > 0 && upcomingOccurrences.length > 0 && (
           <GlassCard padding={18} style={styles.formCard}>
@@ -674,6 +739,16 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 12,
+  },
+  logBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    marginTop: 12,
+    paddingVertical: 8,
+    borderRadius: BorderRadius.pill,
+    backgroundColor: Colors.primarySoft,
   },
   ruleInfo: {
     flex: 1,

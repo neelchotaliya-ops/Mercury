@@ -8,7 +8,7 @@ import { GlassCard } from '@/components/ui/glass-card';
 import { SegmentedControl } from '@/components/ui/segmented-control';
 import { EmptyState } from '@/components/finance/empty-state';
 import { InsightFilters } from '@/components/finance/insight-filters';
-import { TrendAreaChart } from '@/components/charts/trend-area-chart';
+import { TrendLineChart } from '@/components/charts/trend-line-chart';
 import { CategoryDonut } from '@/components/charts/category-donut';
 import { WeekdayBars } from '@/components/charts/weekday-bars';
 import { CalendarHeatmap } from '@/components/charts/calendar-heatmap';
@@ -29,11 +29,13 @@ import {
 } from '@/db/insights';
 import { useInsightsData } from '@/hooks/use-insights-data';
 import { useDbQuery } from '@/hooks/use-db-query';
+import { useAccountBalances } from '@/hooks/use-account-balances';
 import { formatCurrency, getCurrencySymbol } from '@/utils/currency';
 import { monthKeyLabel } from '@/utils/date';
 import { Colors, BorderRadius, Spacing } from '@/constants/theme';
 import { RecurringSummaryCard } from '@/components/finance/recurring-insights';
 import { SplitSummaryCard } from '@/components/finance/split-insights';
+import { RecurringProjectionCard } from '@/components/finance/recurring-projection';
 import { ProgressBar } from '@/components/finance/progress-bar';
 import { IconBadge } from '@/components/finance/icon-badge';
 
@@ -88,7 +90,7 @@ export default function ReportsScreen() {
 
   const numberFormat = state.settings.numberFormat;
 
-  const { totals, breakdown, series, heatmap: heatmapWeeks, weekdays, topNotes, comparison, loading } =
+  const { totals, breakdown, trend, heatmap: heatmapWeeks, weekdays, topNotes, comparison, loading } =
     useInsightsData(effectiveFilter, state.categories);
 
   // Drills one level below the category donut — only queried once a slice is
@@ -110,6 +112,32 @@ export default function ReportsScreen() {
         : Promise.resolve([]),
     []
   );
+  // Recurring outlook: only rules whose account is in the currency on screen,
+  // so a USD rule never gets summed into an INR balance.
+  const { data: balances } = useAccountBalances();
+  const projectionRules = useMemo(() => {
+    const ids = new Set(currencyAccounts.map(a => a.id));
+    return (recurringData?.rules ?? []).filter(r => ids.has(r.accountId));
+  }, [recurringData, currencyAccounts]);
+  const projectionBalance = useMemo(
+    () => currencyAccounts.filter(a => !a.archived).reduce((sum, a) => sum + (balances.get(a.id) ?? 0), 0),
+    [currencyAccounts, balances]
+  );
+  const projectionSection =
+    projectionRules.length > 0 ? (
+      <View style={styles.section}>
+        <AppText variant="label" style={styles.sectionLabel}>
+          Recurring outlook
+        </AppText>
+        <RecurringProjectionCard
+          rules={projectionRules}
+          balance={projectionBalance}
+          currency={activeCurrency}
+          numberFormat={numberFormat}
+        />
+      </View>
+    ) : null;
+
   const selectedCategoryObj = state.categories.find(c => c.id === selectedCategory);
 
   const contentOpacity = useSharedValue(1);
@@ -220,6 +248,8 @@ export default function ReportsScreen() {
                 <SplitSummaryCard insights={splitData} />
               </View>
             </View>
+
+            {projectionSection}
           </View>
         ) : (
           <Animated.View style={[styles.sections, refreshingStyle]}>
@@ -283,23 +313,39 @@ export default function ReportsScreen() {
               </View>
             </View>
 
+            {projectionSection}
+
             <View style={styles.section}>
               <AppText variant="label" style={styles.sectionLabel}>
-                Trend by month
+                Income vs spending
               </AppText>
               <GlassCard style={styles.chartCard} animateIndex={3}>
-                <TrendAreaChart
-                  points={series}
+                <TrendLineChart
+                  points={trend}
                   currency={activeCurrency}
                   numberFormat={numberFormat}
                   selectedIndex={selectedMonth}
                   onSelect={setSelectedMonth}
                 />
-                {selectedMonth !== undefined && series[selectedMonth] ? (
+                {selectedMonth !== undefined && trend[selectedMonth] ? (
                   <View style={styles.selection}>
-                    <AppText variant="micro">{monthKeyLabel(series[selectedMonth].monthKey)}</AppText>
-                    <AppText variant="bodyStrong">
-                      {formatCurrency(series[selectedMonth].amount, activeCurrency, numberFormat)}
+                    <AppText variant="micro">{monthKeyLabel(trend[selectedMonth].monthKey)}</AppText>
+                    <View style={styles.selectionRow}>
+                      <AppText variant="bodyStrong" color={Colors.income}>
+                        +{formatCurrency(trend[selectedMonth].income, activeCurrency, numberFormat)}
+                      </AppText>
+                      <AppText variant="bodyStrong" color={Colors.expense}>
+                        −{formatCurrency(trend[selectedMonth].expense, activeCurrency, numberFormat)}
+                      </AppText>
+                    </View>
+                    <AppText variant="micro" color={Colors.textSecondary}>
+                      Net{' '}
+                      {trend[selectedMonth].income - trend[selectedMonth].expense < 0 ? '−' : ''}
+                      {formatCurrency(
+                        Math.abs(trend[selectedMonth].income - trend[selectedMonth].expense),
+                        activeCurrency,
+                        numberFormat
+                      )}
                     </AppText>
                   </View>
                 ) : null}
@@ -556,6 +602,10 @@ const styles = StyleSheet.create({
   selection: {
     alignItems: 'center',
     gap: 1,
+  },
+  selectionRow: {
+    flexDirection: 'row',
+    gap: 16,
   },
   subcatList: {
     gap: 16,

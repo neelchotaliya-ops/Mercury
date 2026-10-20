@@ -10,6 +10,7 @@ const INITIAL: AllInsightsResult = {
   totals: { total: 0, count: 0, average: 0, dailyAverage: 0, activeDays: 0 },
   breakdown: [],
   series: [],
+  trend: [],
   heatmap: [],
   weekdays: [0, 0, 0, 0, 0, 0, 0],
   topNotes: [],

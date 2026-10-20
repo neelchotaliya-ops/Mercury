@@ -799,10 +799,18 @@ export async function computeTopNotes(
 
 // ---- Batched insights -------------------------------------------------------
 
+export interface IncomeExpensePoint {
+  monthKey: string;
+  income: number;
+  expense: number;
+}
+
 export interface AllInsightsResult {
   totals: InsightTotals;
   breakdown: CategorySlice[];
   series: MonthPoint[];
+  /** Both measures per month, for the trend chart — independent of the Spending/Income toggle. */
+  trend: IncomeExpensePoint[];
   heatmap: HeatmapWeek[];
   weekdays: number[];
   topNotes: TopMerchant[];
@@ -846,7 +854,17 @@ export async function computeAllInsights(
   const weekdays = processWeekdaysFromRows(sharedRows);
 
   // ③ Independent queries that need their own DB access — run in parallel
-  const [largestAmount, heatmap, topNotes, previousTotal] = await Promise.all([
+  // The trend shows both measures regardless of the Spending/Income toggle.
+  // The selected kind reuses `sharedRows` (so it honours the category filter
+  // and always matches the donut); the other kind ignores `categoryIds`,
+  // which belong to the selected kind and would otherwise empty it out.
+  const otherKind = filter.kind === 'expense' ? 'income' : 'expense';
+  const [otherRows, largestAmount, heatmap, topNotes, previousTotal] = await Promise.all([
+    queryBuckets(db, 'D', dayKeyOf(range.start), dayKeyOf(range.end), {
+      ...filter,
+      kind: otherKind,
+      categoryIds: [],
+    }),
     count > 0 ? queryLargestAmount(db, filter, range) : Promise.resolve(undefined),
     computeDailyHeatmap(db, filter, now),
     computeTopNotes(db, filter, 5, now),
@@ -873,7 +891,21 @@ export async function computeAllInsights(
         : undefined,
   };
 
-  return { totals, breakdown, series, heatmap, weekdays, topNotes, comparison };
+  // Joined on month key, not index: for the 'all' preset each kind derives its
+  // own first month from its own rows, so the two series can start apart.
+  const otherByMonth = new Map(
+    processSeriesFromRows(otherRows, range, now).map(p => [p.monthKey, p.amount])
+  );
+  const trend: IncomeExpensePoint[] = series.map(point => {
+    const other = otherByMonth.get(point.monthKey) ?? 0;
+    return {
+      monthKey: point.monthKey,
+      income: filter.kind === 'income' ? point.amount : other,
+      expense: filter.kind === 'expense' ? point.amount : other,
+    };
+  });
+
+  return { totals, breakdown, series, trend, heatmap, weekdays, topNotes, comparison };
 }
 
 // ---- Recurring Insights -----------------------------------------------------

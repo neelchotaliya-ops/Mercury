@@ -235,3 +235,67 @@ export function describeFrequency(rule: RecurringRule): string {
     }
   }
 }
+
+// ---- Projection -------------------------------------------------------------
+
+export interface RecurringFlow {
+  income: number;
+  expense: number;
+  /** income − expense. */
+  net: number;
+  incomeCount: number;
+  expenseCount: number;
+}
+
+/** Comfortably above one occurrence per day across the longest window we project (a year). */
+const PROJECTION_MAX_OCCURRENCES = 800;
+
+/**
+ * Sums what the active rules will still move between `from` and `to`
+ * (both inclusive, day-level). Walks each rule's real schedule via
+ * `generateOccurrences`, so month-end clamping, weekly/custom intervals and
+ * `endDate` are all honoured — not a flat "monthly × N" estimate.
+ *
+ * Counts only occurrences from the rule's current `nextDue` onward: anything
+ * already logged (automatically, or early via "Log it") has had `nextDue`
+ * advanced past it and is correctly excluded.
+ */
+export function projectRecurringFlow(rules: RecurringRule[], from: Date, to: Date): RecurringFlow {
+  const flow: RecurringFlow = { income: 0, expense: 0, net: 0, incomeCount: 0, expenseCount: 0 };
+  for (const rule of rules) {
+    if (!rule.active) continue;
+    const occurrences = generateOccurrences(rule, from, to, PROJECTION_MAX_OCCURRENCES);
+    if (occurrences.length === 0) continue;
+    const total = occurrences.length * rule.amount;
+    if (rule.type === 'income') {
+      flow.income += total;
+      flow.incomeCount += occurrences.length;
+    } else {
+      flow.expense += total;
+      flow.expenseCount += occurrences.length;
+    }
+  }
+  flow.net = flow.income - flow.expense;
+  return flow;
+}
+
+export interface RecurringProjectionWindows {
+  /** Today through the last day of this month. */
+  thisMonth: RecurringFlow;
+  /** Today through the same day six months on. */
+  next6Months: RecurringFlow;
+  /** Today through 31 Dec of this year. */
+  thisYear: RecurringFlow;
+}
+
+export function projectRecurringWindows(rules: RecurringRule[], now: Date = new Date()): RecurringProjectionWindows {
+  const today = startOfDay(now);
+  const monthEnd = new Date(today.getFullYear(), today.getMonth() + 1, 0);
+  const sixMonths = new Date(today.getFullYear(), today.getMonth() + 6, Math.min(today.getDate(), lastDayOfMonth(today.getFullYear(), today.getMonth() + 6)));
+  const yearEnd = new Date(today.getFullYear(), 11, 31);
+  return {
+    thisMonth: projectRecurringFlow(rules, today, monthEnd),
+    next6Months: projectRecurringFlow(rules, today, sixMonths),
+    thisYear: projectRecurringFlow(rules, today, yearEnd),
+  };
+}

@@ -31,13 +31,14 @@ import { Db } from '../db/types';
 import { applyMigrations } from '../db/schema';
 import { openTestDb } from './support/node-db';
 import { insertSubcategory, listSubcategories, updateSubcategory, deleteSubcategory } from '../db/subcategories';
-import { insertRecurringRule, listRecurringRules, processDueRules } from '../db/recurring';
+import { insertRecurringRule, listRecurringRules, processDueRules, logRecurringOccurrence, getRecurringRule } from '../db/recurring';
+import { projectRecurringFlow, projectRecurringWindows } from '../utils/recurring-engine';
 import { insertTransaction } from '../db/transactions';
 import { insertSplitParticipantsBatch, listSplitParticipants, markParticipantPaid, getSplitSummary } from '../db/splits';
 import { applyBankImport } from '../db/bank-import';
 import { ParsedBankTransaction } from '../utils/bank-statement';
 import { insertBudget, insertPreset, getAccountDeletionImpact, deleteAccount } from '../db/entities';
-import { computeSubcategoryBreakdown, computeTagBreakdown, DEFAULT_INSIGHT_FILTER } from '../db/insights';
+import { computeSubcategoryBreakdown, computeTagBreakdown, computeAllInsights, DEFAULT_INSIGHT_FILTER } from '../db/insights';
 import { getOrCreateTag, listTags, normalizeTagName } from '../db/tags';
 import { getTransactionById, updateTransaction, deleteTransaction } from '../db/transactions';
 
@@ -486,6 +487,103 @@ async function run() {
     );
     assert.ok(updatedRule);
     assert.equal(updatedRule.next_due, '2026-09-01');
+  });
+
+  await test('logRecurringOccurrence logs the next cycle today and advances next_due by exactly one', async () => {
+    const db = await createInMemoryDb();
+    await db.runAsync(
+      `INSERT INTO accounts (id, name, type, icon, color, initial_balance, created_at, archived, sort_order)
+       VALUES ('acc_r', 'Bank', 'bank', 'card', '#3B82F6', 1000, '2026-01-01', 0, 0)`
+    );
+    await insertRecurringRule(db, {
+      id: 'rent', type: 'expense', amount: 300, accountId: 'acc_r', payee: 'Rent',
+      frequency: 'monthly', dayOfMonth: 5, startDate: '2026-01-05',
+      nextDue: '2026-11-05', autoCreate: false, reminderDays: 1, active: true, createdAt: '2026-01-01',
+    });
+
+    // Paying the 5 Nov rent early, on 28 Oct.
+    const result = await logRecurringOccurrence(db, 'rent', new Date(2026, 9, 28, 12));
+    assert.equal(result.nextDue, '2026-12-05');
+    assert.equal((await getRecurringRule(db, 'rent'))?.nextDue, '2026-12-05');
+
+    const tx = await db.getFirstAsync<{ amount: number; payee: string; recurring_rule_id: string; month_key: string }>(
+      'SELECT amount, payee, recurring_rule_id, month_key FROM transactions WHERE id = ?',
+      [result.transactionId]
+    );
+    assert.equal(tx?.amount, 300);
+    assert.equal(tx?.payee, 'Rent');
+    assert.equal(tx?.recurring_rule_id, 'rent');
+    assert.equal(tx?.month_key, '2026-10', 'dated when it was paid, not the due date');
+
+    // Rollup/balance are updated like any other write.
+    const bal = await db.getFirstAsync<{ delta: number }>('SELECT delta FROM account_balance WHERE account_id = ?', ['acc_r']);
+    assert.equal(bal?.delta, -30000);
+
+    // The foreground processor must not log the same cycle again.
+    const processed = await processDueRules(db, new Date(2026, 10, 6));
+    assert.equal(processed.created, 0);
+    await assert.rejects(() => logRecurringOccurrence(db, 'nope'));
+  });
+
+  await test('projectRecurringFlow walks real schedules for month, 6 months and year windows', () => {
+    const base = { accountId: 'a', reminderDays: 0, active: true, createdAt: '2026-01-01', autoCreate: true } as const;
+    const rules: RecurringRule[] = [
+      { ...base, id: 'sal', type: 'income', amount: 1000, frequency: 'monthly', dayOfMonth: 1, startDate: '2026-01-01', nextDue: '2026-11-01' },
+      { ...base, id: 'rent', type: 'expense', amount: 400, frequency: 'monthly', dayOfMonth: -1, startDate: '2026-01-31', nextDue: '2026-10-31' },
+      { ...base, id: 'gym', type: 'expense', amount: 10, frequency: 'weekly', dayOfWeek: 1, startDate: '2026-01-05', nextDue: '2026-10-26' },
+      { ...base, id: 'paused', type: 'expense', amount: 9999, frequency: 'daily', startDate: '2026-01-01', nextDue: '2026-10-21', active: false },
+      { ...base, id: 'ended', type: 'expense', amount: 50, frequency: 'monthly', dayOfMonth: 15, startDate: '2026-01-15', nextDue: '2026-11-15', endDate: '2026-12-31' },
+    ];
+    const now = new Date(2026, 9, 21); // 21 Oct 2026
+
+    const w = projectRecurringWindows(rules, now);
+    // Rest of October: rent on the 31st + gym Mondays 26 Oct = 410. No income.
+    assert.equal(w.thisMonth.income, 0);
+    assert.equal(w.thisMonth.expense, 410);
+    assert.equal(w.thisMonth.net, -410);
+
+    // Salary: 1 Nov..1 Apr = 6. Rent: 31 Oct,30 Nov,31 Dec,31 Jan,28 Feb,31 Mar = 6.
+    assert.equal(w.next6Months.income, 6000);
+    assert.equal(w.next6Months.incomeCount, 6);
+    assert.equal(w.next6Months.expenseCount > 6 + 25, true);
+
+    // Rest of year: salary 1 Nov & 1 Dec; ended rule stops at its endDate; paused rule never counts.
+    assert.equal(w.thisYear.income, 2000);
+    assert.equal(w.thisYear.expense, 400 * 3 + 10 * 10 + 50 * 2);
+    assert.equal(projectRecurringFlow([], now, new Date(2026, 11, 31)).net, 0);
+  });
+
+  await test('computeAllInsights trend carries both income and expense per month, whichever kind is selected', async () => {
+    const db = await createInMemoryDb();
+    await db.runAsync(
+      `INSERT INTO categories (id, name, icon, color, kind, is_default, sort_order)
+       VALUES ('c_e', 'Food', 'restaurant', '#F97316', 'expense', 1, 0), ('c_i', 'Pay', 'cash', '#22C55E', 'income', 1, 1)`
+    );
+    await db.runAsync(
+      `INSERT INTO accounts (id, name, type, icon, color, initial_balance, created_at, archived, sort_order)
+       VALUES ('acc_x', 'Bank', 'bank', 'card', '#3B82F6', 0, '2026-01-01', 0, 0)`
+    );
+    await insertTransaction(db, { id: 'i1', type: 'income', amount: 1000, accountId: 'acc_x', categoryId: 'c_i', date: '2026-09-02T10:00:00' });
+    await insertTransaction(db, { id: 'e1', type: 'expense', amount: 200, accountId: 'acc_x', categoryId: 'c_e', date: '2026-09-10T10:00:00' });
+    await insertTransaction(db, { id: 'e2', type: 'expense', amount: 300, accountId: 'acc_x', categoryId: 'c_e', date: '2026-10-03T10:00:00' });
+
+    const now = new Date(2026, 9, 20);
+    const cats = [
+      { id: 'c_e', name: 'Food', icon: 'restaurant' as any, color: '#F97316', kind: 'expense' as const },
+      { id: 'c_i', name: 'Pay', icon: 'cash' as any, color: '#22C55E', kind: 'income' as const },
+    ];
+    const expected = [
+      { monthKey: '2026-09', income: 1000, expense: 200 },
+      { monthKey: '2026-10', income: 0, expense: 300 },
+    ];
+    for (const kind of ['expense', 'income'] as const) {
+      const res = await computeAllInsights(db, { ...DEFAULT_INSIGHT_FILTER, range: '3m', kind }, cats, now);
+      assert.deepEqual(res.trend.filter(p => p.monthKey >= '2026-09'), expected, `kind=${kind}`);
+    }
+
+    // A category filter belongs to the selected kind and must not blank the other line.
+    const filtered = await computeAllInsights(db, { ...DEFAULT_INSIGHT_FILTER, range: '3m', kind: 'expense', categoryIds: ['c_e'] }, cats, now);
+    assert.deepEqual(filtered.trend.filter(p => p.monthKey >= '2026-09'), expected);
   });
 
   await test('Recurring rule catches up on multiple missed periods, not just one', async () => {

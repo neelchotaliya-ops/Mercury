@@ -512,3 +512,20 @@ fingerprint-based duplicate detection), and different DB entry points
 validation, pure), `utils/data-transfer-io.ts` (file/share-sheet I/O),
 `utils/csv-stream.ts` and `utils/import-stream.ts`/`utils/json-stream.ts`
 (streaming readers shared across both the CSV and legacy JSON formats).
+
+
+---
+
+## Recurring: "Log it now" and projection
+
+- `db/recurring.ts#logRecurringOccurrence(db, ruleId, when)` writes the rule's
+  next occurrence as a real transaction dated `when` (today) and advances
+  `next_due` by exactly one occurrence, atomically — for paying/receiving
+  early. Surfaced as "Log it now" on each active rule card and in the edit form
+  of `app/add-recurring.tsx`, behind a confirmation that states the due-date move.
+- `utils/recurring-engine.ts#projectRecurringWindows` walks each active rule's
+  real schedule (`generateOccurrences`) to total scheduled income/spending for
+  the rest of this month, the next 6 months and the rest of the year. Shown on
+  Insights as "Recurring outlook" (`components/finance/recurring-projection.tsx`),
+  per displayed currency, with the resulting balance. Recurring items only —
+  one-off spending is not predicted.

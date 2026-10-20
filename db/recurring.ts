@@ -18,6 +18,7 @@ import { generateId } from '@/utils/id';
 import { Db, RecurringRuleRow } from './types';
 import { bumpDataVersion } from './version';
 import { applyRow } from './apply';
+import { insertTransaction } from './transactions';
 import { computeNextDue, isDue, formatDateIso, generateOccurrences } from '@/utils/recurring-engine';
 
 /** Hard cap on how many elapsed occurrences one foreground pass will catch up on for a single rule — matches generateOccurrences' own default, so a rule left unopened for years degrades gracefully instead of spinning. */
@@ -134,6 +135,46 @@ export async function pauseRecurringRule(db: Db, id: string): Promise<void> {
 
 export async function resumeRecurringRule(db: Db, id: string): Promise<void> {
   await db.runAsync('UPDATE recurring_rules SET active = 1 WHERE id = ?', [id]);
+}
+
+/**
+ * "Log it": writes the rule's next occurrence as a real transaction right
+ * now and advances `next_due` past it. For paying rent (or receiving salary)
+ * ahead of schedule — dated `when` (today) because that's when the money
+ * actually moved, while `next_due` moves exactly one occurrence so neither
+ * auto-create nor the reminder fires for the same cycle again.
+ *
+ * One transaction covers the insert and the advance, so a failure can never
+ * leave an entry logged with the rule still pointing at it.
+ */
+export async function logRecurringOccurrence(
+  db: Db,
+  ruleId: string,
+  when: Date = new Date()
+): Promise<{ transactionId: string; nextDue: string }> {
+  const rule = await getRecurringRule(db, ruleId);
+  if (!rule) throw new Error(`logRecurringOccurrence: no rule with id ${ruleId}`);
+
+  const transactionId = generateId();
+  const nextDue = formatDateIso(computeNextDue(rule, new Date(rule.nextDue)));
+
+  await db.withTransaction(async txn => {
+    await insertTransaction(txn, {
+      id: transactionId,
+      type: rule.type,
+      amount: rule.amount,
+      accountId: rule.accountId,
+      categoryId: rule.categoryId,
+      subcategoryId: rule.subcategoryId,
+      payee: rule.payee,
+      note: rule.note,
+      date: when.toISOString(),
+      recurringRuleId: rule.id,
+    });
+    await txn.runAsync('UPDATE recurring_rules SET next_due = ? WHERE id = ?', [nextDue, rule.id]);
+  });
+  bumpDataVersion();
+  return { transactionId, nextDue };
 }
 
 // ---- Processing engine -----------------------------------------------------

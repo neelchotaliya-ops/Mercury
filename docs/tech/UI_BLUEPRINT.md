@@ -323,7 +323,7 @@ inconsistent with every other finance component (`BudgetRow`, `AccountCard`,
 ### Charts — two parallel systems, only one live
 
 **Live, imported by `app/(tabs)/reports.tsx`** (`components/charts/`):
-- `trend-area-chart.tsx` — single-series smoothed area chart, cubic-smoothed
+- `trend-line-chart.tsx` — two-series (income + spending) smoothed line chart on one shared scale, cubic-smoothed
   path, animated left-to-right reveal via an `Animated.View` width mask
   (not a per-frame path redraw). Only peak/latest/selected points get
   value markers.
@@ -430,7 +430,7 @@ All four tabs (and Reports' Spending sub-view) use the shared
   multi-currency chips + summary `GlassCard(strong, elevated)` + `BudgetRow[]`.
 - **Reports**: header + 3-way segmented control (Spending/Recurring/Shared)
   → (Spending) Expense/Income toggle + currency chips + `InsightFilters` +
-  hero stat card + `TrendAreaChart` + `CategoryDonut` + `CalendarHeatmap` +
+  hero stat card + `TrendLineChart` + `CategoryDonut` + `CalendarHeatmap` +
   `WeekdayBars`.
 - **Add-transaction**: `ModalHeader` → optional "Scanned" confirmation
   banner → type segmented control → amount `GlassCard(strong, elevated)`
@@ -509,7 +509,7 @@ adaptation.
    `AmountInput`'s keys, `OrganicHero`'s badges (`Spring.pop` variant).
 3. **Value-change / data-driven reveal** — a `useEffect` resets a shared
    value on dependency change and re-tweens: `ProgressBar`, `CategoryDonut`'s
-   sweep, `TrendAreaChart`'s wipe mask, `WeekdayBars`/`CalendarHeatmap`'s
+   sweep, `TrendLineChart`'s wipe mask, `WeekdayBars`/`CalendarHeatmap`'s
    staggered reveal, `OrganicHero`'s value-swap pop.
 4. **Continuous/ambient loops** — the bounded exception to the "no ambient
    loops" rule: `GradientScreen`'s `AmbientOrbs` and `OrganicHero`'s
